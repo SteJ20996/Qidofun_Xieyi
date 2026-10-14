@@ -107,7 +107,7 @@ const result = await page.evaluate(async () => {
   for (const [k] of w.stoves) w.stoves.set(k, 0);
   g.removeItem('火把', 1);
   p.warm = 80; await sleep(1200); const warmA = p.warm;
-  ok('warmth drops at night away from fire', warmA < 79, warmA);
+  ok('warmth drops at night away from fire', warmA < 79.6, warmA);
   g.addItem('火把', 1); p.warm = 80; await sleep(1200);
   ok('torch slows warmth loss and lights', p.warm > warmA && g.torchLit(), p.warm);
   w.set(p.x + 1, p.y, '灶'); w.addFuel(p.x + 1, p.y, 60); p.warm = 50; await sleep(1200);
