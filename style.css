@@ -28,7 +28,7 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 #inkfill { background: linear-gradient(180deg, #3a3530, var(--ink)); }
 .bar.small { width: 18px; height: 150px; border-width: 1.5px; margin-top: 70px; }
 .bar.small > div { left: 2px; right: 2px; bottom: 2px; }
-.bar.small > span { font-size: 13px; }
+.bar.small > span { font-size: 13px; margin-top: 28px; }   /* 命飽暖的標籤放到墨標籤下一行，免得互相壓住 */
 .bar.hp > div { background: linear-gradient(180deg, #d0533f, #8f2c20); }
 .bar.food > div { background: linear-gradient(180deg, #c9a24a, #8a6a1f); }
 .bar.warm > div { background: linear-gradient(180deg, #e08a3c, #a8521a); }
