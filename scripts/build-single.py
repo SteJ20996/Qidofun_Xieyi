@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""把游戏打包成一个单文件 HTML（样式与脚本全部内联），便于发布为 claude.ai Artifact 或单文件分发。
+"""把遊戲打包成一個單文件 HTML（樣式與腳本全部內聯），便於發佈為 claude.ai Artifact 或單文件分發。
 
-    python3 scripts/build-single.py            # 输出 dist/xieyi.html（无 doctype/html/body 外壳，Artifact 发布时会自动包一层）
-    python3 scripts/build-single.py --page     # 输出 dist/index.html（完整页面，可直接双击打开）
+    python3 scripts/build-single.py            # 輸出 dist/xieyi.html（無 doctype/html/body 外殼，Artifact 發佈時會自動包一層）
+    python3 scripts/build-single.py --page     # 輸出 dist/index.html（完整頁面，可直接雙擊打開）
 """
 import re, sys, pathlib
 
@@ -15,7 +15,7 @@ body = html[html.index('<body>') + 6: html.index('</body>')]
 font_links = '\n'.join(l.strip() for l in head.splitlines() if 'fonts.g' in l)
 body = re.sub(r'<script src="([^"]+)"></script>',
               lambda m: '<script>\n' + (root / m.group(1)).read_text(encoding='utf-8') + '\n</script>', body)
-fragment = ('<title>写意</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n' + font_links +
+fragment = ('<title>寫意</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n' + font_links +
             '\n<style>\n' + css + '\n</style>\n' + body.strip() + '\n')
 
 out_dir = root / 'dist'; out_dir.mkdir(exist_ok=True)

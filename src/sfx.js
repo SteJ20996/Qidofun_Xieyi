@@ -1,5 +1,5 @@
-// sfx.js —— 极简程序化音效：没有任何音频文件，全靠 Web Audio 现场合成
-// 笔触是扫频的带通噪声；吸墨是反着来的；合字是一声小磬；虎是低吼。
+// sfx.js —— 極簡程序化音效：沒有任何音頻文件，全靠 Web Audio 現場合成
+// 筆觸是掃頻的帶通噪聲；吸墨是反著來的；合字是一聲小磬；虎是低吼。
 (function () {
   'use strict';
   const SFX = { ctx: null, out: null, muted: false, noiseBuf: null };
@@ -17,9 +17,9 @@
   SFX.play = function (fn) {
     if (!this.ctx || this.muted) return;
     if (this.ctx.state === 'suspended') this.ctx.resume();
-    try { fn(this.ctx, this.out, this.ctx.currentTime); } catch (e) { /* 音效失败不影响游戏 */ }
+    try { fn(this.ctx, this.out, this.ctx.currentTime); } catch (e) { /* 音效失敗不影響遊戲 */ }
   };
-  // 噪声 + 带通扫频
+  // 噪聲 + 帶通掃頻
   function swoosh(c, out, t, f0, f1, dur, vol) {
     const src = c.createBufferSource(); src.buffer = SFX.noiseBuf;
     const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.4;

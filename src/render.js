@@ -1,15 +1,15 @@
-// render.js —— 水墨渲染：宣纸、渗墨的字、昼夜、小地图
+// render.js —— 水墨渲染：宣紙、滲墨的字、晝夜、小地圖
 (function () {
   'use strict';
   const U = window.U, G = window.G, DB = G.DB;
-  const FONT = '"Ma Shan Zheng", "Zhi Mang Xing", "KaiTi", "STKaiti", "Kaiti SC", "Noto Serif CJK SC", "Noto Serif SC", "WenQuanYi Zen Hei", serif';
+  const FONT = '"LXGW WenKai TC", "BiauKai", "DFKai-SB", "標楷體", "Kaiti TC", "Noto Serif TC", "Noto Serif CJK TC", "PingFang TC", "WenQuanYi Zen Hei", serif';
   const MINI = {
     '淼': '#4a6f8f', '水': '#6f93b0', '沙': '#d9c89a', '石': '#9c9a93', '山': '#6e6c75', '雪': '#e8ecf2',
     '草': '#b9c98f', '花': '#d29b8e', '木': '#8aa86f', '林': '#5e8a55', '森': '#3b5f3a', '竹': '#7fa36b', '田': '#d1c572',
     '土': '#a98a62', '灰': '#8d8781', '白': '#f3ebd8', '火': '#d9593c', '炎': '#d9593c', '焱': '#d9593c',
-    '明': '#f0c54a', '休': '#9a6b45', '桥': '#9a6b45', '困': '#7a5a3e', '碑': '#2a2724', '日': '#e07a4a', '月': '#e3c35a',
-    '果': '#c9654a', '灶': '#d9593c', '木屋': '#7a4e2d', '囊': '#2a2724', '路': '#c9b27a', '墙': '#8a6a4a', '门': '#9a7a55', '井': '#4a6f8f',
-    '塔': '#2a2724', '寺': '#5a3e2b', '船': '#5a3e2b', '泉': '#4a6f8f', '墓': '#6e6c75', '洞': '#2a2724', '灯': '#e0a020'
+    '明': '#f0c54a', '休': '#9a6b45', '橋': '#9a6b45', '困': '#7a5a3e', '碑': '#2a2724', '日': '#e07a4a', '月': '#e3c35a',
+    '果': '#c9654a', '灶': '#d9593c', '木屋': '#7a4e2d', '囊': '#2a2724', '路': '#c9b27a', '牆': '#8a6a4a', '門': '#9a7a55', '井': '#4a6f8f',
+    '塔': '#2a2724', '寺': '#5a3e2b', '船': '#5a3e2b', '泉': '#4a6f8f', '墓': '#6e6c75', '洞': '#2a2724', '燈': '#e0a020'
   };
 
   class Renderer {
@@ -25,9 +25,9 @@
       this.shake = 0; this.miniAcc = 1;
       this.resize();
       window.addEventListener('resize', () => this.resize());
-      // 书法字体加载完成后，重建字形缓存
+      // 書法字體加載完成後，重建字形緩存
       if (document.fonts) {
-        document.fonts.load('32px "Ma Shan Zheng"').then(() => this.atlas.clear()).catch(() => {});
+        document.fonts.load('32px "LXGW WenKai TC"').then(() => this.atlas.clear()).catch(() => {});
         document.fonts.addEventListener('loadingdone', () => this.atlas.clear());
       }
     }
@@ -38,7 +38,7 @@
       this.cv.style.width = this.w + 'px'; this.cv.style.height = this.h + 'px';
     }
 
-    // 宣纸：暖色底 + 细碎噪点 + 若干纤维
+    // 宣紙：暖色底 + 細碎噪點 + 若干纖維
     makePaper() {
       const S = 512, c = document.createElement('canvas'); c.width = c.height = S;
       const x = c.getContext('2d');
@@ -55,7 +55,7 @@
       return c;
     }
 
-    // 字形缓存：每个字按颜色渲染一次（带一层模糊的"渗墨"），之后只做 drawImage
+    // 字形緩存：每個字按顏色渲染一次（帶一層模糊的"滲墨"），之後只做 drawImage
     glyph(ch, color) {
       const key = ch + '|' + color;
       let c = this.atlas.get(key);
@@ -86,7 +86,7 @@
     draw(g, dt, now) {
       const ctx = this.ctx, T = this.tile, w = this.w, h = this.h, world = g.world, p = g.player;
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-      // —— 相机：跟着玩家，略带迟滞
+      // —— 相機：跟著玩家，略帶遲滯
       const cx = p.rx + 0.5, cy = p.ry + 0.5;
       if (!this.camInit) { this.camX = cx; this.camY = cy; this.camInit = true; }
       const k = Math.min(1, dt * 7);
@@ -94,7 +94,7 @@
       let ox = w / 2 - this.camX * T, oy = h / 2 - this.camY * T;
       if (this.shake > 0) { this.shake -= dt; ox += (Math.random() - 0.5) * 10 * this.shake; oy += (Math.random() - 0.5) * 10 * this.shake; }
 
-      // —— 宣纸随世界滚动
+      // —— 宣紙隨世界滾動
       if (!this.pattern) this.pattern = ctx.createPattern(this.paper, 'repeat');
       ctx.save(); ctx.translate(ox, oy); ctx.fillStyle = this.pattern; ctx.fillRect(-ox - 2, -oy - 2, w + 4, h + 4); ctx.restore();
 
@@ -109,8 +109,9 @@
         const burning = world.isBurning(x, y);
         const d = DB[ch];
         const lit = ch === '灶' && world.stoveLit(x, y);
-        if (d.light > 0 || burning || lit) lights.push({ x, y, r: Math.max(d.light, burning ? 2.5 : 0, lit ? 3 : 0) });
-        if (ch === '白' || world.isBig(x, y)) continue;      // 大字地标整体另画
+        const lr = ch === '燈' && world.isBig(x, y) ? 9 : d.light;   // 島外那盞燈塔照得最遠
+        if (lr > 0 || burning || lit) lights.push({ x, y, r: Math.max(lr, burning ? 2.5 : 0, lit ? 3 : 0) });
+        if (ch === '白' || world.isBig(x, y)) continue;      // 大字地標整體另畫
         const r = U.hash2(x, y, 99);
         let rot = ((r & 255) / 255 - 0.5) * 0.16, scale = (0.84 + ((r >>> 8) & 255) / 255 * 0.16) * d.vis[0];
         let dx = ((r >>> 16) & 255) / 255 * 4 - 2, dy = ((r >>> 24) & 255) / 255 * 4 - 2, alpha = d.vis[1];
@@ -120,22 +121,22 @@
         if (burning) alpha = 1;
         if (act && act.type === 'absorb' && act.x === x && act.y === y) { const pr = act.t / act.dur; alpha *= 1 - pr * 0.85; scale *= 1 - pr * 0.35; rot += pr * 0.5; }
         const color = burning && d.kind !== 'fire' ? G.INK.red : (ch === '灶' && !lit ? G.INK.ash : d.ink);
-        if (ch.length > 1) {   // 双字之物（木屋）：两个字并排写小一点
+        if (ch.length > 1) {   // 雙字之物（木屋）：兩個字並排寫小一點
           this.drawGlyph(ch[0], color, ox + x * T + T * 0.3, oy + y * T + T / 2 + dy, T * scale * 0.62, rot, alpha);
           this.drawGlyph(ch[1], color, ox + x * T + T * 0.7, oy + y * T + T / 2 + dy, T * scale * 0.62, rot, alpha);
         } else this.drawGlyph(ch, color, ox + x * T + T / 2 + dx, oy + y * T + T / 2 + dy, T * scale, rot, alpha);
         if ((burning && d.kind !== 'fire') || lit) this.drawGlyph('火', G.INK.red, ox + x * T + T * 0.74, oy + y * T + T * 0.3, T * 0.45 * (1 + 0.15 * Math.sin(now * 13 + r)), rot, 0.95);
       }
 
-      // —— 大字地标：一个字占好几格
+      // —— 大字地標：一個字佔好幾格
       for (const pl of world.places) {
         if (pl.template || pl.x + pl.w < x0 || pl.x > x1 || pl.y + pl.h < y0 || pl.y > y1) continue;
         const r = U.hash2(pl.x, pl.y, 7), rot = ((r & 255) / 255 - 0.5) * 0.08;
         const cx2 = ox + (pl.x + pl.w / 2) * T, cy2 = oy + (pl.y + pl.h / 2) * T, size = T * Math.max(pl.w, pl.h) * 0.92;
-        if (pl.ch === '灯') { ctx.save(); ctx.fillStyle = 'rgba(224,160,32,' + (0.10 + 0.08 * Math.sin(now * 2)) + ')'; ctx.beginPath(); ctx.arc(cx2, cy2, size * 0.9, 0, 7); ctx.fill(); ctx.restore(); }
+        if (pl.ch === '燈') { ctx.save(); ctx.fillStyle = 'rgba(224,160,32,' + (0.10 + 0.08 * Math.sin(now * 2)) + ')'; ctx.beginPath(); ctx.arc(cx2, cy2, size * 0.9, 0, 7); ctx.fill(); ctx.restore(); }
         this.drawGlyph(pl.ch, DB[pl.ch].ink, cx2, cy2, size, rot, pl.ch === '寺' ? 0.85 : 1);
       }
-      // —— 实体
+      // —— 實體
       for (const e of g.ents.list) {
         if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) continue;
         const px = ox + e.rx * T + T / 2, py = oy + e.ry * T + T / 2, d = DB[e.type];
@@ -148,10 +149,10 @@
           continue;
         }
         if (e.type === '丶') { this.drawGlyph('丶', G.INK.black, px, py + Math.sin(now * 3 + e.bob) * 2, T * 0.9, 0, 0.9); continue; }
-        const size = e.type === '虎' ? 0.95 : e.type === '龙' ? 1.1 : e.type === '鹿' ? 0.8 : e.type === '鱼' ? 0.6 : 0.55;
-        const bobY = e.type === '鸟' ? Math.sin(now * 5 + e.bob) * 3 : e.type === '龙' ? Math.sin(now * 3 + e.bob) * 4 : e.type === '鱼' ? Math.sin(now * 2 + e.bob) * 1.5 : 0;
-        if (e.type === '龙') lights.push({ x: e.x, y: e.y, r: 3 });
-        const rot = e.type === '鱼' ? Math.sin(now * 2 + e.bob) * 0.2 : 0;
+        const size = e.type === '虎' ? 0.95 : e.type === '龍' ? 1.1 : e.type === '鹿' ? 0.8 : e.type === '魚' ? 0.6 : 0.55;
+        const bobY = e.type === '鳥' ? Math.sin(now * 5 + e.bob) * 3 : e.type === '龍' ? Math.sin(now * 3 + e.bob) * 4 : e.type === '魚' ? Math.sin(now * 2 + e.bob) * 1.5 : 0;
+        if (e.type === '龍') lights.push({ x: e.x, y: e.y, r: 3 });
+        const rot = e.type === '魚' ? Math.sin(now * 2 + e.bob) * 0.2 : 0;
         if (e.type === '虎' && e.calm <= 0 && U.cheb(e.x, e.y, p.x, p.y) <= 8) {
           ctx.save(); ctx.fillStyle = 'rgba(180,57,42,0.12)'; ctx.beginPath(); ctx.arc(px, py, T * 0.6, 0, 7); ctx.fill(); ctx.restore();
         }
@@ -159,12 +160,12 @@
         if (e.cage > 0) this.drawGlyph('口', G.INK.brown, px, py, T * 1.15, 0, 0.9);
       }
 
-      // —— 玩家：一个「人」字
+      // —— 玩家：一個「人」字
       {
         const px = ox + p.rx * T + T / 2, py = oy + p.ry * T + T / 2;
         const moving = p.moveT > 0;
         const rot = moving ? Math.sin(now * 14) * 0.14 : Math.sin(now * 1.5) * 0.02;
-        // 一圈留白让「人」从字海里浮出来，脚边一点朱砂像印章
+        // 一圈留白讓「人」從字海里浮出來，腳邊一點硃砂像印章
         ctx.save();
         const halo = ctx.createRadialGradient(px, py, T * 0.2, px, py, T * 0.78);
         halo.addColorStop(0, 'rgba(243,235,216,0.92)'); halo.addColorStop(0.7, 'rgba(243,235,216,0.7)'); halo.addColorStop(1, 'rgba(243,235,216,0)');
@@ -198,7 +199,7 @@
         }
       }
 
-      // —— 夜色：一层蓝墨，在玩家与光源处挖出洞
+      // —— 夜色：一層藍墨，在玩家與光源處挖出洞
       const dark = g.darkness();
       if (dark > 0.02) {
         const n = this.night, nc = n.getContext('2d');
@@ -210,7 +211,7 @@
         if (g.torchLit()) lights.push({ x: p.x, y: p.y, r: 3 });
         for (const l of lights) cut(ox + l.x * T + T / 2, oy + l.y * T + T / 2, T * (l.r + 0.25 * Math.sin(now * 6 + l.x * 3 + l.y)), 1);
         ctx.drawImage(n, 0, 0, n.width, n.height, 0, 0, w, h);
-        // 光源的暖晕
+        // 光源的暖暈
         ctx.save(); ctx.globalCompositeOperation = 'source-over';
         for (const l of lights) {
           const px = ox + l.x * T + T / 2, py = oy + l.y * T + T / 2, r = T * l.r;
@@ -219,12 +220,12 @@
         }
         ctx.restore();
       }
-      // —— 纸边的旧色
+      // —— 紙邊的舊色
       const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.45, w / 2, h / 2, Math.max(w, h) * 0.75);
       vg.addColorStop(0, 'rgba(80,60,30,0)'); vg.addColorStop(1, 'rgba(80,60,30,0.32)');
       ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
 
-      // —— 小地图
+      // —— 小地圖
       this.miniAcc += dt;
       if (this.miniAcc > 0.25 && !this.mini.classList.contains('hidden')) { this.miniAcc = 0; this.drawMini(g); }
     }
@@ -235,7 +236,7 @@
       const half = N >> 1;
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
         const x = p.x - half + i, y = p.y - half + j;
-        if (!g.world.isSeen(x, y)) continue;                    // 没看过的地方还是白纸
+        if (!g.world.isSeen(x, y)) continue;                    // 沒看過的地方還是白紙
         const ch = g.world.get(x, y);
         m.fillStyle = g.world.isBurning(x, y) ? MINI['火'] : (MINI[ch] || '#999');
         m.fillRect(i * px, j * px, px + 0.5, px + 0.5);
@@ -262,7 +263,7 @@
       const dk = g.darkness(); if (dk > 0.02) { m.fillStyle = 'rgba(12,16,36,' + (0.35 * dk) + ')'; m.fillRect(0, 0, S, S); }
     }
 
-    // 全岛地图：走过的地方才有墨，地标盖朱印
+    // 全島地圖：走過的地方才有墨，地標蓋朱印
     drawBigMap(g, cv) {
       const w = g.world, p = g.player, R = G.ISLAND_R + 16, N = R * 2, S = cv.width, px = S / N;
       const m = cv.getContext('2d');
@@ -278,7 +279,7 @@
       // 碑
       m.font = Math.round(px * 2.6) + 'px ' + FONT; m.textAlign = 'center'; m.textBaseline = 'middle'; m.fillStyle = '#1c1a17';
       for (const s of w.steles.values()) if (w.isSeen(s.x, s.y)) m.fillText('碑', (s.x + R + 0.5) * px, (s.y + R + 0.5) * px);
-      // 地标：大字 + 朱印名
+      // 地標：大字 + 朱印名
       for (const pl of w.places) {
         if (!pl.seen) continue;
         const cx = (pl.x + pl.w / 2 + R) * px, cy = (pl.y + pl.h / 2 + R) * px;
