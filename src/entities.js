@@ -35,7 +35,7 @@
     // 能不能站上去
     canStand(type, x, y, night) {
       const ch = this.world.get(x, y), d = DB[ch];
-      if (type === '鸟') return d.kind !== 'fire';
+      if (type === '鸟' || type === '龙') return d.kind !== 'fire';
       if (type === '鱼') return d.kind === 'water';
       if (d.walk <= 0 || d.shelter) return false;               // 兽不得入屋
       if (type === '虎' && !night) return d.kind === 'plant';   // 白天虎不出林
@@ -66,8 +66,21 @@
       if (fallback && Math.random() < 0.3) { e.x = fallback[0]; e.y = fallback[1]; }
     }
 
+    // 最近的某类地标（鹿傍晚去泉，鸟傍晚回塔、寺、灯）
+    nearestPlace(x, y, chars, maxD) {
+      let best = null, bd = maxD;
+      for (const pl of this.world.places) {
+        if (!pl.ch || chars.indexOf(pl.ch) < 0) continue;
+        const d = U.dist(x, y, pl.x + (pl.w - 1) / 2, pl.y + (pl.h - 1) / 2);
+        if (d < bd) { bd = d; best = pl; }
+      }
+      return best;
+    }
+    dragonNear(x, y, r) { for (const o of this.list) if (o.type === '龙' && U.cheb(o.x, o.y, x, y) <= r) return true; return false; }
+
     update(dt, g) {
       const p = g.player, w = this.world, night = g.darkness() > 0.5;
+      const dayT = g.dayT(), dusk = dayT > 0.40 && dayT < 0.52;
       // —— 刷新与消失
       this.spawnAcc += dt;
       if (this.spawnAcc > 1.5) {
@@ -108,7 +121,8 @@
 
         if (e.life > 0) { e.life -= dt; if (e.life <= 0) { this.list.splice(i, 1); continue; } }
         if (kind !== 'beast') continue;
-        if (U.cheb(e.x, e.y, p.x, p.y) > 48) { this.list.splice(i, 1); continue; }
+        if (U.cheb(e.x, e.y, p.x, p.y) <= 9) g.saw(e.type);
+        if (e.type !== '龙' && U.cheb(e.x, e.y, p.x, p.y) > 48) { this.list.splice(i, 1); continue; }
         if (e.type === '鱼' && DB[w.get(e.x, e.y)].kind !== 'water') { this.list.splice(i, 1); continue; } // 水没了，鱼也没了
         if (e.cage > 0) { e.cage -= dt; continue; }
         if (e.calm > 0) e.calm -= dt;
@@ -116,16 +130,26 @@
         if (e.moveT > 0) continue;
 
         const d = U.cheb(e.x, e.y, p.x, p.y);
-        if (e.type === '鸟') {
+        if (e.type === '龙') {
+          // 龙随人行，夜能照路
+          if (d > 4) { e.moveT = 0.22; this.stepTo(e, p.x, p.y, false, night); }
+          else { e.moveT = 0.5 + Math.random() * 1.0; if (Math.random() < 0.5) this.wander(e, night, null); }
+        } else if (e.type === '鸟') {
+          const home = dusk ? this.nearestPlace(e.x, e.y, '塔寺灯', 60) : null;
           if (d <= 3) { e.moveT = 0.18; this.stepTo(e, p.x, p.y, true, night); }
+          else if (home && U.cheb(e.x, e.y, home.x, home.y) > 1) { e.moveT = 0.3; this.stepTo(e, home.x, home.y, false, night); }   // 倦鸟归巢
+          else if (home) { e.moveT = 3 + Math.random() * 4; }
           else { e.moveT = 0.5 + Math.random() * 1.6; if (Math.random() < 0.5) this.wander(e, night, '木林森竹'); }
         } else if (e.type === '鹿') {
+          const spring = dusk ? this.nearestPlace(e.x, e.y, '泉', 45) : null;
           if (d <= 5) { e.moveT = 0.22; this.stepTo(e, p.x, p.y, true, night); }
+          else if (spring && U.cheb(e.x, e.y, spring.x, spring.y) > 1) { e.moveT = 0.4; this.stepTo(e, spring.x, spring.y, false, night); }   // 鹿饮于泉
+          else if (spring) { e.moveT = 2 + Math.random() * 3; }
           else { e.moveT = 0.7 + Math.random() * 1.6; if (Math.random() < 0.6) this.wander(e, night, '林木草竹'); }
         } else if (e.type === '鱼') {
           e.moveT = 0.5 + Math.random() * 1.2; if (Math.random() < 0.7) this.wander(e, night, null);
         } else if (e.type === '虎') {
-          const scared = w.lightNear(e.x, e.y, 2) || w.lightNear(p.x, p.y, 2) || g.torchLit();
+          const scared = w.lightNear(e.x, e.y, 2) || w.lightNear(p.x, p.y, 2) || g.torchLit() || this.dragonNear(e.x, e.y, 4);
           const sheltered = !!DB[w.get(p.x, p.y)].shelter;
           const range = night ? 8 : 4;
           if ((scared || sheltered) && d <= 4) { e.moveT = 0.3; this.stepTo(e, p.x, p.y, true, night); }
@@ -142,7 +166,7 @@
 
     serialize() {
       // 只存被困的兽和墨点，其它的会自己再长出来
-      return this.list.filter(e => e.type === '丶' || e.cage > 0).map(e => ({ t: e.type, x: e.x, y: e.y, ink: e.ink, cage: Math.round(e.cage), life: Math.round(e.life) }));
+      return this.list.filter(e => e.type === '丶' || e.type === '龙' || e.cage > 0).map(e => ({ t: e.type, x: e.x, y: e.y, ink: e.ink, cage: Math.round(e.cage), life: Math.round(e.life) }));
     }
     restore(arr) {
       for (const s of arr || []) this.add(s.t, s.x, s.y, { ink: s.ink || 0, cage: s.cage || 0, life: s.life || 0 });

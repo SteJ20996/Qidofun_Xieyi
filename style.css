@@ -93,3 +93,16 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 .panel button.ghost:hover { color: var(--paper); }
 #help-close { margin-top: 14px; }
 @media (max-width: 720px) { .panel .cols { grid-template-columns: 1fr; } .panel h1 { font-size: 64px; } #ink { display: none; } #keys { display: none; } }
+
+/* 全岛地图、见闻录、读碑 */
+.panel.mapwrap { width: auto; padding: 20px 24px; }
+.maphead { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+.maphead h2 { margin: 0; }
+#bigmap { display: block; width: min(608px, calc(100vw - 100px), calc(100vh - 170px)); height: auto; aspect-ratio: 1; border: 2px solid var(--ink); border-radius: 4px; background: var(--paper); }
+#journal-body { max-height: calc(100vh - 220px); overflow: auto; }
+#journal-body ul { padding-left: 1em; }
+#journal-body li { margin: 6px 0; }
+.panel.readpanel { width: auto; max-width: min(90vw, 760px); padding: 28px 36px 18px; }
+.vtext { writing-mode: vertical-rl; text-orientation: upright; height: min(60vh, 440px); max-width: calc(90vw - 80px); overflow-x: auto; margin: 0 auto; }
+.vtext h3 { margin: 0 0 0 18px; font: 34px/1.4 var(--font); color: var(--red); writing-mode: vertical-rl; }
+.vtext p { margin: 0; font: 22px/2.1 var(--font); color: var(--ink); letter-spacing: .08em; max-height: 100%; }

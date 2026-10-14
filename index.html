@@ -30,7 +30,7 @@
     <div id="msg"></div>
     <div class="rowline"><span class="rowlabel">囊</span><div id="bagbar"></div></div>
     <div class="rowline"><span class="rowlabel">字</span><div id="hotbar"></div></div>
-    <div id="keys">WASD 走 · <kbd>E</kbd> 取 · <kbd>F</kbd> 写/放 · <kbd>Tab</kbd> 换行 · 1-9 选 · <kbd>C</kbd> 造词 · <kbd>V</kbd> 用 · <kbd>X</kbd> 研墨 · <kbd>R</kbd> 休息 · <kbd>M</kbd> 地图 · <kbd>N</kbd> 静音 · <kbd>H</kbd> 帮助</div>
+    <div id="keys">WASD 走 · <kbd>E</kbd> 取 · <kbd>F</kbd> 写/放 · <kbd>Tab</kbd> 换行 · 1-9 选 · <kbd>C</kbd> 造词 · <kbd>V</kbd> 用 · <kbd>X</kbd> 研墨 · <kbd>R</kbd> 休息 · <kbd>M</kbd> 地图 · <kbd>J</kbd> 见闻 · <kbd>N</kbd> 静音 · <kbd>H</kbd> 帮助</div>
   </div>
 </div>
 
@@ -40,7 +40,8 @@
     <div class="cols">
       <div>
         <h3>这是什么</h3>
-        <p>一纸之岛，万物皆是字。你是一个「人」字，手里只有一支笔，要在这里活下去。</p>
+        <p>一纸之岛，万物皆是字。你是一个「人」字，手里只有一支笔。岛上有八处地方，各有一段话，连起来是这张纸的来历。</p>
+        <p><b>探索</b>：地图只画你走过的地方（<kbd>M</kbd>）。登塔可见全图。黄昏时鸟飞回塔，鹿走向泉，跟着它们走。岛外有一座小嶼，退潮时才露出沙路，灯在那里。走的人多了，草地会变成路。见闻录在 <kbd>J</kbd>。</p>
         <p><b>取</b>：面向一个字按 <kbd>E</kbd>，它就进了你的囊。纸面留白，天地会慢慢把它写回来。</p>
         <p><b>研墨</b>：囊中之物按 <kbd>X</kbd>，化作与<b>笔画数相同</b>的墨。墨是写字的代价。</p>
         <p><b>写</b>：字典里的字（<kbd>Tab</kbd> 切到「字」行）面向白纸按 <kbd>F</kbd>，付出笔画数的墨，它就成了真的。</p>
@@ -71,6 +72,29 @@
   </div>
 </div>
 
+<div id="map" class="overlay hidden">
+  <div class="panel mapwrap">
+    <div class="maphead"><h2>一纸之岛</h2><span id="mapinfo" class="dim"></span></div>
+    <canvas id="bigmap" width="608" height="608"></canvas>
+    <div class="row"><button id="map-close">合上</button><span class="dim small">走过的地方才会画上去 · 登塔可见全图 · M / Esc 合上</span></div>
+  </div>
+</div>
+
+<div id="journal" class="overlay hidden">
+  <div class="panel">
+    <h2>见闻录</h2>
+    <div id="journal-body"></div>
+    <button id="journal-close">合上</button>
+  </div>
+</div>
+
+<div id="read" class="overlay hidden">
+  <div class="panel readpanel">
+    <div class="vtext"><h3 id="read-title"></h3><p id="read-text"></p></div>
+    <p class="dim small">E / Esc 合上</p>
+  </div>
+</div>
+
 <div id="dead" class="overlay hidden">
   <div class="panel title">
     <h1><span>墨</span><span>尽</span></h1>
@@ -83,7 +107,7 @@
   <div class="panel title">
     <h1><span>写</span><span>意</span></h1>
     <p class="sub">写木成木 · 写水成水 · 一纸之岛</p>
-    <p class="lore">一张纸落在海上，纸上的字活了。你是其中的一个「人」，手里只有一支笔。<br>取字入囊，研字为墨，写字成物，合字成词。夜里冷，久了饿，森中有虎。<br>活过一夜，再活过一夜。</p>
+    <p class="lore">一张纸落在海上，纸上的字活了。你是其中的一个「人」，手里只有一支笔。<br>这张纸是谁写的？岛上有八处地方，各留了一段话。去看看。<br>夜里冷，久了饿，森中有虎；取字入囊，写字成物，活过一夜，再活过一夜。</p>
     <div class="row">
       <button id="btn-continue" class="hidden">继续</button>
       <span id="save-info" class="dim"></span>

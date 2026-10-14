@@ -59,6 +59,19 @@
     '困': { s: 7, walk: 0, kind: 'object', flam: 0.3, ink: INK.brown, flavor: '木困于口，是为墙。' },
     '碑': { s: 13, walk: 0, kind: 'object', learn: false, absorb: false, tile: false, ink: INK.black, flavor: '古碑，刻有造字之法。读之，砚台渐宽。' },
     '囊': { s: 22, walk: 0, kind: 'object', learn: false, absorb: false, tile: false, ink: INK.black, flavor: '一个落下的袋子。' },
+    '路': { s: 13, walk: 1.4, kind: 'ground', learn: false, absorb: false, ink: INK.sand, flavor: '走的人多了，也便成了路。' },
+    '滩': { s: 13, walk: 1.2, kind: 'ground', learn: false, absorb: false, tile: false, ink: INK.sand, flavor: '潮退则沙，潮涨则水。' },
+    // —— 地标（大字）
+    '塔': { s: 12, walk: 0, kind: 'place', learn: false, absorb: false, tile: false, ink: INK.black, flavor: '从塔上能看见整张纸。' },
+    '寺': { s: 6, walk: 1.0, kind: 'place', learn: false, absorb: false, tile: false, shelter: true, ink: INK.brown, flavor: '寺里安静，虎不敢进。' },
+    '船': { s: 11, walk: 0, kind: 'place', learn: false, absorb: false, tile: false, ink: INK.brown, flavor: '搁浅的船。' },
+    '泉': { s: 9, walk: 0, kind: 'place', learn: false, absorb: false, tile: false, ink: INK.water, flavor: '水从石头里出来。傍边可疗伤。' },
+    '墓': { s: 13, walk: 0, kind: 'place', learn: false, absorb: false, tile: false, ink: INK.rock, flavor: '埋着写错的字。' },
+    '洞': { s: 9, walk: 0, kind: 'place', learn: false, absorb: false, tile: false, ink: INK.black, flavor: '黑处藏着龙。' },
+    '灯': { s: 6, walk: 0, kind: 'place', learn: false, absorb: false, tile: false, light: 9, ink: INK.gold, flavor: '最远的灯。' },
+    '井': { s: 4, walk: 0, kind: 'place', learn: false, absorb: false, tile: false, ink: INK.water, flavor: '井里有水，水里有月。' },
+    '墙': { s: 14, walk: 0, kind: 'object', learn: false, ink: INK.brown, flavor: '村里的残墙。' },
+    '门': { s: 3, walk: 1.0, kind: 'object', learn: false, ink: INK.brown, flavor: '没有门的门。' },
     // —— 部件（只用于合字 / 造词）
     '口': { s: 3, kind: 'radical', tile: false, absorb: false, flavor: '口可囚物：写于兽上则困之，写于木上则成墙。' },
     '人': { s: 2, kind: 'radical', tile: false, absorb: false, flavor: '你自己。人倚木而休。' },
@@ -75,13 +88,15 @@
     '鱼': { s: 8, kind: 'beast', tile: false, absorb: false, learn: false, ink: INK.water, food: { eat: 15, hurt: 5 }, flavor: '游鱼。生食伤身，烤之则美。' },
     '鹿': { s: 11, kind: 'beast', tile: false, absorb: false, learn: false, ink: INK.beast, flavor: '林间鹿，见人则走。有刀可猎。' },
     '虎': { s: 8, kind: 'beast', tile: false, absorb: false, learn: false, ink: INK.beast, flavor: '森中虎，夜行，畏火与光。' },
+    '龙': { s: 5, kind: 'beast', tile: false, absorb: false, learn: true, light: 3, ink: INK.red, flavor: '洞中之龙。写在白纸上，它便随你同行，夜能照路，虎不敢近。' },
     '肉': { s: 6, kind: 'item', tile: false, absorb: false, learn: false, ink: INK.red, food: { eat: 20, hurt: 8 }, flavor: '生肉。生食伤身，烤之则美。' },
     '丶': { s: 1, kind: 'drop', tile: false, absorb: false, learn: false, ink: INK.black, flavor: '一点墨。' }
   };
   // 视觉层级：底纹类的字画得小而淡，树、山、水才是"主角"——像水墨画里的皴与点
   const VIS = { '草': [0.6, 0.42], '花': [0.62, 0.8], '沙': [0.58, 0.5], '田': [0.78, 0.6], '土': [0.6, 0.5], '灰': [0.6, 0.5], '雪': [0.7, 0.55],
     '水': [0.82, 0.8], '淼': [0.95, 0.9], '石': [0.72, 0.85], '山': [1.12, 1], '木': [0.9, 1], '果': [0.9, 1], '竹': [0.85, 0.95], '林': [1.0, 1], '森': [1.08, 1],
-    '火': [0.9, 1], '炎': [1.0, 1], '焱': [1.1, 1], '灶': [0.95, 1], '碑': [1.05, 1], '日': [0.8, 1], '月': [0.8, 1], '囊': [0.9, 1] };
+    '火': [0.9, 1], '炎': [1.0, 1], '焱': [1.1, 1], '灶': [0.95, 1], '碑': [1.05, 1], '日': [0.8, 1], '月': [0.8, 1], '囊': [0.9, 1],
+    '路': [0.55, 0.45], '墙': [0.9, 0.9], '门': [0.85, 0.9], '井': [0.9, 1] };
   for (const ch in DB) {
     const d = DB[ch];
     d.vis = VIS[ch] || [0.95, 1];
@@ -158,12 +173,25 @@
 
   // ---------- 一纸之岛 ----------
   const ISLAND_R = 60;       // 岛的半径（格）；越往外越深，最外是淼
-  function baseTile(x, y, seed) {
+  // 岛外有一座小嶼，灯在上面；一条潮道连着主岛，退潮时才露出来
+  const isletCache = {};
+  function islet(seed) {
+    if (isletCache[seed]) return isletCache[seed];
+    const a = U.rand2(3, 9, seed) * Math.PI * 2, L = ISLAND_R * 1.14;
+    const cx = Math.round(Math.cos(a) * L), cy = Math.round(Math.sin(a) * L);
+    const len = Math.hypot(cx, cy);
+    return (isletCache[seed] = { cx, cy, ux: cx / len, uy: cy / len, len });
+  }
+  function fields(x, y, seed) {
     const dd = Math.hypot(x, y) / ISLAND_R;
     let h = U.fbm(x / 64, y / 64, seed, 5);
     h = h - U.smoothstep(0.55, 1.0, dd) * 0.6 + (1 - U.smoothstep(0, 0.3, dd)) * 0.06;
     const m = U.fbm(x / 48 + 300, y / 48 - 300, seed + 17, 4);
     const t = U.fbm(x / 150 - 700, y / 150 + 700, seed + 29, 3);
+    return { h, m, t, dd };
+  }
+  function naturalTile(x, y, seed) {
+    const { h, m, t } = fields(x, y, seed);
     const d = U.rand2(x, y, seed + 5);
 
     if (h < 0.33) return '淼';
@@ -180,18 +208,31 @@
     }
     if (m < 0.50) {
       const f = U.fbm(x / 20 + 90, y / 20 + 90, seed + 41, 2);
-      if (f > 0.62) return d < 0.04 ? '果' : '田';             // 成片的田，田边有果树
-      if (d < 0.03) return '果';
-      if (d < 0.07) return '花';
-      if (d < 0.14) return '木';
+      if (f > 0.62) return d < 0.05 ? '果' : '田';             // 成片的田，田边有果树
+      if (d < 0.05) return '果';
+      if (d < 0.09) return '花';
+      if (d < 0.16) return '木';
       return '草';
     }
-    if (m < 0.60) return d < 0.03 ? '果' : d < 0.5 ? '木' : d < 0.78 ? '林' : '草';   // 疏林
+    if (m < 0.60) return d < 0.05 ? '果' : d < 0.5 ? '木' : d < 0.78 ? '林' : '草';   // 疏林
     if (m < 0.665) {
       if (t > 0.56 && d < 0.55) return '竹';                     // 温湿：竹林
       return d < 0.6 ? '林' : '木';
     }
     return d < 0.62 ? '森' : '林';                                // 深林
+  }
+  function baseTile(x, y, seed) {
+    const il = islet(seed);
+    const di = Math.hypot(x - il.cx, y - il.cy);
+    if (di <= 4.3) return di < 2.4 ? (U.rand2(x, y, seed + 5) < 0.12 ? '花' : '草') : '沙';
+    const nat = naturalTile(x, y, seed);
+    // 潮道：主岛与小嶼之间的一条浅滩
+    const proj = x * il.ux + y * il.uy, perp = Math.abs(x * il.uy - y * il.ux);
+    if (perp <= 1.3 && proj > 2 && proj < il.len - 3.5) {
+      if (DB[nat].kind === 'water') return '滩';     // 水上是潮道，退潮才露
+      if (nat === '山') return '石';                   // 山里是一道石径
+    }
+    return nat;
   }
 
   // 五块碑，由近到远各教一个字；位置由种子决定（角度均分再抖动，再螺旋找可站之地）
@@ -202,21 +243,86 @@
     { r: 0.70, teach: '药', hint: '草可为「药」，服之疗伤。生鱼生肉伤身，灶上烤之则美。' },
     { r: 0.83, teach: '筏', hint: '竹可为「筏」，可渡浅水而不可渡淼。月沉水中，唯夜可见。' }
   ];
+  function spiralFind(tx, ty, maxR, test) {
+    for (let rr = 0; rr < maxR; rr++) {
+      for (let k = -rr; k <= rr; k++) {
+        for (const [x, y] of [[tx + k, ty - rr], [tx + k, ty + rr], [tx - rr, ty + k], [tx + rr, ty + k]]) {
+          if (test(x, y)) return [x, y];
+        }
+      }
+    }
+    return null;
+  }
   function stelePlan(seed) {
     const out = [];
     STELES.forEach((s, i) => {
       const a = (i / STELES.length) * Math.PI * 2 + U.rand2(i, 7, seed) * 1.1;
       const tx = Math.round(Math.cos(a) * s.r * ISLAND_R), ty = Math.round(Math.sin(a) * s.r * ISLAND_R);
+      const found = spiralFind(tx, ty, 40, (x, y) => { const d = DB[baseTile(x, y, seed)]; return d.walk > 0 && d.kind !== 'water'; });
+      if (found) out.push({ x: found[0], y: found[1], teach: s.teach, hint: s.hint });
+    });
+    return out;
+  }
+
+  // 八处地标。每处一段话，连起来是一个小故事：这座岛是谁写的。
+  //   ch 大字（占 w×h 格）；template 则是按格盖印的小村；want 落点的地貌要求；effect 读它的效果
+  const VILLAGE = ['墙墙门墙墙', '墙草草草墙', '门草井草门', '墙草草草墙', '墙墙门墙墙'];
+  const PLACES = [
+    { id: 'ta', ch: '塔', name: '塔', w: 2, h: 2, r: [0.30, 0.52], want: 'high', effect: 'reveal',
+      text: '从塔上能看见整张纸。我在这里写了一个「望」字，先生用朱笔把它圈起来了，说：字可以望吗？我说可以。' },
+    { id: 'si', ch: '寺', name: '寺', w: 2, h: 2, r: [0.40, 0.68], want: 'forest', effect: 'shelter',
+      text: '寺里很安静，虎不敢进来。先生说，字写得静，心就静。我在这里抄了一百个「静」字，一个也没留下。' },
+    { id: 'cun', name: '村', template: VILLAGE, r: [0.28, 0.55], want: 'grass', effect: 'well',
+      text: '村里没有人。人都在字典里。井里有水，水里有月，月里有——我还没想好。' },
+    { id: 'chuan', ch: '船', name: '船', w: 2, h: 1, r: [0.74, 0.96], want: 'beach', effect: 'raft',
+      text: '这条船是我画的。先生说船字不是这样写，可我见过的船就是这样。船里有一只筏子，你拿去。' },
+    { id: 'quan', ch: '泉', name: '泉', w: 1, h: 1, r: [0.34, 0.66], want: 'forest', effect: 'heal',
+      text: '泉是水从石头里出来，像字从笔里出来。鹿傍晚都会来，它们不怕我，因为我也是字。' },
+    { id: 'mu', ch: '墓', name: '墓', w: 1, h: 1, r: [0.40, 0.72], want: 'grass', effect: 'ink',
+      text: '这里埋着我写错的字。先生说，错字也是墨，别扔。' },
+    { id: 'dong', ch: '洞', name: '洞', w: 1, h: 1, r: [0.48, 0.86], want: 'mountain', effect: 'dragon',
+      text: '洞里黑。先生说，黑处藏着龙。我不信。你去看看，看见了就把它写出来。' },
+    { id: 'deng', ch: '灯', name: '灯', w: 1, h: 2, islet: true, effect: 'end',
+      text: '灯最远。潮退了才走得到。我把名字写在这里，可先生说名字不能写在纸上，会被风吹走。那就写在你心里吧。你来了，就算读完了这张纸。' }
+  ];
+  function footprintOk(x0, y0, w, h, seed, want, taken) {
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const x = x0 + i, y = y0 + j;
+      if (taken.has(x + ',' + y)) return false;
+      const ch = baseTile(x, y, seed), d = DB[ch];
+      if (want === 'high') { if ('石草木田'.indexOf(ch) < 0 || fields(x, y, seed).h < 0.58) return false; }
+      else if (want === 'forest') { if ('林木森竹草果'.indexOf(ch) < 0) return false; }
+      else if (want === 'grass') { if ('草田花木果'.indexOf(ch) < 0) return false; }
+      else if (want === 'beach') { if (ch !== '沙') return false; }
+      else if (want === 'mountain') {
+        if ('石草木'.indexOf(ch) < 0) return false;
+        let near = false; for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, 1]]) if (baseTile(x + dx, y + dy, seed) === '山') near = true;
+        if (!near) return false;
+      } else if (d.walk <= 0) return false;
+    }
+    return true;
+  }
+  function placePlan(seed, taken) {
+    const out = [], il = islet(seed);
+    PLACES.forEach((pl, i) => {
+      const w = pl.template ? pl.template[0].length : pl.w, h = pl.template ? pl.template.length : pl.h;
       let found = null;
-      for (let rr = 0; rr < 40 && !found; rr++) {
-        for (let k = -rr; k <= rr && !found; k++) {
-          for (const [x, y] of [[tx + k, ty - rr], [tx + k, ty + rr], [tx - rr, ty + k], [tx + rr, ty + k]]) {
-            const d = DB[baseTile(x, y, seed)];
-            if (d.walk > 0 && d.kind !== 'water') { found = [x, y]; break; }
+      if (pl.islet) found = [il.cx, il.cy - 1];
+      else {
+        const a0 = U.rand2(i, 13, seed) * Math.PI * 2;
+        outer: for (let step = 0; step < 24 && !found; step++) {
+          const a = a0 + step * 0.61803 * Math.PI * 2;          // 黄金角散开
+          for (let rf = pl.r[0]; rf <= pl.r[1]; rf += 0.06) {
+            const tx = Math.round(Math.cos(a) * rf * ISLAND_R), ty = Math.round(Math.sin(a) * rf * ISLAND_R);
+            const hit = spiralFind(tx, ty, 7, (x, y) => footprintOk(x, y, w, h, seed, pl.want, taken));   // 探针附近再螺旋找一找
+            if (hit) { found = hit; break outer; }
           }
         }
       }
-      if (found) out.push({ x: found[0], y: found[1], teach: s.teach, hint: s.hint });
+      if (!found) return;
+      const place = Object.assign({}, pl, { x: found[0], y: found[1], w, h });
+      out.push(place);
+      for (let j = -3; j < h + 3; j++) for (let i2 = -3; i2 < w + 3; i2++) taken.add((found[0] + i2) + ',' + (found[1] + j));
     });
     return out;
   }
@@ -226,9 +332,10 @@
     return ({ '淼': '深水', '水': '浅水', '沙': '沙地', '石': '石滩', '山': '群山', '雪': '雪原',
       '草': '草原', '花': '花野', '木': '疏林', '果': '果林', '林': '林地', '森': '深林', '竹': '竹林', '田': '田野',
       '土': '荒土', '灰': '焦土', '白': '白纸', '火': '火场', '炎': '火场', '焱': '火场', '灶': '灶边',
-      '明': '明灯', '休': '营地', '木屋': '屋内', '桥': '桥', '困': '墙', '碑': '古碑', '日': '日', '月': '月', '囊': '囊' })[ch] || ch;
+      '明': '明灯', '休': '营地', '木屋': '屋内', '桥': '桥', '困': '墙', '碑': '古碑', '日': '日', '月': '月', '囊': '囊',
+      '路': '小路', '塔': '塔下', '寺': '寺中', '船': '船边', '泉': '泉边', '墓': '墓前', '洞': '洞口', '灯': '灯下', '井': '井边', '墙': '村中', '门': '村口' })[ch] || ch;
   }
 
-  root.G = { INK, DB, WORDS, COOK, item, wordFor, FUSE, FUSE_LIST, failReason, writeCost, baseTile, stelePlan, biomeName, ISLAND_R,
+  root.G = { INK, DB, WORDS, COOK, item, wordFor, FUSE, FUSE_LIST, failReason, writeCost, baseTile, fields, islet, stelePlan, placePlan, PLACES, biomeName, ISLAND_R,
     START_KNOWN: ['人', '木', '水', '火', '土', '口', '刀'] };
 })();

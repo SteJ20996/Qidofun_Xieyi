@@ -8,7 +8,8 @@
     '草': '#b9c98f', '花': '#d29b8e', '木': '#8aa86f', '林': '#5e8a55', '森': '#3b5f3a', '竹': '#7fa36b', '田': '#d1c572',
     '土': '#a98a62', '灰': '#8d8781', '白': '#f3ebd8', '火': '#d9593c', '炎': '#d9593c', '焱': '#d9593c',
     '明': '#f0c54a', '休': '#9a6b45', '桥': '#9a6b45', '困': '#7a5a3e', '碑': '#2a2724', '日': '#e07a4a', '月': '#e3c35a',
-    '果': '#c9654a', '灶': '#d9593c', '木屋': '#7a4e2d', '囊': '#2a2724'
+    '果': '#c9654a', '灶': '#d9593c', '木屋': '#7a4e2d', '囊': '#2a2724', '路': '#c9b27a', '墙': '#8a6a4a', '门': '#9a7a55', '井': '#4a6f8f',
+    '塔': '#2a2724', '寺': '#5a3e2b', '船': '#5a3e2b', '泉': '#4a6f8f', '墓': '#6e6c75', '洞': '#2a2724', '灯': '#e0a020'
   };
 
   class Renderer {
@@ -109,7 +110,7 @@
         const d = DB[ch];
         const lit = ch === '灶' && world.stoveLit(x, y);
         if (d.light > 0 || burning || lit) lights.push({ x, y, r: Math.max(d.light, burning ? 2.5 : 0, lit ? 3 : 0) });
-        if (ch === '白') continue;
+        if (ch === '白' || world.isBig(x, y)) continue;      // 大字地标整体另画
         const r = U.hash2(x, y, 99);
         let rot = ((r & 255) / 255 - 0.5) * 0.16, scale = (0.84 + ((r >>> 8) & 255) / 255 * 0.16) * d.vis[0];
         let dx = ((r >>> 16) & 255) / 255 * 4 - 2, dy = ((r >>> 24) & 255) / 255 * 4 - 2, alpha = d.vis[1];
@@ -126,6 +127,14 @@
         if ((burning && d.kind !== 'fire') || lit) this.drawGlyph('火', G.INK.red, ox + x * T + T * 0.74, oy + y * T + T * 0.3, T * 0.45 * (1 + 0.15 * Math.sin(now * 13 + r)), rot, 0.95);
       }
 
+      // —— 大字地标：一个字占好几格
+      for (const pl of world.places) {
+        if (pl.template || pl.x + pl.w < x0 || pl.x > x1 || pl.y + pl.h < y0 || pl.y > y1) continue;
+        const r = U.hash2(pl.x, pl.y, 7), rot = ((r & 255) / 255 - 0.5) * 0.08;
+        const cx2 = ox + (pl.x + pl.w / 2) * T, cy2 = oy + (pl.y + pl.h / 2) * T, size = T * Math.max(pl.w, pl.h) * 0.92;
+        if (pl.ch === '灯') { ctx.save(); ctx.fillStyle = 'rgba(224,160,32,' + (0.10 + 0.08 * Math.sin(now * 2)) + ')'; ctx.beginPath(); ctx.arc(cx2, cy2, size * 0.9, 0, 7); ctx.fill(); ctx.restore(); }
+        this.drawGlyph(pl.ch, DB[pl.ch].ink, cx2, cy2, size, rot, pl.ch === '寺' ? 0.85 : 1);
+      }
       // —— 实体
       for (const e of g.ents.list) {
         if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) continue;
@@ -139,8 +148,9 @@
           continue;
         }
         if (e.type === '丶') { this.drawGlyph('丶', G.INK.black, px, py + Math.sin(now * 3 + e.bob) * 2, T * 0.9, 0, 0.9); continue; }
-        const size = e.type === '虎' ? 0.95 : e.type === '鹿' ? 0.8 : e.type === '鱼' ? 0.6 : 0.55;
-        const bobY = e.type === '鸟' ? Math.sin(now * 5 + e.bob) * 3 : e.type === '鱼' ? Math.sin(now * 2 + e.bob) * 1.5 : 0;
+        const size = e.type === '虎' ? 0.95 : e.type === '龙' ? 1.1 : e.type === '鹿' ? 0.8 : e.type === '鱼' ? 0.6 : 0.55;
+        const bobY = e.type === '鸟' ? Math.sin(now * 5 + e.bob) * 3 : e.type === '龙' ? Math.sin(now * 3 + e.bob) * 4 : e.type === '鱼' ? Math.sin(now * 2 + e.bob) * 1.5 : 0;
+        if (e.type === '龙') lights.push({ x: e.x, y: e.y, r: 3 });
         const rot = e.type === '鱼' ? Math.sin(now * 2 + e.bob) * 0.2 : 0;
         if (e.type === '虎' && e.calm <= 0 && U.cheb(e.x, e.y, p.x, p.y) <= 8) {
           ctx.save(); ctx.fillStyle = 'rgba(180,57,42,0.12)'; ctx.beginPath(); ctx.arc(px, py, T * 0.6, 0, 7); ctx.fill(); ctx.restore();
@@ -224,9 +234,18 @@
       m.fillStyle = '#efe5cf'; m.fillRect(0, 0, S, S);
       const half = N >> 1;
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-        const x = p.x - half + i, y = p.y - half + j, ch = g.world.get(x, y);
+        const x = p.x - half + i, y = p.y - half + j;
+        if (!g.world.isSeen(x, y)) continue;                    // 没看过的地方还是白纸
+        const ch = g.world.get(x, y);
         m.fillStyle = g.world.isBurning(x, y) ? MINI['火'] : (MINI[ch] || '#999');
         m.fillRect(i * px, j * px, px + 0.5, px + 0.5);
+      }
+      m.font = '11px ' + FONT; m.textAlign = 'center'; m.textBaseline = 'middle'; m.fillStyle = '#1c1a17';
+      for (const pl of g.world.places) {
+        if (!pl.seen) continue;
+        const i = pl.x + (pl.w - 1) / 2 - p.x + half, j = pl.y + (pl.h - 1) / 2 - p.y + half;
+        if (i < 0 || j < 0 || i >= N || j >= N) continue;
+        m.fillText(pl.ch || pl.name, i * px + px / 2, j * px + px / 2);
       }
       for (const e of g.ents.list) {
         const i = e.x - p.x + half, j = e.y - p.y + half;
@@ -241,6 +260,41 @@
       }
       // 淡淡的夜色
       const dk = g.darkness(); if (dk > 0.02) { m.fillStyle = 'rgba(12,16,36,' + (0.35 * dk) + ')'; m.fillRect(0, 0, S, S); }
+    }
+
+    // 全岛地图：走过的地方才有墨，地标盖朱印
+    drawBigMap(g, cv) {
+      const w = g.world, p = g.player, R = G.ISLAND_R + 16, N = R * 2, S = cv.width, px = S / N;
+      const m = cv.getContext('2d');
+      m.fillStyle = '#efe5cf'; m.fillRect(0, 0, S, S);
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+        const x = i - R, y = j - R;
+        if (!w.isSeen(x, y)) continue;
+        const ch = w.get(x, y);
+        m.fillStyle = MINI[ch] || '#999'; m.globalAlpha = 0.9;
+        m.fillRect(i * px, j * px, px + 0.4, px + 0.4);
+      }
+      m.globalAlpha = 1;
+      // 碑
+      m.font = Math.round(px * 2.6) + 'px ' + FONT; m.textAlign = 'center'; m.textBaseline = 'middle'; m.fillStyle = '#1c1a17';
+      for (const s of w.steles.values()) if (w.isSeen(s.x, s.y)) m.fillText('碑', (s.x + R + 0.5) * px, (s.y + R + 0.5) * px);
+      // 地标：大字 + 朱印名
+      for (const pl of w.places) {
+        if (!pl.seen) continue;
+        const cx = (pl.x + pl.w / 2 + R) * px, cy = (pl.y + pl.h / 2 + R) * px;
+        m.font = Math.round(px * 4.2) + 'px ' + FONT; m.fillStyle = pl.ch ? (DB[pl.ch].ink) : '#5a3e2b';
+        m.fillText(pl.ch || '村', cx, cy);
+        const read = p.places && p.places[pl.id] === 2;
+        m.fillStyle = read ? '#b4392a' : 'rgba(180,57,42,0.45)'; m.fillRect(cx + px * 2.4, cy - px * 2.2, px * 3.2, px * 3.2);
+        m.fillStyle = '#f7efe0'; m.font = Math.round(px * 2.4) + 'px ' + FONT; m.fillText(pl.name, cx + px * 4.0, cy - px * 0.5);
+      }
+      // 家、人
+      if (p.home) { m.fillStyle = '#9a6b45'; m.beginPath(); m.arc((p.home.x + R + 0.5) * px, (p.home.y + R + 0.5) * px, px * 1.2, 0, 7); m.fill(); }
+      m.font = Math.round(px * 4) + 'px ' + FONT; m.fillStyle = '#1c1a17'; m.fillText('人', (p.x + R + 0.5) * px, (p.y + R + 0.5) * px);
+      m.fillStyle = '#b4392a'; m.beginPath(); m.arc((p.x + R + 1.3) * px, (p.y + R + 1.3) * px, px * 0.6, 0, 7); m.fill();
+      // 北
+      m.font = Math.round(px * 3.5) + 'px ' + FONT; m.fillStyle = '#4a4238'; m.fillText('北', S - px * 5, px * 5);
+      m.strokeStyle = '#4a4238'; m.lineWidth = 1.5; m.beginPath(); m.moveTo(S - px * 5, px * 8); m.lineTo(S - px * 5, px * 14); m.stroke();
     }
   }
 

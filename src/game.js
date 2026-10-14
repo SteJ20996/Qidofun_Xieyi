@@ -2,7 +2,7 @@
 (function () {
   'use strict';
   const U = window.U, G = window.G, DB = G.DB, WORDS = G.WORDS;
-  const SAVE_KEY = 'xieyi.save.v2';
+  const SAVE_KEY = 'xieyi.save.v3';
   const DAY = 240;                                  // 一昼夜 = 240 秒
   const SHICHEN = '子丑寅卯辰巳午未申酉戌亥';
   const DIRS = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] };
@@ -15,10 +15,13 @@
       this.seed = seed | 0;
       this.world = new World(this.seed);
       this.ents = new Entities(this.world);
+      this.world.onDiscover = (pl) => this.discover(pl);
       this.renderer = new Renderer($('world'), $('minimap'));
+      this.mapAcc = 0;
       this.player = { x: 0, y: 0, rx: 0, ry: 0, fx: 0, fy: 1, fromX: 0, fromY: 0, moveT: 0, stepDur: 0.2,
         ink: 20, maxInk: 60, known: G.START_KNOWN.slice(), sel: 1, page: 0, home: null, readSteles: [],
-        hp: 100, food: 100, warm: 100, hurtT: 0, bag: [], bsel: 0, row: 'dict', torchT: 0, deaths: 0, dead: false, warned: {} };
+        hp: 100, food: 100, warm: 100, hurtT: 0, bag: [], bsel: 0, row: 'dict', torchT: 0, deaths: 0, dead: false, warned: {},
+        places: {}, creatures: [], raftTaken: false, finished: false };
       this.stats = { absorbed: 0, written: 0, fused: 0, learned: 0, words: 0, cooked: 0, hunted: 0 };
       this.keys = new Set();
       this.action = null;      // 进行中的动作（吸字）
@@ -51,6 +54,7 @@
       const dt = Math.min(0.05, (ts - this.last) / 1000 || 0.016); this.last = ts;
       if (!this.paused) this.update(dt);
       this.renderer.draw(this, dt, ts / 1000);
+      if (!$('map').classList.contains('hidden')) { this.mapAcc += dt; if (this.mapAcc > 0.5) { this.mapAcc = 0; this.renderer.drawBigMap(this, $('bigmap')); } }
       requestAnimationFrame((t) => this.frame(t));
     }
     update(dt) {
@@ -69,17 +73,18 @@
     updateStats(dt) {
       const p = this.player, w = this.world, dark = this.darkness();
       const tile = w.get(p.x, p.y), td = DB[tile];
-      p.food = Math.max(0, p.food - dt * 0.21);                 // 约 8 分钟饿空
+      p.food = Math.max(0, p.food - dt * 0.14);                 // 约 12 分钟饿空
       let dw;
       if (td.shelter) dw = 5;
       else if (w.heatNear(p.x, p.y, 2)) dw = 4;
       else {
-        dw = dark > 0.5 ? -1.0 : 1.5;
-        if (tile === '雪') dw -= 1.5;
+        dw = dark > 0.5 ? -0.7 : 1.5;
+        if (tile === '雪') dw -= 1.2;
         if (td.kind === 'water') dw -= 1.0;
         if (dw < 0) { if (this.has('草衣')) dw *= 0.5; if (this.torchLit()) dw *= 0.4; }
       }
       p.warm = U.clamp(p.warm + dw * dt, 0, 100);
+      if (w.nearChar(p.x, p.y, '泉', 1)) { p.hp = Math.min(100, p.hp + 2 * dt); p.warm = Math.min(100, p.warm + 1.5 * dt); }   // 泉边疗伤
       if (this.torchLit()) { p.torchT += dt; if (p.torchT >= WORDS['火把'].life) { p.torchT = 0; this.removeItem('火把', 1); this.message('一支火把燃尽了。'); } }
       p.hurtT = Math.max(0, p.hurtT - dt);
       let dh = 0;
@@ -179,6 +184,7 @@
     }
     onArrive() {
       const p = this.player, e = this.ents.at(p.x, p.y);
+      this.world.trample(p.x, p.y);
       if (e && e.type === '丶') this.collect(e);
     }
     facing() { return { x: this.player.x + this.player.fx, y: this.player.y + this.player.fy }; }
@@ -196,6 +202,8 @@
         this.hunt(e); return;
       }
       const ch = w.get(t.x, t.y), d = DB[ch];
+      const pl = w.placeAt(t.x, t.y);
+      if (pl) { this.readPlace(pl); return; }
       if (ch === '碑') { this.readStele(t); return; }
       if (ch === '囊') { this.pickBag(t); return; }
       if (!d.absorb) { if (!silent) this.message(ch === '白' ? '白纸上无物可取' : '这里没有可取的字'); return; }
@@ -270,6 +278,11 @@
       const w = this.world, base = w.get(x, y), bd = DB[base], wd = DB[ch];
       const e = this.ents.beastAt(x, y);
       const cost = (c) => (free ? 0 : c);
+      if (ch === '龙') {
+        if (this.ents.list.some(o => o.type === '龙')) return { ok: false, msg: '龙已在你身边' };
+        if (base !== '白') return { ok: false, msg: '龙要写在白纸上' };
+        return { ok: true, mode: 'summon', cost: cost(wd.s), result: '龙', msg: '写龙成龙' };
+      }
       if (ch === '口' && e && e.cage <= 0) return { ok: true, mode: 'cage', cost: cost(wd.s), result: '囚', msg: '「口」困住了「' + e.type + '」' };
       if (ch === '水' && bd.kind !== 'fire' && w.isBurning(x, y)) return { ok: true, mode: 'douse', cost: cost(wd.s), result: base, msg: '水灭了「' + base + '」上的火' };
       const f = G.FUSE.get(base + ch);
@@ -286,6 +299,7 @@
       if (r.mode === 'cage') { this.ents.beastAt(t.x, t.y).cage = 30; }
       else if (r.mode === 'ignite') { w.ignite(t.x, t.y, 1); }
       else if (r.mode === 'douse') { w.extinguish(t.x, t.y); this.message(r.msg); }
+      else if (r.mode === 'summon') { this.ents.add('龙', t.x, t.y); this.toast('写龙成龙', '它会随你同行，夜能照路，虎不敢近。'); }
       else {
         const base = w.get(t.x, t.y);
         w.set(t.x, t.y, r.result);
@@ -391,6 +405,67 @@
       this.message('「' + name + '」不能吃。按 F 放到地上，或按 X 研墨。');
     }
 
+    // ---------- 探索：发现、读地标、见闻录、地图 ----------
+    discover(pl) {
+      const p = this.player;
+      if (p.places[pl.id]) return;
+      p.places[pl.id] = 1;
+      this.toast('发现：' + pl.name, pl.name === '灯' ? '最远的灯，在岛外。' : '去看看。');
+      SFX.learn();
+    }
+    readPlace(pl) {
+      const p = this.player, w = this.world, first = p.places[pl.id] !== 2;
+      p.places[pl.id] = 2;
+      $('read-title').textContent = pl.name;
+      $('read-text').textContent = pl.text;
+      $('read').classList.remove('hidden');
+      this.keys.clear();
+      if (pl.effect === 'well' && pl.drank !== this.day()) { pl.drank = this.day(); p.hp = Math.min(100, p.hp + 15); this.message('井水清冽，命 +15。'); }
+      if (pl.effect === 'raft' && !p.raftTaken) { if (this.addItem('竹筏', 1) === 0) { p.raftTaken = true; this.toast('船里有一只竹筏', '囊中有筏，可行于浅水。'); } else this.message('囊满了，筏子先留在船里。'); }
+      if (!first) return;
+      this.stats.read = (this.stats.read || 0) + 1;
+      if (pl.effect === 'reveal') { w.revealAll(pl.x, pl.y); this.toast('看见整张纸', '岛上的一切都画到地图上了。按 M 看。'); }
+      else if (pl.effect === 'ink') { p.ink = Math.min(p.maxInk, p.ink + 10); this.toast('错字也是墨', '墨 +10'); }
+      else if (pl.effect === 'dragon') { this.learn('龙'); this.toast('黑处有龙', '你学会了写「龙」。写在白纸上试试。'); }
+      else if (pl.effect === 'end') {
+        const n = w.places.filter(x => p.places[x.id] === 2).length;
+        if (n >= w.places.length) { p.finished = true; this.toast('你读完了这张纸', '第 ' + this.day() + ' 日。岛上八处，你都去过了。', 9000); }
+        else this.toast('灯', '还有 ' + (w.places.length - n) + ' 处没读。', 6000);
+      }
+      SFX.learn();
+      this.save();
+    }
+    closeRead() { $('read').classList.add('hidden'); }
+    saw(type) {
+      const p = this.player;
+      if (p.creatures.indexOf(type) >= 0) return;
+      p.creatures.push(type);
+      this.toast('初见「' + type + '」', DB[type].flavor);
+    }
+    toggleMap() {
+      const el = $('map'), p = this.player, w = this.world;
+      el.classList.toggle('hidden'); this.keys.clear();
+      if (el.classList.contains('hidden')) return;
+      this.renderer.drawBigMap(this, $('bigmap'));
+      const seen = w.places.filter(x => x.seen).length, read = w.places.filter(x => p.places[x.id] === 2).length;
+      $('mapinfo').textContent = '第 ' + this.day() + ' 日 · ' + w.tideName() + ' · 已见 ' + seen + '/' + w.places.length + ' 处 · 已读 ' + read + ' 处';
+    }
+    toggleJournal() {
+      const el = $('journal'), p = this.player, w = this.world;
+      el.classList.toggle('hidden'); this.keys.clear();
+      if (el.classList.contains('hidden')) return;
+      const esc = (t) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+      let h = '<h3>地方</h3><ul>';
+      for (const pl of w.places) {
+        const st = p.places[pl.id] || 0;
+        h += '<li>' + (st === 0 ? '<span class="dim">＿＿</span>' : '<b>' + pl.name + '</b>' + (st === 2 ? '　' + esc(pl.text) : '　<span class="dim">（见过，未读）</span>')) + '</li>';
+      }
+      h += '</ul><h3>生灵</h3><p>' + (p.creatures.length ? p.creatures.join('　') : '<span class="dim">还没见过</span>') + '</p>';
+      h += '<h3>字</h3><p>' + p.known.length + ' 字：' + p.known.join('') + '</p>';
+      h += '<h3>日子</h3><p>第 ' + this.day() + ' 日 · 走过 ' + w.seenCount() + ' 格 · 死过 ' + p.deaths + ' 次 · 造词 ' + (this.stats.words || 0) + ' 次</p>';
+      $('journal-body').innerHTML = h;
+    }
+
     // ---------- 学字、休息、虎 ----------
     learn(ch) {
       const p = this.player;
@@ -435,7 +510,11 @@
         if (ev.repeat && !DIRS[ev.code]) return;
         if (!$('start').classList.contains('hidden')) { if (ev.code === 'Enter') { ev.preventDefault(); $('btn-continue').classList.contains('hidden') ? $('btn-new').click() : $('btn-continue').click(); } return; }
         if (this.player.dead) { if (ev.code === 'Enter' || ev.code === 'Space') { ev.preventDefault(); this.respawn(); } return; }
-        if (ev.code === 'Escape') { if (this.combine) { this.combine = null; this.message('作罢。'); } $('help').classList.add('hidden'); ev.preventDefault(); return; }
+        if (!$('read').classList.contains('hidden')) { if (['KeyE', 'Enter', 'Space', 'Escape'].indexOf(ev.code) >= 0) { this.closeRead(); ev.preventDefault(); } return; }
+        if (ev.code === 'Escape') { if (this.combine) { this.combine = null; this.message('作罢。'); } for (const id of ['help', 'map', 'journal']) $(id).classList.add('hidden'); ev.preventDefault(); return; }
+        if (ev.code === 'KeyM') { $('journal').classList.add('hidden'); this.toggleMap(); ev.preventDefault(); return; }
+        if (ev.code === 'KeyJ') { $('map').classList.add('hidden'); this.toggleJournal(); ev.preventDefault(); return; }
+        if (!$('map').classList.contains('hidden') || !$('journal').classList.contains('hidden')) return;
         if (ev.code === 'KeyH') { $('help').classList.toggle('hidden'); ev.preventDefault(); return; }
         if (!$('help').classList.contains('hidden')) return;
         const p = this.player;
@@ -455,7 +534,6 @@
           case 'KeyV': this.useItem(); break;
           case 'KeyX': this.grind(); break;
           case 'KeyR': this.sleep(); break;
-          case 'KeyM': $('minimap').classList.toggle('hidden'); break;
           case 'KeyN': this.message(SFX.toggle() ? '已静音' : '声音已开'); break;
           case 'BracketLeft': case 'KeyQ': this.cycle(-1); break;
           case 'BracketRight': case 'KeyZ': this.cycle(1); break;
@@ -479,6 +557,9 @@
       });
       cv.addEventListener('wheel', (ev) => { this.cycle(ev.deltaY > 0 ? 1 : -1); ev.preventDefault(); }, { passive: false });
       $('dead-btn').addEventListener('click', () => this.respawn());
+      $('read').addEventListener('mousedown', () => this.closeRead());
+      $('journal-close').addEventListener('click', () => this.toggleJournal());
+      $('map-close').addEventListener('click', () => this.toggleMap());
     }
     cycle(d) {
       const p = this.player;
@@ -531,15 +612,18 @@
         $('inklabel').textContent = '墨 ' + Math.floor(p.ink) + '/' + p.maxInk;
         $('hpfill').style.height = Math.round(p.hp) + '%'; $('foodfill').style.height = Math.round(p.food) + '%'; $('warmfill').style.height = Math.round(p.warm) + '%';
         $('hpfill').parentNode.classList.toggle('low', p.hp < 30); $('foodfill').parentNode.classList.toggle('low', p.food < 25); $('warmfill').parentNode.classList.toggle('low', p.warm < 30);
-        $('status').innerHTML = '<b>第 ' + this.day() + ' 日</b> &nbsp;' + this.shichen() + ' ' + (this.daylight() > 0.5 ? '日' : '月') + ' &nbsp;·&nbsp; ' + G.biomeName(w.get(p.x, p.y)) + ' &nbsp;·&nbsp; <span class="dim">(' + p.x + ', ' + p.y + ')</span>';
+        $('status').innerHTML = '<b>第 ' + this.day() + ' 日</b> &nbsp;' + this.shichen() + ' ' + (this.daylight() > 0.5 ? '日' : '月') + ' &nbsp;·&nbsp; ' + w.tideName() + ' &nbsp;·&nbsp; ' + G.biomeName(w.get(p.x, p.y)) + ' &nbsp;·&nbsp; <span class="dim">(' + p.x + ', ' + p.y + ')</span>';
       }
       let s;
       if (this.combine) s = '在「' + this.combine.name + '」上写什么？按数字选字（<kbd>Esc</kbd> 取消）';
       else {
         const ch = w.get(t.x, t.y), d = DB[ch], e = this.ents.at(t.x, t.y);
-        if (e && (e.type === '日' || e.type === '月')) s = '面前有「' + e.type + '」在闪动 · <kbd>E</kbd> 吸取';
+        const plc = w.placeAt(t.x, t.y);
+        if (plc) s = '「' + plc.name + '」 · <kbd>E</kbd> 读';
+        else if (e && (e.type === '日' || e.type === '月')) s = '面前有「' + e.type + '」在闪动 · <kbd>E</kbd> 吸取';
         else if (e && e.type === '丶') s = '一点墨 · <kbd>E</kbd> 拾取';
         else if (e && e.cage > 0) s = '被困的「' + e.type + '」 · <kbd>E</kbd> 收入囊中';
+        else if (e && e.type === '龙') s = '你的龙。';
         else if (e) s = '「' + e.type + '」 · <kbd>E</kbd> ' + (e.type === '鱼' ? '捉' : e.type === '鸟' ? '惊' : this.has('石刀') ? '猎' : '徒手不可猎');
         else if (ch === '碑') s = '一块古碑 · <kbd>E</kbd> 读碑';
         else if (ch === '囊') s = '落下的囊 · <kbd>E</kbd> 取回';
@@ -577,9 +661,9 @@
     save() {
       const p = this.player;
       try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 2, seed: this.seed, savedAt: Date.now(), world: this.world.serialize(), ents: this.ents.serialize(),
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 3, seed: this.seed, savedAt: Date.now(), world: this.world.serialize(), ents: this.ents.serialize(),
           player: { x: p.x, y: p.y, fx: p.fx, fy: p.fy, ink: p.ink, maxInk: p.maxInk, known: p.known, sel: p.sel, home: p.home, readSteles: p.readSteles,
-            hp: p.hp, food: p.food, warm: p.warm, bag: p.bag, torchT: p.torchT, deaths: p.deaths }, stats: this.stats }));
+            hp: p.hp, food: p.food, warm: p.warm, bag: p.bag, torchT: p.torchT, deaths: p.deaths, places: p.places, creatures: p.creatures, raftTaken: p.raftTaken, finished: p.finished }, stats: this.stats }));
       } catch (err) { /* 隐私模式等情况下存不了，就算了 */ }
     }
     load(s) {
@@ -587,13 +671,13 @@
       this.world.restore(s.world || {});
       this.ents.restore(s.ents);
       const sp = s.player || {};
-      for (const k of ['x', 'y', 'fx', 'fy', 'ink', 'maxInk', 'known', 'sel', 'home', 'readSteles', 'hp', 'food', 'warm', 'bag', 'torchT', 'deaths']) if (sp[k] !== undefined) p[k] = sp[k];
+      for (const k of ['x', 'y', 'fx', 'fy', 'ink', 'maxInk', 'known', 'sel', 'home', 'readSteles', 'hp', 'food', 'warm', 'bag', 'torchT', 'deaths', 'places', 'creatures', 'raftTaken', 'finished']) if (sp[k] !== undefined) p[k] = sp[k];
       p.rx = p.x; p.ry = p.y; p.moveT = 0;
       if (!p.known || !p.known.length) p.known = G.START_KNOWN.slice();
       for (const ch of G.START_KNOWN) if (p.known.indexOf(ch) < 0) p.known.push(ch);
       Object.assign(this.stats, s.stats || {});
     }
-    static readSave() { try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); return s && s.v === 2 ? s : null; } catch (e) { return null; } }
+    static readSave() { try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); return s && s.v === 3 ? s : null; } catch (e) { return null; } }
     static clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } }
   }
 
@@ -610,6 +694,7 @@
       $('start').classList.add('hidden');
       game.paused = false;
       game.toast('写意', '取字入囊，写字成物。按 H 查看造字之法。', 6000);
+      setTimeout(() => { if (game) game.toast('听说岛上有一座塔', '从塔上能看见整张纸。黄昏时跟着鸟走。', 8000); }, 4000);
       window.addEventListener('beforeunload', () => game.save());
       document.addEventListener('visibilitychange', () => { if (document.hidden) game.save(); });
     };
