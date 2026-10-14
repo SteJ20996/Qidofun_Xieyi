@@ -17,7 +17,7 @@
     beastAt(x, y) { for (const e of this.list) if (e.x === x && e.y === y && DB[e.type].kind === 'beast') return e; return null; }
     count(type) { let n = 0; for (const e of this.list) if (e.type === type) n++; return n; }
     add(type, x, y, extra) {
-      const e = Object.assign({ type, x, y, rx: x, ry: y, moveT: Math.random(), cage: 0, calm: 0, life: 0, ink: 0, bob: Math.random() * 6 }, extra || {});
+      const e = Object.assign({ type, x, y, rx: x, ry: y, moveT: Math.random(), cage: 0, calm: 0, life: 0, ink: 0, hp: type === '虎' ? 3 : 1, bob: Math.random() * 6 }, extra || {});
       this.list.push(e);
       return e;
     }
@@ -37,7 +37,7 @@
       const ch = this.world.get(x, y), d = DB[ch];
       if (type === '鸟') return d.kind !== 'fire';
       if (type === '鱼') return d.kind === 'water';
-      if (d.walk <= 0) return false;
+      if (d.walk <= 0 || d.shelter) return false;               // 兽不得入屋
       if (type === '虎' && !night) return d.kind === 'plant';   // 白天虎不出林
       return true;
     }
@@ -125,9 +125,10 @@
         } else if (e.type === '鱼') {
           e.moveT = 0.5 + Math.random() * 1.2; if (Math.random() < 0.7) this.wander(e, night, null);
         } else if (e.type === '虎') {
-          const scared = w.lightNear(e.x, e.y, 2) || w.lightNear(p.x, p.y, 2);
+          const scared = w.lightNear(e.x, e.y, 2) || w.lightNear(p.x, p.y, 2) || g.torchLit();
+          const sheltered = !!DB[w.get(p.x, p.y)].shelter;
           const range = night ? 8 : 4;
-          if (scared && d <= 4) { e.moveT = 0.3; this.stepTo(e, p.x, p.y, true, night); }
+          if ((scared || sheltered) && d <= 4) { e.moveT = 0.3; this.stepTo(e, p.x, p.y, true, night); }
           else if (e.calm <= 0 && d <= range) {
             if (d <= 1) { g.tigerAttack(e); e.calm = 14; e.moveT = 0.9; }
             else { e.moveT = night ? 0.24 : 0.3; this.stepTo(e, p.x, p.y, false, night); }

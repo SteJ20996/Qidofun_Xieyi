@@ -7,7 +7,8 @@
     '淼': '#4a6f8f', '水': '#6f93b0', '沙': '#d9c89a', '石': '#9c9a93', '山': '#6e6c75', '雪': '#e8ecf2',
     '草': '#b9c98f', '花': '#d29b8e', '木': '#8aa86f', '林': '#5e8a55', '森': '#3b5f3a', '竹': '#7fa36b', '田': '#d1c572',
     '土': '#a98a62', '灰': '#8d8781', '白': '#f3ebd8', '火': '#d9593c', '炎': '#d9593c', '焱': '#d9593c',
-    '明': '#f0c54a', '休': '#9a6b45', '桥': '#9a6b45', '困': '#7a5a3e', '碑': '#2a2724', '日': '#e07a4a', '月': '#e3c35a'
+    '明': '#f0c54a', '休': '#9a6b45', '桥': '#9a6b45', '困': '#7a5a3e', '碑': '#2a2724', '日': '#e07a4a', '月': '#e3c35a',
+    '果': '#c9654a', '灶': '#d9593c', '木屋': '#7a4e2d', '囊': '#2a2724'
   };
 
   class Renderer {
@@ -106,7 +107,8 @@
         const ch = world.get(x, y);
         const burning = world.isBurning(x, y);
         const d = DB[ch];
-        if (d.light > 0 || burning) lights.push({ x, y, r: Math.max(d.light, burning ? 2.5 : 0) });
+        const lit = ch === '灶' && world.stoveLit(x, y);
+        if (d.light > 0 || burning || lit) lights.push({ x, y, r: Math.max(d.light, burning ? 2.5 : 0, lit ? 3 : 0) });
         if (ch === '白') continue;
         const r = U.hash2(x, y, 99);
         let rot = ((r & 255) / 255 - 0.5) * 0.16, scale = (0.84 + ((r >>> 8) & 255) / 255 * 0.16) * d.vis[0];
@@ -116,9 +118,12 @@
         if (ch === '明' || ch === '日') scale *= 1 + 0.04 * Math.sin(now * 3 + r);
         if (burning) alpha = 1;
         if (act && act.type === 'absorb' && act.x === x && act.y === y) { const pr = act.t / act.dur; alpha *= 1 - pr * 0.85; scale *= 1 - pr * 0.35; rot += pr * 0.5; }
-        const color = burning && d.kind !== 'fire' ? G.INK.red : d.ink;
-        this.drawGlyph(ch, color, ox + x * T + T / 2 + dx, oy + y * T + T / 2 + dy, T * scale, rot, alpha);
-        if (burning && d.kind !== 'fire') this.drawGlyph('火', G.INK.red, ox + x * T + T * 0.74, oy + y * T + T * 0.3, T * 0.45 * (1 + 0.15 * Math.sin(now * 13 + r)), rot, 0.95);
+        const color = burning && d.kind !== 'fire' ? G.INK.red : (ch === '灶' && !lit ? G.INK.ash : d.ink);
+        if (ch.length > 1) {   // 双字之物（木屋）：两个字并排写小一点
+          this.drawGlyph(ch[0], color, ox + x * T + T * 0.3, oy + y * T + T / 2 + dy, T * scale * 0.62, rot, alpha);
+          this.drawGlyph(ch[1], color, ox + x * T + T * 0.7, oy + y * T + T / 2 + dy, T * scale * 0.62, rot, alpha);
+        } else this.drawGlyph(ch, color, ox + x * T + T / 2 + dx, oy + y * T + T / 2 + dy, T * scale, rot, alpha);
+        if ((burning && d.kind !== 'fire') || lit) this.drawGlyph('火', G.INK.red, ox + x * T + T * 0.74, oy + y * T + T * 0.3, T * 0.45 * (1 + 0.15 * Math.sin(now * 13 + r)), rot, 0.95);
       }
 
       // —— 实体
@@ -191,7 +196,8 @@
         nc.fillStyle = 'rgba(12, 16, 36,' + (0.8 * dark) + ')'; nc.fillRect(0, 0, w, h);
         nc.globalCompositeOperation = 'destination-out';
         const cut = (px, py, r, a) => { const gr = nc.createRadialGradient(px, py, 0, px, py, r); gr.addColorStop(0, 'rgba(0,0,0,' + a + ')'); gr.addColorStop(0.55, 'rgba(0,0,0,' + (a * 0.7) + ')'); gr.addColorStop(1, 'rgba(0,0,0,0)'); nc.fillStyle = gr; nc.fillRect(px - r, py - r, r * 2, r * 2); };
-        cut(ox + p.rx * T + T / 2, oy + p.ry * T + T / 2, T * (4.5 - 1.5 * dark), 1);
+        cut(ox + p.rx * T + T / 2, oy + p.ry * T + T / 2, T * g.playerLight(), 1);
+        if (g.torchLit()) lights.push({ x: p.x, y: p.y, r: 3 });
         for (const l of lights) cut(ox + l.x * T + T / 2, oy + l.y * T + T / 2, T * (l.r + 0.25 * Math.sin(now * 6 + l.x * 3 + l.y)), 1);
         ctx.drawImage(n, 0, 0, n.width, n.height, 0, 0, w, h);
         // 光源的暖晕

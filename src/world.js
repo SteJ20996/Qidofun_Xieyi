@@ -1,4 +1,4 @@
-// world.js —— 无限分块世界：程序生成的"底稿" + 玩家改动的"差异层" + 火势/演替/复原模拟
+// world.js —— 一纸之岛：程序生成的"底稿" + 玩家改动的"差异层" + 火势/演替/复原模拟 + 灶与落囊
 (function () {
   'use strict';
   const root = typeof window !== 'undefined' ? window : globalThis;
@@ -15,11 +15,13 @@
       this.diff = new Map();     // "x,y" -> 字（与底稿不同的格子）
       this.burn = new Map();     // "x,y" -> { t: 剩余燃烧秒数, lvl: 火势 }
       this.timers = new Map();   // "x,y" -> { to: 目标字, at: 世界时间 }
-      this.steles = new Map();   // "x,y" -> 提示索引
+      this.stoves = new Map();   // "x,y" -> 灶里剩余的柴火（秒）
+      this.bags = new Map();     // "x,y" -> 落在地上的囊（物品列表）
+      this.steles = new Map();   // "x,y" -> { teach, hint }
+      for (const s of G.stelePlan(this.seed)) this.steles.set(U.key(s.x, s.y), s);
       this.time = 30;            // 世界时间（秒），从清晨开始
       this.acc = 0;
       this.rng = U.mulberry32(this.seed ^ 0x5bd1e995);
-      this.onChange = null;      // 回调：格子被模拟改变时通知（用于渲染缓存等）
     }
 
     chunk(cx, cy) {
@@ -29,10 +31,8 @@
       c = new Array(CH * CH);
       const ox = cx * CH, oy = cy * CH;
       for (let j = 0; j < CH; j++) for (let i = 0; i < CH; i++) c[j * CH + i] = G.baseTile(ox + i, oy + j, this.seed);
-      const st = G.steleFor(cx, cy, this.seed, CH);
-      if (st) {
-        const idx = st.ly * CH + st.lx, d = DB[c[idx]];
-        if (d.walk > 0 && d.kind !== 'water') { c[idx] = '碑'; this.steles.set(U.key(ox + st.lx, oy + st.ly), st.hint); }
+      for (const [sk, s] of this.steles) {
+        if (s.x >= ox && s.x < ox + CH && s.y >= oy && s.y < oy + CH) c[(s.y - oy) * CH + (s.x - ox)] = '碑';
       }
       this.chunks.set(k, c);
       return c;
@@ -44,14 +44,20 @@
     get(x, y) { const d = this.diff.get(U.key(x, y)); return d !== undefined ? d : this.base(x, y); }
     info(x, y) { return DB[this.get(x, y)]; }
     set(x, y, ch) {
-      const k = U.key(x, y);
+      const k = U.key(x, y), old = this.get(x, y);
       if (ch === this.base(x, y)) this.diff.delete(k); else this.diff.set(k, ch);
       if (DB[ch].flam <= 0) this.burn.delete(k);
-      if (this.onChange) this.onChange(x, y, ch);
+      if (old === '灶' && ch !== '灶') this.stoves.delete(k);
+      if (ch === '灶' && !this.stoves.has(k)) this.stoves.set(k, 90);
+      if (old === '囊' && ch !== '囊') this.bags.delete(k);
     }
     walkable(x, y) { return this.info(x, y).walk > 0; }
     isBurning(x, y) { return this.burn.has(U.key(x, y)); }
-    steleHint(x, y) { const i = this.steles.get(U.key(x, y)); return i === undefined ? null : G.HINTS[i]; }
+    stele(x, y) { return this.steles.get(U.key(x, y)) || null; }
+    // 灶
+    stoveFuel(x, y) { return this.stoves.get(U.key(x, y)) || 0; }
+    stoveLit(x, y) { return this.get(x, y) === '灶' && this.stoveFuel(x, y) > 0; }
+    addFuel(x, y, sec) { const k = U.key(x, y); this.stoves.set(k, Math.min(900, (this.stoves.get(k) || 0) + sec)); }
 
     // 点火：可燃格开始燃烧；火字本身也有寿命
     ignite(x, y, lvl) {
@@ -64,11 +70,18 @@
     }
     extinguish(x, y) { this.burn.delete(U.key(x, y)); }
 
-    // 夜里/白天通用：某格附近是否有光（虎怕光）
+    // 某格附近是否有光（虎怕光）/ 有热（人怕冷）
     lightNear(x, y, r) {
       for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) {
         const d = this.info(x + i, y + j);
-        if (d.light > 0 || this.isBurning(x + i, y + j)) return true;
+        if (d.light > 0 || this.isBurning(x + i, y + j) || this.stoveLit(x + i, y + j)) return true;
+      }
+      return false;
+    }
+    heatNear(x, y, r) {
+      for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) {
+        const d = this.info(x + i, y + j);
+        if (d.kind === 'fire' || this.isBurning(x + i, y + j) || this.stoveLit(x + i, y + j)) return true;
       }
       return false;
     }
@@ -81,6 +94,8 @@
 
     step(px, py) {
       const rng = this.rng;
+      // —— 灶里的柴
+      for (const [k, f] of this.stoves) { if (f > 0) this.stoves.set(k, Math.max(0, f - STEP)); }
       // —— 火势蔓延
       const spread = [];
       for (const [k, b] of this.burn) {
@@ -106,17 +121,16 @@
           if (this.get(x, y) === '灰') this.set(x, y, tm.to);
         }
       }
-      // —— 随机采样演替：只在玩家附近采样，省算力
-      // 每步采样 300 格（约占范围的 10%），所以下面的概率要除以 10 才是每半秒的真实概率
+      // —— 随机采样演替：每步采样 300 格（约占范围的 10%），所以下面的概率要除以 10 才是每半秒的真实概率
       for (let n = 0; n < 300; n++) {
         const x = px + Math.floor(rng() * 56) - 28, y = py + Math.floor(rng() * 56) - 28;
         const k = U.key(x, y);
         if (!this.diff.has(k)) continue;            // 只有被改动过的格子才会"演替"，底稿本身是稳定的
         const ch = this.diff.get(k);
         if (ch === '土') {
-          if (rng() < 0.35 && this.countAround(x, y, '草木林森田竹花') >= 1) this.set(x, y, '草');
+          if (rng() < 0.35 && this.countAround(x, y, '草木林森田竹花果') >= 1) this.set(x, y, '草');
         } else if (ch === '草') {
-          if (rng() < 0.12 && this.countAround(x, y, '木林森') >= 2) this.set(x, y, '木');
+          if (rng() < 0.12 && this.countAround(x, y, '木林森果') >= 2) this.set(x, y, '木');
         } else if (ch === '木') {
           if (rng() < 0.08 && this.countAround(x, y, '林森') >= 3) this.set(x, y, '林');
         } else if (ch === '白') {
@@ -137,7 +151,7 @@
       return n;
     }
 
-    // 出生点：从原点螺旋向外找一块草地/田野
+    // 出生点：从岛心螺旋向外找一块草地/田野
     findSpawn() {
       const good = '草田土沙';
       for (let r = 0; r < 200; r++) {
@@ -153,13 +167,17 @@
       const diff = {}; for (const [k, v] of this.diff) diff[k] = v;
       const burn = {}; for (const [k, v] of this.burn) burn[k] = [Math.round(v.t * 10) / 10, v.lvl];
       const timers = {}; for (const [k, v] of this.timers) timers[k] = [v.to, Math.round(v.at)];
-      return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers };
+      const stoves = {}; for (const [k, v] of this.stoves) stoves[k] = Math.round(v);
+      const bags = {}; for (const [k, v] of this.bags) bags[k] = v;
+      return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers, stoves, bags };
     }
     restore(s) {
       this.time = s.time || 30;
       this.diff = new Map(Object.entries(s.diff || {}));
       this.burn = new Map(Object.entries(s.burn || {}).map(([k, v]) => [k, { t: v[0], lvl: v[1] }]));
       this.timers = new Map(Object.entries(s.timers || {}).map(([k, v]) => [k, { to: v[0], at: v[1] }]));
+      this.stoves = new Map(Object.entries(s.stoves || {}));
+      this.bags = new Map(Object.entries(s.bags || {}));
     }
   }
 
