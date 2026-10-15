@@ -24,9 +24,9 @@
   const FOG_TOLL = 0.1, FAN_REACH = 3;
   // 海：船分孤帆與方舟（大小、命、船頭首骨格數在 G.SHIPS）。修船每次回滿命的 SHIP_REPAIR_FRAC，第 n 次修要 n 塊木板。
   // 船毀了落水，SWIM_TIME 息內游上岸，否則溺死；游泳時飽、愜意、力的消耗 ×SWIM_DRAIN、力不回反掉，武器傷害 ×SWIM_DMG。
-  // 燭龍焚溟在船上揮，自己的船也挨傷害的 GOD_SELF；膽氣不滿 SEA_WARN_LEVEL 重出海先問；讀檔時海上還有沒解決的蜃，膽氣減 SEA_PENALTY 重
-  const SHIP_REPAIR_FRAC = 0.25, SWIM_TIME = 60, SWIM_DRAIN = 2, SWIM_DMG = 0.75, SWIM_STEP = 0.32, GOD_SELF = 0.1, SEA_WARN_LEVEL = 20, SEA_PENALTY = 5;
-  // 獸首骨：殺虎豹狼有 SKULL_P 的機會掉，掉一個或兩個（SKULL_TWO 的機會兩個）；放在船頭鎮船，日數見 ITEMS 的 ward，一個接一個燒，船頭格數見 G.SHIPS
+  // 燭龍焚溟在船上揮，自己的船也挨傷害的 GOD_SELF；膽氣不滿 SEA_WARN_LEVEL 重（卅一重，神兵的門檻）出海先問；讀檔時海上還有沒解決的蜃，膽氣減 SEA_PENALTY 重
+  const SHIP_REPAIR_FRAC = 0.25, SWIM_TIME = 60, SWIM_DRAIN = 2, SWIM_DMG = 0.75, SWIM_STEP = 0.32, GOD_SELF = 0.1, SEA_WARN_LEVEL = 31, SEA_PENALTY = 5;
+  // 獸首骨：殺虎豹狼有 SKULL_P 的機會掉，掉一個或兩個（SKULL_TWO 的機會兩個）；放在船頭鎮船，日數見 ITEMS 的 ward，各鎮各的、到期風化，船頭格數見 G.SHIPS
   const SKULL_P = 0.35, SKULL_TWO = 0.3;
   const SEA_GOD = '燭龍焚溟', SEA_FOLK = '蜃龜';   // 海中之物：燭龍焚溟全傷、九閽鳴雷減半；其餘反過來   // 霧障：不吹散就五樣數值各掉當前的一成（四捨五入，命不低於一）；扇子選中按 V 吹得到三格   // 衣甲損耗倍率封頂；修補後從 1.5 倍起算；燈帽一根蠟燭四百息
   const $ = (id) => document.getElementById(id);
@@ -241,6 +241,10 @@
       this.world.tick(dt, p.x, p.y);
       if (this.day() !== p.lastDay) this.newDay();
       this.handleMove(dt);
+      if (p.sailing && p.ship && p.ship.skulls && p.ship.skulls.length) {   // 船頭的首骨到期風化
+        const gone = p.ship.skulls.filter(x => x[1] <= this.world.time).map(x => x[0]);
+        if (gone.length) { this.shipSkulls(p.ship); this.message('船頭的' + gone.join('、') + '風化了' + (p.ship.skulls.length ? '，還有' + p.ship.skulls.map(x => x[0]).join('、') + '鎮著。' : '，船頭空了。')); }
+      }
       this.checkFog();
       this.updateAction(dt);
       this.ents.update(dt, this);
@@ -395,9 +399,9 @@
     }
     // ---------- 海：船的命、首骨鎮船、蜃、落水 ----------
     shipMax(s) { return (G.SHIPS[s && s.kind] || G.SHIPS['孤帆']).hp; }
-    shipSkulls(s) { const now = this.world.time; s.skulls = (s.skulls || []).filter(x => x[1] > now); return s.skulls; }   // 燒完的首骨自己掉
+    shipSkulls(s) { const now = this.world.time; s.skulls = (s.skulls || []).filter(x => x[1] > now); return s.skulls; }   // 到期的首骨風化、自己掉
     shipWarded() { const s = this.player.ship; return !!(s && this.shipSkulls(s).length); }
-    wardDaysOf(s) { const a = this.shipSkulls(s); return a.length ? Math.max(0, Math.ceil((a[a.length - 1][1] - this.world.time) / DAY - 1e-6)) : 0; }
+    wardDaysOf(s) { const a = this.shipSkulls(s); return a.length ? Math.max(0, Math.ceil((Math.max(...a.map(x => x[1])) - this.world.time) / DAY - 1e-6)) : 0; }   // 鎮到最晚風化的那一個
     wardDays() { return this.player.ship ? this.wardDaysOf(this.player.ship) : 0; }
     shipSkullName() { const s = this.player.ship, a = s ? this.shipSkulls(s) : []; return a.length ? a[0][0] : ''; }
     shipCells() { const p = this.player; return this.world.shipFootprint(p.ship ? p.ship.kind : '孤帆', p.x, p.y); }   // 行船時船身在哪幾格
@@ -406,9 +410,9 @@
       if (!rec) return;
       const now = this.world.time, alive = this.shipSkulls(rec), slots = (G.SHIPS[rec.kind] || G.SHIPS['孤帆']).slots;
       if (alive.length >= slots) { this.message(rec.kind + '的船頭只放得下 ' + slots + ' 個首骨，都放滿了：' + alive.map(a => a[0]).join('、') + '。'); SFX.fail(); return; }
-      const end = (alive.length ? alive[alive.length - 1][1] : now) + ITEMS[name].ward * DAY;   // 一個接一個燒
-      alive.push([name, end]); this.removeItem(name, 1); this.buildBag(); SFX.learn();
-      this.message('船頭放上' + name + '（' + alive.length + '/' + slots + '）：鎮船到 ' + this.wardDaysOf(rec) + ' 日後，這段時間蜃不敢撞船。');
+      alive.push([name, now + ITEMS[name].ward * DAY]);   // 各鎮各的：從放上去那一刻算，到期風化
+      this.removeItem(name, 1); this.buildBag(); SFX.learn();
+      this.message('船頭放上' + name + '（' + alive.length + '/' + slots + '）：鎮 ' + ITEMS[name].ward + ' 日後風化；船頭最久鎮到 ' + this.wardDaysOf(rec) + ' 日後，這段時間蜃不敢撞船。');
     }
     repairShip(rec) {          // 第 n 次修要 n 塊木板，每次回滿命的四分之一
       if (!rec) return;
@@ -638,7 +642,7 @@
       }
       if (p.swimming && d.kind !== 'water') { p.swimming = false; p.swimT = 0; this.toast('上岸了', '撿回一條命。船沒了，要渡海得再造一艘。'); SFX.learn(); }
       p.fromX = p.x; p.fromY = p.y; p.x = nx; p.y = ny;
-      p.stepDur = (p.sailing ? 0.14 : p.swimming ? SWIM_STEP : 0.17 / (d.walk > 0 ? d.walk : 0.6)) * (dx && dy ? 1.3 : 1) / this.ironSpeed();
+      p.stepDur = (p.sailing ? 0.14 / ((G.SHIPS[p.ship ? p.ship.kind : '孤帆'] || G.SHIPS['孤帆']).speed || 1) : p.swimming ? SWIM_STEP : 0.17 / (d.walk > 0 ? d.walk : 0.6)) * (dx && dy ? 1.3 : 1) / this.ironSpeed();
       p.moveT = p.stepDur;
       return true;
     }
@@ -1144,7 +1148,7 @@
     askSea(rec) {
       this.seaAsk = rec; this.paused = true; this.keys.clear(); this.action = null;
       const a = this.shipSkulls(rec);
-      $('seaask-text').innerHTML = '膽氣第 ' + this.level() + ' 重，不滿二十重。海上有蜃：命九百，撞船一下二十五，吐海霧；船毀了只有六十息游上岸。' + (a.length ? '這艘' + rec.kind + '船頭有' + a.map(x => x[0]).join('、') + '鎮著 ' + this.wardDaysOf(rec) + ' 日。' : '這艘' + rec.kind + '船頭沒有首骨。') + '<br>真的要出海？';
+      $('seaask-text').innerHTML = '<b>建議卅一重、帶上神兵再下海。</b>你的膽氣第 ' + this.level() + ' 重；卅一重可鑄九閽鳴雷與燭龍焚溟，海裡的蜃只怕燭龍焚溟。<br>海上有蜃：命九百，撞船一下二十五，吐海霧；船毀了只有六十息游上岸。' + (a.length ? '這艘' + rec.kind + '船頭有' + a.map(x => x[0]).join('、') + '鎮著，最久到 ' + this.wardDaysOf(rec) + ' 日後。' : '這艘' + rec.kind + '船頭沒有首骨。') + '<br>真的要出海？';
       $('seaask').classList.remove('hidden');
     }
     closeSea() { $('seaask').classList.add('hidden'); this.seaAsk = null; this.paused = false; }

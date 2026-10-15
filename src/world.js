@@ -226,6 +226,7 @@
     // 在玩家附近的陸地上長一片霧：從一格起，隨機往四鄰長，有時團成一塊、有時拖成一條、有時分岔
     spawnFog(px, py) {          // 起頭的那格若在小島或橋上長不到五格，換個地方再試（最多六次）
       for (let attempt = 0; attempt < 6; attempt++) { const f = this.growFog(px, py); if (f) return f; }
+      this.fogMiss = (this.fogMiss || 0) + 1;   // 六次都起不來：記一筆，測試與除錯用
       return null;
     }
     growFog(px, py) {
@@ -236,7 +237,7 @@
         const x = px + Math.round(Math.cos(a) * r), y = py + Math.round(Math.sin(a) * r);
         if (this.fogLand(x, y) && !this.fogCells.has(U.key(x, y))) seed = [x, y];
       }
-      if (!seed) return null;
+      if (!seed) { this.fogNoSeed = (this.fogNoSeed || 0) + 1; return null; }
       const want = FOG_MIN + Math.floor(R() * (FOG_MAX - FOG_MIN + 1));
       const mode = R(), dir = N4[Math.floor(R() * 4)];   // mode < 0.4 團；< 0.75 拖成一條；其餘分岔
       const cells = [seed], have = new Set([U.key(seed[0], seed[1])]);

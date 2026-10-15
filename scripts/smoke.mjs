@@ -262,8 +262,8 @@ const result = await page.evaluate(async () => {
   ok('ship recipe locked below level 8', (() => { g.addItem('木板', 8); g.addItem('船槳', 1); g.addItem('船帆', 1); p.sta = 100; g.craft('ship'); return g.count('孤帆') === 0; })());
   p.cour = 300; g.craft('ship');
   ok('a 孤帆 is craftable at level 8 for 8 planks, an oar and a sail', g.count('孤帆') === 1 && g.level() === 8 && g.count('木板') === 0, [g.count('孤帆'), g.level()]);
-  g.addItem('木板', 36); g.addItem('船槳', 4); g.addItem('船帆', 3); g.addItem('鐵', 8); g.addItem('麻布', 6); p.sta = 100; g.craft('ark');
-  ok('a 方舟 costs far more: 36 planks, 4 oars, 3 sails, 8 iron, 6 cloth', g.count('方舟') === 1 && g.count('木板') === 0 && g.count('鐵') === 0, [g.count('方舟'), g.count('木板')]);
+  g.addItem('木板', 36); g.addItem('船槳', 4); g.addItem('船帆', 3); g.addItem('鐵', 8); g.addItem('麻布', 6); g.addItem('鎢鋼', 2); p.sta = 100; g.craft('ark');
+  ok('a 方舟 costs far more: 36 planks, 4 oars, 3 sails, 8 iron, 6 cloth, 2 tungsten steel', g.count('方舟') === 1 && g.count('木板') === 0 && g.count('鐵') === 0 && g.count('鎢鋼') === 0, [g.count('方舟'), g.count('木板')]);
   // 衣甲與山海衣：五件穿齊、十重膽氣才有獸紋；脫下一件就是普通衣甲
   p.cour = g.levelAt(10); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']);
   g.addItem('內襯', 1); g.addItem('布褲', 1); g.addItem('布甲', 1); g.addItem('布帽', 1); g.addItem('布靴', 1);
@@ -534,7 +534,7 @@ const result = await page.evaluate(async () => {
   p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; g.closeRead();
   face(1, 0); for (let dy = -1; dy <= 2; dy++) for (let dx = 0; dx <= 2; dx++) w.set(T().x + dx, T().y + dy, '水'); hold('孤帆'); g.pressPlace();
   ok('a 孤帆 placed on shallow water takes two 舟 tiles (1×2)', w.get(T().x, T().y) === '舟' && w.get(T().x, T().y + 1) === '舟' && w.shipAt(T().x, T().y + 1) === w.shipAt(T().x, T().y) && w.shipAt(T().x, T().y).kind === '孤帆');
-  p.cour = g.levelAt(20); g.pressGather(); await sleep(300);
+  p.cour = g.levelAt(31); g.pressGather(); await sleep(300);
   ok('boarded the ship: both tiles are water again and the hull follows you', p.sailing && w.get(p.x, p.y) === '水' && w.get(p.x, p.y + 1) === '水' && w.ships.size === 0 && p.ship && p.ship.kind === '孤帆');
   const deep = w.get(p.x + 1, p.y); w.set(p.x + 1, p.y, '淼');
   ok('sailing passes deep water', g.pass(p.x + 1, p.y)); w.set(p.x + 1, p.y, deep);
@@ -594,7 +594,7 @@ const result = await page.evaluate(async () => {
     hold('虎首骨'); g.pressPlace();
     ok('a tiger skull on the bow wards the ship for three days', rec.skulls.length === 1 && rec.skulls[0][0] === '虎首骨' && g.wardDaysOf(rec) === 3);
     hold('狼首骨'); g.pressPlace();
-    ok('a second skull burns after the first: four days in all', rec.skulls.length === 2 && g.wardDaysOf(rec) === 4);
+    ok('a second skull wards on its own clock: two skulls, the ship stays warded until the tiger skull weathers (3 days)', rec.skulls.length === 2 && g.wardDaysOf(rec) === 3 && Math.round((rec.skulls[1][1] - w.time) / DAY) === 1);
     for (let i = 0; i < 4; i++) g.addItem('狼首骨', 1);
     hold('狼首骨'); g.pressPlace(); g.pressPlace(); g.pressPlace(); const n5 = rec.skulls.length; g.pressPlace();
     ok('a 方舟 holds five skulls, a sixth is refused', n5 === 5 && rec.skulls.length === 5 && g.count('狼首骨') === 1, [n5, rec.skulls.length, g.msgText]);
@@ -605,12 +605,17 @@ const result = await page.evaluate(async () => {
     ok('the second repair costs two planks', hp1 === 205 && rec.hp === 310 && rec.repairs === 2 && g.count('木板') === 0, [hp1, rec.hp, g.msgText]);
     rec.hp = 175; p.cour = g.levelAt(8);
     g.pressGather(); await sleep(250);
-    ok('below level 20 boarding first asks whether to put to sea', !hidden('seaask') && g.paused && !p.sailing);
+    ok('below level 31 boarding first asks whether to put to sea, in the name of the fearless', !hidden('seaask') && g.paused && !p.sailing && document.querySelector('#seaask h2').textContent.indexOf('敬勇者之無畏') >= 0 && document.getElementById('seaask-text').textContent.indexOf('神兵') >= 0);
     await press('KeyN', 20); await sleep(50);
     ok('N turns back', hidden('seaask') && !g.paused && !p.sailing && w.ships.size === ships0 + 1);
     g.pressGather(); await sleep(100); await press('KeyY', 20); await sleep(250);
     ok('Y puts to sea: hull hp, skulls and repairs come along, the six tiles are water again', p.sailing && p.ship && p.ship.kind === '方舟' && p.ship.hp === 175 && p.ship.skulls.length === 5 && p.ship.repairs === 2 && g.shipWarded() && w.ships.size === ships0 && w.get(X + 2, Y + 1) === '水');
-    p.cour = g.levelAt(20);
+    p.cour = g.levelAt(31);
+    p.moveT = 0; g.tryStep(1, 0); const arkStep = p.stepDur; p.moveT = 0; p.x = p.rx = X + 1; p.y = p.ry = Y;
+    ok('a 方舟 sails at 60% of a 孤帆\'s speed', Math.abs(arkStep - 0.14 / 0.6) < 1e-6, arkStep);
+    w.time += 1.1 * DAY; g.update(0.01);
+    ok('after a day the four wolf skulls weather away with a message and the tiger skull still wards the ship', p.ship.skulls.length === 1 && p.ship.skulls[0][0] === '虎首骨' && g.msgText.indexOf('風化') >= 0 && g.shipWarded(), [p.ship.skulls.length, g.msgText]);
+    w.time -= 1.1 * DAY;
     let m = g.ents.add('蜃', X + 4, Y, { moveT: 0, atk: 0, fogT: 999 }); await sleep(1500);
     ok('the 蜃 will not ram a ship with a skull on the bow', p.ship.hp === 175 && g.ents.list.includes(m), p.ship.hp);
     p.ship.skulls = []; m.x = m.rx = X + 3; m.y = m.ry = Y; m.moveT = 0; m.atk = 0;
@@ -623,8 +628,8 @@ const result = await page.evaluate(async () => {
     ok('swimming: weapons ×0.75, food, ease and stamina drain ×2', Math.abs(g.dmgMult() - dm * 0.75) < 1e-9 && Math.abs(g.ironDrain() - dr * 2) < 1e-9);
     const st0 = p.sta; g.updateStats(1);
     ok('swimming: stamina falls instead of recovering', p.sta < st0, [st0, p.sta]);
-    p.moveT = 0; g.tryStep(-1, 0);
-    ok('reaching land ends the swim', !p.swimming && w.info(p.x, p.y).kind !== 'water');
+    g.ents.list = g.ents.list.filter(e => !(e.x === X && e.y === Y)); w.set(X, Y, '草'); p.moveT = 0; const stepped = g.tryStep(-1, 0);
+    ok('reaching land ends the swim', stepped && !p.swimming && w.info(p.x, p.y).kind !== 'water', [stepped, p.x, p.y, w.get(p.x, p.y)]);
     const keep = JSON.parse(JSON.stringify({ bag: p.bag, tools: p.tools, cour: p.cour }));
     p.x = p.rx = X + 2; p.y = p.ry = Y; p.swimming = true; p.swimT = 0.3; await until(() => p.dead, 4000);
     const dtx = document.getElementById('dead-text').textContent;
@@ -677,9 +682,9 @@ const result = await page.evaluate(async () => {
     const near1 = (f) => [...f.cells].some(k => { const [x, y] = k.split(',').map(Number); return Math.abs(x - p.x) <= 1 && Math.abs(y - p.y) <= 1; });
     const connected = (f) => { const all = [...f.cells], seen = new Set([all[0]]), q = [all[0]]; while (q.length) { const [x, y] = q.shift().split(',').map(Number); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = (x + dx) + ',' + (y + dy); if (f.cells.has(k) && !seen.has(k)) { seen.add(k); q.push(k); } } } return seen.size === f.cells.size; };
     w.fogP = 1; w.fogPlan = []; const d0 = Math.floor(w.time / DAY); w.fogDay = d0; w.time = (d0 + 1) * DAY + 1; w.step(p.x, p.y);
-    const planned = w.fogPlan.length; w.time = (d0 + 2) * DAY - 1; w.step(p.x, p.y); w.fogP = 0;
+    const planned = w.fogPlan.length; w.time = (d0 + 2) * DAY - 0.001; w.step(p.x, p.y); w.fogP = 0;   // 到當日最後一刻：兩場都該起了
     const fs = [...w.fogs.values()];
-    ok('a new day rolls twice for fog (odds forced to 1): two patches of 5–12 connected land tiles, none on the player', planned === 2 && fs.length === 2 && fs.every(f => f.cells.size >= 5 && f.cells.size <= 12 && connected(f) && !near1(f) && [...f.cells].every(k => { const [x, y] = k.split(',').map(Number); return w.fogLand(x, y); })), [planned, fs.map(f => f.cells.size)]);
+    ok('a new day rolls twice for fog (odds forced to 1): two patches of 5–12 connected land tiles, none on the player', planned === 2 && fs.length === 2 && fs.every(f => f.cells.size >= 5 && f.cells.size <= 12 && connected(f) && !near1(f) && [...f.cells].every(k => { const [x, y] = k.split(',').map(Number); return w.fogLand(x, y); })), [planned, fs.map(f => f.cells.size), w.fogMiss, w.fogNoSeed, p.x, p.y, w.get(p.x, p.y)]);
     const shapes = new Set(); for (let i = 0; i < 10; i++) { const f = w.spawnFog(p.x, p.y); if (!f) continue; const cs = [...f.cells].map(k => k.split(',').map(Number)), mx = Math.min(...cs.map(c => c[0])), my = Math.min(...cs.map(c => c[1])); shapes.add(cs.map(([x, y]) => (x - mx) + ':' + (y - my)).sort().join(' ')); }
     ok('fog shapes vary', shapes.size >= 4, shapes.size);
     for (const id of [...w.fogs.keys()]) w.removeFog(id);
