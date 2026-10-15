@@ -61,5 +61,11 @@
     return U.clamp((sum / norm) / 0.62 * 0.5 + 0.5, 0, 1);
   };
 
+  // 真隨機：不走種子（天氣、雨澆燈這類「天意」用它）；有 crypto 就用 crypto
+  U.trueRand = function () {
+    const c = root.crypto;
+    if (c && c.getRandomValues) { const a = new Uint32Array(1); c.getRandomValues(a); return a[0] / 4294967296; }
+    return Math.random();
+  };
   root.U = U;
 })();

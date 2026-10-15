@@ -91,8 +91,14 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 #diff-desc { margin-left: 6px; }
 .slot.bag .cost { font-size: 10px; }
 .slot .dur { position: absolute; left: 4px; bottom: 3px; height: 3px; background: var(--red); border-radius: 2px; }
-.panel.craftpanel { max-width: 900px; }
-#craft-list { display: flex; flex-direction: column; gap: 6px; max-height: calc(100vh - 220px); overflow: auto; margin-bottom: 10px; }
+.panel.craftpanel { max-width: 1000px; }
+.craftbody { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 10px; }
+#craft-cats { display: flex; flex-direction: column; gap: 6px; min-width: 92px; }
+#craft-cats button { font: 17px var(--font); padding: 6px 10px; text-align: left; background: rgba(239,229,207,.9); color: var(--ink); border: 1px solid rgba(28,26,23,.35); }
+#craft-cats button.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+#craft-cats button small { float: right; color: inherit; opacity: .6; font: 12px var(--ui); margin-left: 6px; }
+#craft-list { flex: 1; display: flex; flex-direction: column; gap: 6px; max-height: calc(100vh - 220px); overflow: auto; }
+@media (max-width: 720px) { .craftbody { flex-direction: column; } #craft-cats { flex-direction: row; flex-wrap: wrap; } }
 .recipe { display: grid; grid-template-columns: 24px 110px 1fr 56px 1fr auto; align-items: center; gap: 10px; padding: 6px 10px; border: 1px solid rgba(28,26,23,.25); border-radius: 4px; background: rgba(255,248,234,.6); font-size: 14px; }
 .recipe.cant { opacity: .55; }
 .recipe b { font: 22px/1 var(--font); }

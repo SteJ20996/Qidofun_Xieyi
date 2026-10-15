@@ -8,6 +8,9 @@
   const DAY = 240;               // 一晝夜（秒），潮汐隨之起落
   const N8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
   const N4 = [[0, -1], [-1, 0], [1, 0], [0, 1]];
+  // 天氣：雨。一場雨下 RAIN_MIN–RAIN_MAX 秒，停後隔 RAIN_GAP_MIN–RAIN_GAP_MAX 秒再來（真隨機，不走種子）；
+  // 下雨時屋外的燈每盞每息有 RAIN_LAMP_P 的真隨機機會被澆壞；ROOM_LIMIT 格內被牆圍得住才算屋裡
+  const RAIN_MIN = DAY * 0.25, RAIN_MAX = DAY * 1.0, RAIN_GAP_MIN = DAY * 1.0, RAIN_GAP_MAX = DAY * 4.0, RAIN_LAMP_P = 1 / 1500, ROOM_LIMIT = 121;
 
   class World {
     constructor(seed) {
@@ -43,6 +46,12 @@
       this.acc = 0; this.seenAcc = 0;
       this.rng = U.mulberry32(this.seed ^ 0x5bd1e995);
       this.onDiscover = null;    // 回調：首次看見某處地標
+      this.lamps = new Set();    // "x,y"：玩家放的燈（雨會澆壞屋外的）
+      this.rainUntil = 0;        // 雨下到幾時（0 = 沒下）
+      this.nextRainAt = DAY * 1.5 + U.trueRand() * DAY * 2.5;   // 第一場雨不早於第二日
+      this.rainAcc = 0; this.rainLampP = RAIN_LAMP_P;
+      this.onWeather = null;     // 回調：雨起（true）／雨停（false）
+      this.onLampRuined = null;  // 回調：某盞燈被雨澆壞
     }
 
     chunk(cx, cy) {
@@ -85,6 +94,7 @@
       if (old === '偶' && ch !== '偶') this.scarecrows.delete(k);
       if ('網罟罾'.indexOf(old) >= 0 && '網罟罾'.indexOf(ch) < 0 && this.netCells.has(k)) { const rec = this.nets.get(this.netCells.get(k)); if (rec) this.removeNet(rec); }
       if (old === '櫃' && ch !== '櫃') this.chests.delete(k);
+      if (ch === '燈') this.lamps.add(k); else if (old === '燈') this.lamps.delete(k);
       if (old === '漁' && ch !== '漁') this.weirs.delete(k);
       if (ch === '漁' && !this.weirs.has(k)) this.weirs.set(k, this.time + 45);
     }
@@ -190,6 +200,31 @@
       }
       return false;
     }
+    // ---------- 天氣：雨 ----------
+    raining() { return this.time < this.rainUntil; }
+    passable(x, y) { const d = this.info(x, y); return d.walk > 0 && !d.gate; }   // 門雖能走，算牆
+    // 屋裡：從這格四鄰出發順著能走的格子漫延，不可通行的字與門擋住；ROOM_LIMIT 格內圍得住才算屋裡
+    covered(x, y) {
+      const seen = new Set(), q = [];
+      const push = (nx, ny) => { const k = U.key(nx, ny); if (!seen.has(k) && this.passable(nx, ny)) { seen.add(k); q.push([nx, ny]); } };
+      for (const [dx, dy] of N4) push(x + dx, y + dy);
+      while (q.length) {
+        if (seen.size > ROOM_LIMIT) return false;
+        const [cx, cy] = q.shift();
+        for (const [dx, dy] of N4) push(cx + dx, cy + dy);
+      }
+      return true;
+    }
+    // 每息一次：屋外的燈各擲一次真隨機，中了就澆壞、消失
+    rainLamps() {
+      for (const k of Array.from(this.lamps)) {
+        const [x, y] = U.unkey(k);
+        if (this.get(x, y) !== '燈') { this.lamps.delete(k); continue; }
+        if (this.covered(x, y) || U.trueRand() >= this.rainLampP) continue;
+        this.set(x, y, '白');
+        if (this.onLampRuined) this.onLampRuined(x, y);
+      }
+    }
     heatNear(x, y, r) {
       for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) {
         const d = this.info(x + i, y + j);
@@ -207,6 +242,10 @@
 
     step(px, py) {
       const rng = this.rng;
+      // —— 天氣：雨起雨停（真隨機，不走種子）；下雨時每息看一次屋外的燈
+      if (this.rainUntil > 0 && this.time >= this.rainUntil) { this.rainUntil = 0; this.nextRainAt = this.time + RAIN_GAP_MIN + U.trueRand() * (RAIN_GAP_MAX - RAIN_GAP_MIN); if (this.onWeather) this.onWeather(false); }
+      else if (this.rainUntil <= 0 && this.time >= this.nextRainAt) { this.rainUntil = this.time + RAIN_MIN + U.trueRand() * (RAIN_MAX - RAIN_MIN); if (this.onWeather) this.onWeather(true); }
+      if (this.raining()) { this.rainAcc += STEP; while (this.rainAcc >= 1) { this.rainAcc -= 1; this.rainLamps(); } } else this.rainAcc = 0;
       // —— 灶裡的柴
       for (const [k, f] of this.stoves) { if (f > 0) this.stoves.set(k, Math.max(0, f - STEP)); }
       // —— 火勢蔓延
@@ -292,11 +331,15 @@
       const weirs = {}; for (const [k, v] of this.weirs) weirs[k] = Math.round(v);
       const explored = {}; for (const [k, b] of this.explored) explored[k] = Array.from(b, v => v.toString(16).padStart(2, '0')).join('');
       const seen = this.places.filter(p => p.seen).map(p => p.id);
-      return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers, stoves, bags, weirs, explored, seen, scarecrows, chests, nets };
+      return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers, stoves, bags, weirs, explored, seen, scarecrows, chests, nets, rainUntil: Math.round(this.rainUntil), nextRainAt: Math.round(this.nextRainAt) };
     }
     restore(s) {
       this.time = s.time || 30;
       this.diff = new Map(Object.entries(s.diff || {}));
+      this.lamps = new Set(); for (const [k, v] of this.diff) if (v === '燈') this.lamps.add(k);
+      this.rainUntil = (s.rainUntil || 0) > this.time ? s.rainUntil : 0;
+      this.nextRainAt = s.nextRainAt || (this.time + DAY + U.trueRand() * DAY * 2);
+      this.rainAcc = 0;
       this.burn = new Map(Object.entries(s.burn || {}).map(([k, v]) => [k, { t: v[0], lvl: v[1] }]));
       this.timers = new Map(Object.entries(s.timers || {}).map(([k, v]) => [k, { to: v[0], at: v[1], from: v[2] || '灰' }]));
       this.scarecrows = new Map(Object.entries(s.scarecrows || {}));

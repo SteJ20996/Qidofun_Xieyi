@@ -220,6 +220,25 @@
         }
         ctx.restore();
       }
+      // —— 雨：一層淡墨與斜斜的雨絲，跟著世界滾動；起雨收雨各淡入淡出一息半
+      const wantRain = world.raining() ? 1 : 0;
+      this.rainA = (this.rainA || 0) + (wantRain - (this.rainA || 0)) * Math.min(1, dt / 1.5);
+      if (this.rainA > 0.02) {
+        const pm = (a, m) => ((a % m) + m) % m;
+        ctx.save(); ctx.globalAlpha = this.rainA;
+        ctx.fillStyle = 'rgba(70,80,100,' + (0.12 + 0.06 * dark) + ')'; ctx.fillRect(0, 0, w, h);
+        ctx.strokeStyle = dark > 0.5 ? 'rgba(210,220,240,0.6)' : 'rgba(40,50,75,0.6)'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+        ctx.beginPath();
+        const n = Math.min(380, Math.floor(w * h / 3000)), span = h + 60, wide = w + 80, drift = now * 520;
+        for (let i = 0; i < n; i++) {
+          const r = U.hash2(i, 131, 7), len = 9 + (r & 15);
+          const by = ((r >>> 16) & 4095) / 4096 * span, bx = ((r >>> 4) & 4095) / 4096 * wide;
+          const yy = pm(by + drift * (0.85 + (r & 7) / 24) + oy * 0.5, span) - 30;
+          const px = pm(bx - yy * 0.22 + ox * 0.5, wide) - 40;
+          ctx.moveTo(px, yy); ctx.lineTo(px - len * 0.22, yy + len);
+        }
+        ctx.stroke(); ctx.restore();
+      }
       // —— 紙邊的舊色，以及身體的訊號：掉血泛紅、中毒泛綠、神志不清泛藍
       const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.45, w / 2, h / 2, Math.max(w, h) * 0.75);
       vg.addColorStop(0, 'rgba(80,60,30,0)'); vg.addColorStop(1, 'rgba(80,60,30,0.32)');

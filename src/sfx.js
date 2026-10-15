@@ -13,7 +13,25 @@
       this.noiseBuf = buf;
     } catch (e) { this.ctx = null; }
   };
-  SFX.toggle = function () { this.muted = !this.muted; return this.muted; };
+  SFX.toggle = function () { this.muted = !this.muted; this.rainSync(); return this.muted; };
+  // 雨聲：一段低通噪聲循環，起雨淡入、收雨淡出；靜音或暫停時收起
+  SFX.rain = function (on) { this.rainOn = !!on; this.rainSync(); };
+  SFX.rainSync = function () {
+    const want = this.rainOn && !this.muted && this.ctx;
+    if (want && !this.rainNode) {
+      try {
+        const c = this.ctx; if (c.state === 'suspended') c.resume();
+        const src = c.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+        const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1100; f.Q.value = 0.5;
+        const g = c.createGain(); g.gain.setValueAtTime(0.0001, c.currentTime); g.gain.exponentialRampToValueAtTime(0.06, c.currentTime + 1.5);
+        src.connect(f); f.connect(g); g.connect(this.out); src.start();
+        this.rainNode = { src, g };
+      } catch (e) { this.rainNode = null; }
+    } else if (!want && this.rainNode) {
+      const { src, g } = this.rainNode; this.rainNode = null;
+      try { const t = this.ctx.currentTime; g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(Math.max(g.gain.value, 0.0001), t); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.2); src.stop(t + 1.3); } catch (e) { /* 收不掉也無妨 */ }
+    }
+  };
   SFX.play = function (fn) {
     if (!this.ctx || this.muted) return;
     if (this.ctx.state === 'suspended') this.ctx.resume();

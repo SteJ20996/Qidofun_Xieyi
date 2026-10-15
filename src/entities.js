@@ -192,7 +192,7 @@
           if (!this.list.includes(e.foe) || e.foe.hp <= 0 || U.cheb(e.x, e.y, e.foe.x, e.foe.y) > 6) e.foe = null;
           else if (U.cheb(e.x, e.y, e.foe.x, e.foe.y) <= 1 && e.atk <= 0) {
             const dmg = DB[e.type].atk || (DB[e.type].bite || 2) * 4;
-            e.foe.hp = Math.round((e.foe.hp - dmg) * 100) / 100; e.atk = HOSTILE.indexOf(e.type) >= 0 ? 1.6 : 1.2; e.moveT = 0.5;
+            e.foe.hp -= dmg; e.atk = HOSTILE.indexOf(e.type) >= 0 ? 1.6 : 1.2; e.moveT = 0.5;
             if (e.foe.hp <= 0) { g.companionDied(e.foe, e); e.foe = null; }
             continue;
           }
@@ -243,7 +243,7 @@
             const tgt = e.sta >= 6 ? this.hostileNear(p, 6) : null;
             if (tgt) {
               if (U.cheb(e.x, e.y, tgt.x, tgt.y) <= 1) {
-                if (e.atk <= 0) { tgt.hp = Math.round((tgt.hp - 20) * 100) / 100; tgt.angry = true; tgt.foe = e; e.sta -= 6; e.atk = 1.5; g.eagleHit(e, tgt); if (tgt.hp <= 0) g.kill(tgt); }
+                if (e.atk <= 0) { tgt.hp -= 20; tgt.angry = true; tgt.foe = e; e.sta -= 6; e.atk = 1.5; g.eagleHit(e, tgt); if (tgt.hp <= 0) g.kill(tgt); }
                 e.moveT = 0.4;
               } else { e.moveT = 0.2; this.stepTo(e, tgt.x, tgt.y, false, night); }
             } else if (d > 3) { e.moveT = 0.2; this.stepTo(e, p.x, p.y, false, night); }

@@ -85,6 +85,11 @@ const result = await page.evaluate(async () => {
   await press('KeyC', 20); await sleep(30);
   ok('craft panel opens with C and lists recipes', !hidden('craft') && document.querySelectorAll('#craft-list .recipe').length === G.RECIPES.length);
   ok('sixteen bag slots', document.querySelectorAll('#bagbar .slot').length === 16);
+  ok('craft panel has category buttons on the left, 全部 selected', document.querySelectorAll('#craft-cats button').length === G.CRAFT_CATS.length && document.querySelector('#craft-cats button.on').textContent.indexOf('全部') === 0);
+  [...document.querySelectorAll('#craft-cats button')].find(b => b.textContent.indexOf('衣甲') === 0).click(); await sleep(30);
+  ok('picking 衣甲 shows only armour recipes and digit keys follow the visible list', document.querySelectorAll('#craft-list .recipe').length === G.RECIPES.filter(r => r.cat === '衣甲').length && g.visibleRecipes()[0].id === 'lining' && [...document.querySelectorAll('#craft-list .recipe b')].every(b => b.textContent.indexOf('磚') < 0));
+  ok('every recipe has a category', G.RECIPES.every(r => G.CRAFT_CATS.indexOf(r.cat) > 0));
+  [...document.querySelectorAll('#craft-cats button')].find(b => b.textContent.indexOf('全部') === 0).click(); await sleep(30);
   ok('six tool slots', document.querySelectorAll('#toolbar .slot').length === 6 && document.querySelectorAll('#toolbar .slot.sel').length === 1);
   await press('KeyC', 20); await sleep(30); ok('craft panel closes', hidden('craft'));
 
@@ -245,7 +250,7 @@ const result = await page.evaluate(async () => {
   // 膽氣：每 20 點一重，回復倍率
   p.cour = 45; g.addCourage(0);
   ok('courage level 2 gives 1.2x recovery', g.level() === 2 && Math.abs(g.mult() - 1.2) < 1e-9);
-  ok('level thresholds grow as 20×(1+0.1n)²', g.levelCost(0) === 20 && g.levelCost(1) === 24.2 && g.levelCost(2) === 28.8 && g.levelCost(3) === 33.8 && g.levelCost(4) === 39.2 && g.levelAt(1) === 20 && g.levelAt(2) === 44.2 && g.levelAt(8) === 300 && g.levelAt(10) === 437, [g.levelAt(8), g.levelAt(10), g.levelAt(31)]);
+  ok('level thresholds grow as 20×(1+0.1n)², rounded to whole points', g.levelCost(0) === 20 && g.levelCost(1) === 24 && g.levelCost(2) === 29 && g.levelCost(3) === 34 && g.levelCost(4) === 39 && g.levelAt(1) === 20 && g.levelAt(2) === 44 && g.levelAt(8) === 300 && g.levelAt(10) === 437 && Number.isInteger(g.levelAt(31)), [g.levelAt(8), g.levelAt(10), g.levelAt(31)]);
   ok('ship recipe locked below level 8', (() => { g.addItem('木板', 12); g.addItem('船槳', 2); g.addItem('船帆', 1); p.sta = 100; g.craft('ship'); return g.count('大船') === 0; })());
   p.cour = 300; g.craft('ship');
   ok('ship craftable at level 8', g.count('大船') === 1 && g.level() === 8, [g.count('大船'), g.level()]);
@@ -253,7 +258,7 @@ const result = await page.evaluate(async () => {
   p.cour = g.levelAt(10); trim(['木', '石', '石子', '草', '土', '磚', '大船']);
   g.addItem('內襯', 1); g.addItem('布褲', 1); g.addItem('布甲', 1); g.addItem('布帽', 1); g.addItem('布靴', 1);
   for (const n of ['內襯', '布褲', '布甲', '布帽']) { hold(n); g.pressPlace(); }
-  ok('four cloth pieces worn: 8.5% less damage, no 山海衣 yet', Math.abs(g.armorRed() - 0.085) < 1e-9 && !g.totemOn() && g.wornList().length === 4 && g.dmgMult() === 1, g.armorRed());
+  ok('four cloth pieces worn: 9% less damage, no 山海衣 yet', Math.abs(g.armorRed() - 0.09) < 1e-9 && !g.totemOn() && g.wornList().length === 4 && g.dmgMult() === 1, g.armorRed());
   hold('布靴'); g.useItem();
   ok('fifth piece at level 10 wakes the 山海衣: attack ×1.15, taken ×1 (×0.9 from cloth)', g.totemOn() && Math.abs(g.armorRed() - 0.10) < 1e-9 && Math.abs(g.dmgMult() - 1.15) < 1e-9 && Math.abs(g.takenMult() - 0.9) < 1e-9, [g.dmgMult(), g.takenMult()]);
   document.getElementById('totemswitch').click();
@@ -267,7 +272,7 @@ const result = await page.evaluate(async () => {
   w.set(p.x + 3, p.y, '草'); const tt = g.ents.add('虎', p.x + 3, p.y, { moveT: 0, calm: 0, atk: 0 }); g.ents.update(0.01, g);
   ok('near the 山海衣 hostile beasts move at half speed', Math.abs(tt.moveT - 0.6) < 1e-6, tt.moveT); g.ents.remove(tt);
   g.takeOff('盔');
-  ok('taking one piece off turns it back into plain clothes', !g.totemOn() && g.dmgMult() === 1 && Math.abs(g.takenMult() - 0.915) < 1e-9 && g.has('布帽'), g.takenMult());
+  ok('taking one piece off turns it back into plain clothes', !g.totemOn() && g.dmgMult() === 1 && Math.abs(g.takenMult() - 0.92) < 1e-9 && g.has('布帽'), g.takenMult());
   hold('布帽'); g.pressPlace();
   // 衣甲損耗：一百八十日；十五息內挨打加速且累加；五下碎
   const vest = p.worn['甲']; ok('armor lasts 180 days', Math.round(vest.dur / DAY) === 180 && vest.wm === 1, vest.dur / DAY);
@@ -365,7 +370,7 @@ const result = await page.evaluate(async () => {
   ok('tamed eagles are saved with the world', JSON.stringify(g.ents.serialize()).indexOf('鷹') >= 0);
   g.ents.remove(eg); g.addCourage(0);
   // 鼎與丹：蟾蜍肉分有無毒；前三顆 8%／12%，之後 1%／2%；前五十顆每顆命上限 +3，之後 +0.5
-  trim(['木', '石', '石子', '草', '土', '磚', '大船']); g.addItem('鐵', 3); g.addItem('石', 4); g.addItem('煤', 2); p.sta = 100; g.craft('cauldron');
+  trim(['木', '石', '石子', '草', '土', '磚', '大船']); g.addItem('鐵', 3); g.addItem('石', 4); g.addItem('鎢鋼', 1); g.addItem('精煤', 2); p.sta = 100; g.craft('cauldron');
   face(0, 1); w.set(T().x, T().y, '土'); hold('鼎'); g.pressPlace(); const ding = T();
   ok('a cauldron is crafted and placed, cold until fuelled', w.get(ding.x, ding.y) === '鼎' && !w.stoveLit(ding.x, ding.y));
   g.addItem('木', 1); hold('木'); g.pressPlace();
@@ -381,10 +386,16 @@ const result = await page.evaluate(async () => {
   ok('a successful refinement yields a 丹', g.count('丹') === 1 && p.pillsMade === 1 && g.count('蟾蜍肉') === 3);
   hold('丹'); g.useItem();
   ok('eating a pill raises max hp by 3 (first fifty)', p.hpMax === 103 && p.pillsEaten === 1, p.hpMax);
-  p.pillsEaten = 50; p.hpMax = 250; g.addItem('丹', 1); hold('丹'); g.useItem();
-  ok('from the fifty-first pill each adds 0.5', p.hpMax === 250.5 && p.pillsEaten === 51, p.hpMax);
+  p.pillsEaten = 50; p.hpMax = 250; g.addItem('丹', 2); hold('丹'); g.useItem(); const after51 = p.hpMax; hold('丹'); g.useItem();
+  ok('from the fifty-first pill each adds half, rounded to whole points (251, 251)', after51 === 251 && p.hpMax === 251 && p.pillsEaten === 52, [after51, p.hpMax]);
   p.hp = p.hpMax; await sleep(60);
-  ok('hp bar and label follow the raised maximum', document.getElementById('hplabel').textContent.indexOf('250.5') >= 0 || document.getElementById('hplabel').textContent.indexOf('251') >= 0, document.getElementById('hplabel').textContent);
+  ok('hp bar and label follow the raised maximum', document.getElementById('hplabel').textContent.indexOf('251') >= 0, document.getElementById('hplabel').textContent);
+  p.cour = g.levelAt(10); g.addItem('內襯', 1); g.addItem('布褲', 1); g.addItem('布甲', 1); g.addItem('布帽', 1); g.addItem('布靴', 1); for (const n of ['內襯', '布褲', '布甲', '布帽', '布靴']) { hold(n); g.pressPlace(); }
+  face(1, 0); w.set(T().x, T().y, '草'); const rt = g.ents.add('虎', T().x, T().y, { moveT: 99, calm: 99 }); hold('石劍'); p.atkT = 0; g.pressGather();
+  ok('damage dealt is a whole number (40 × 1.15 = 46)', rt.hp === 300 - 46 && Number.isInteger(rt.hp), rt.hp);
+  p.hp = 100; g.hit({ type: '虎', x: p.x + 1, y: p.y }, 20);
+  ok('damage taken is a whole number (20 × 5/3 × 0.9 = 30)', p.hp === 70 && Number.isInteger(p.hp), p.hp);
+  g.ents.remove(rt); for (const k of ['襯', '褲', '甲', '盔', '靴']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚', '大船']); p.cour = 0; p.hp = 100; p.hurtT = 0;
   p.hpMax = 100; p.hp = 100; p.pillsEaten = 0; p.pillsMade = 0; g.removeItem('丹', 9); g.removeItem('蟾蜍肉', 9); g.removeItem('毒蟾肉', 9); w.set(ding.x, ding.y, '土');
   // 龜：少見不咬人，命五十；龜甲卜之，吉則五日無魄
   face(1, 0); w.set(T().x, T().y, '草'); const tu = g.ents.add('龜', T().x, T().y, { moveT: 99 }); hold('石劍'); p.atkT = 0; g.pressGather();
@@ -450,7 +461,7 @@ const result = await page.evaluate(async () => {
   tool('鎢鋼劍').dur = 5; hold('鎢鋼劍'); g.addItem('石子', 1); p.sta = 50; p.food = 50; g.craft('regrind');
   ok('regrinding tungsten steel costs 8 stamina and 10 food', tool('鎢鋼劍').dur === 112 && p.sta === 42 && Math.round(p.food) === 40, [p.sta, p.food]);
   g.addItem('鎢鋼甲', 1); hold('鎢鋼甲'); g.pressPlace(); const wv = p.worn['甲'];
-  ok('tungsten armour: 22.4% (160% of iron) and 360 days', !!wv && Math.abs(G.ITEMS['鎢鋼甲'].red - 0.224) < 1e-9 && Math.round(wv.dur / DAY) === 360, wv && wv.dur / DAY);
+  ok('tungsten armour: 22% (160% of iron, rounded) and 360 days', !!wv && Math.abs(G.ITEMS['鎢鋼甲'].red - 0.22) < 1e-9 && Math.round(wv.dur / DAY) === 360, wv && wv.dur / DAY);
   wv.wm = 3; wv.dur = 1000; g.addItem('鎢鋼', 1); p.sta = 50; p.food = 50; g.repairWorn('甲');
   ok('repairing tungsten armour costs 鎢鋼, 12 stamina and 15 food', Math.round(wv.dur / DAY) === 360 && wv.wm === 1.5 && g.count('鎢鋼') === 0 && p.sta === 38 && Math.round(p.food) === 35, [p.sta, p.food]);
   g.takeOff('甲'); g.removeItem('鎢鋼甲', 9); p.tools = p.tools.filter(s => s.n !== '鋼劍' && s.n !== '鎢鋼劍'); p.tool = -1; hold('石劍'); p.food = 80;
@@ -570,6 +581,19 @@ const result = await page.evaluate(async () => {
   ok('island map toggles', mapOpen && hidden('map'));
   await press('KeyJ', 20); await sleep(30); const jt = document.getElementById('journal-body').textContent; await press('KeyJ', 20);
   ok('journal has places and creatures', jt.indexOf('塔') >= 0 && jt.indexOf('龍') >= 0, jt.slice(jt.indexOf('生靈'), jt.indexOf('生靈') + 30));
+  // —— 雨：屋外的燈會被澆壞，屋裡的不怕
+  { const cx = p.x + 12, cy = p.y + 12;
+    for (let dx = -8; dx <= 8; dx++) for (let dy = -5; dy <= 5; dy++) w.set(cx + dx, cy + dy, '土');
+    for (let d = -2; d <= 2; d++) { w.set(cx - 6 + d, cy - 2, '磚'); w.set(cx - 6 + d, cy + 2, '磚'); w.set(cx - 8, cy + d, '磚'); w.set(cx - 4, cy + d, '磚'); }
+    w.set(cx - 6, cy + 2, '門'); w.set(cx - 6, cy, '燈'); w.set(cx + 3, cy, '燈');
+    ok('lamp in a walled room is covered, lamp in the open is not', w.covered(cx - 6, cy) && !w.covered(cx + 3, cy));
+    w.rainUntil = w.time + 120; w.rainAcc = 0; g.hudSig = ''; g.updateHUD();
+    ok('rain shows in the status line', w.raining() && document.getElementById('status').textContent.indexOf('雨') >= 0);
+    w.rainLampP = 1; w.tick(1.0, p.x, p.y); await sleep(50);
+    ok('rain ruins the lamp outside and spares the one indoors', w.get(cx + 3, cy) !== '燈' && w.get(cx - 6, cy) === '燈' && !w.lamps.has((cx + 3) + ',' + cy));
+    const sw = w.serialize();
+    ok('true random helper and weather save fields exist', typeof U.trueRand() === 'number' && U.trueRand() < 1 && typeof sw.rainUntil === 'number' && typeof sw.nextRainAt === 'number');
+    w.rainLampP = 1 / 1500; w.rainUntil = 0; }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
 
