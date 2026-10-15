@@ -15,6 +15,7 @@
   // 衣甲：五件一套，一百八十日勻速穿破；十五息內挨打越多壞得越快，且會累加
   const SLOT_ORDER = ['襯', '褲', '甲', '盔', '靴'], ARMOR_LIFE = 180 * DAY, HIT_MULT = [1, 1.05, 1.12, 1.2, 1.5];
   const FUEL = { '煤': 120 };   // 灶的好柴：一塊煤燒一百二十息
+  const WEAR_CAP = 6, REPAIR_WM = 1.5, HAT_FUEL = 400;   // 衣甲損耗倍率封頂；修補後從 1.5 倍起算；燈帽一根蠟燭四百息
   const $ = (id) => document.getElementById(id);
 
   class Game {
@@ -27,7 +28,7 @@
       this.mapAcc = 0;
       this.player = { x: 0, y: 0, rx: 0, ry: 0, fx: 0, fy: 1, fromX: 0, fromY: 0, moveT: 0, stepDur: 0.2,
         hp: 100, food: 100, warm: 100, sta: 100, staMax: 100, san: 100, cour: 0,
-        hurtT: 0, atkT: 0, bag: [], sel: 0, tools: [], tool: -1, worn: { '襯': null, '褲': null, '甲': null, '盔': null, '靴': null }, hitWin: { start: -99, n: 0 }, home: null, readSteles: [], places: {}, creatures: [], raftTaken: false, dragon: false, finished: false,
+        hurtT: 0, atkT: 0, bag: [], sel: 0, tools: [], tool: -1, worn: { '襯': null, '褲': null, '甲': null, '盔': null, '靴': null }, hitWin: { start: -99, n: 0 }, totemOff: false, craftLog: {}, home: null, readSteles: [], places: {}, creatures: [], raftTaken: false, dragon: false, finished: false,
         deaths: 0, dead: false, warned: {}, burn: {}, lastDay: 1,
         poisonT: 0, poisonPer: 0, biteN: 0, biteLast: -99, zeroSan: 0, insane: false, ctrl: true, ctrlT: 0, knock: 0, sailing: false, crossed: false, decayAt: 0 };
       this.stats = { gathered: 0, crafted: 0, kills: 0, read: 0, nights: 0, bites: 0 };
@@ -76,7 +77,13 @@
     ironDrain() { return 1 + 0.02 * this.ironCount(); }                                          // 四件鐵飢愜力掉得快八分
     wornWarm() { return this.wornList().some(s => ITEMS[s.n].warm); }
     // 山海衣：五件穿齊、十重膽氣，衣上浮出獸紋；脫下任何一件即隱
-    totemOn() { return this.level() >= TOTEM_LEVEL && this.wornFull(); }
+    totemReady() { return this.level() >= TOTEM_LEVEL && this.wornFull(); }
+    totemOn() { return this.totemReady() && !this.player.totemOff; }
+    toggleTotem() {
+      const p = this.player; p.totemOff = !p.totemOff; this.barSig = '';
+      if (!this.totemReady()) this.message(p.totemOff ? '開關撥到「關」。' : '開關撥到「開」，但要五件穿齊、膽氣十重，獸紋才會顯。');
+      else this.message(p.totemOff ? '山海衣收起獸紋，暫作普通服。' : '山海衣獸紋再現。'); SFX.toggle(); SFX.toggle();
+    }
     ladder() { return this.totemOn() ? Math.floor((this.level() - TOTEM_LEVEL) / 7) : -1; }     // 十至十六重 0，十七重 1，二十四重 2……
     dmgMult() { const k = this.ladder(); return (k < 0 ? 1 : Math.pow(1.15, k + 1)) * this.ironAtk(); }        // 造成的傷害
     takenMult() { const k = this.ladder(); return (k < 0 ? 1 : Math.pow(1.15, -k)) * (1 - this.armorRed()); }  // 受到的傷害
@@ -100,6 +107,14 @@
       if (this.totemOn() && !was) this.toast('山海衣', '五件穿齊，十重膽氣，衣上浮出山海經裡的獸紋。七格內的獸慢一倍卻狠三分之二；你的刀更利，皮更厚。');
       return true;
     }
+    repairWorn(slot) {   // 布件用麻布一、鐵件用鐵一，力 4：壽命回滿，損耗從 1.5 倍重新起算
+      const p = this.player, s = p.worn[slot]; if (!s || !this.canAct()) return false;
+      const mat = ITEMS[s.n].iron ? '鐵' : '麻布';
+      if (this.count(mat) < 1) { this.message('修補「' + s.n + '」要' + mat + '一。'); SFX.fail(); return false; }
+      if (!this.spendSta(4)) return false;
+      this.removeItem(mat, 1); s.dur = ARMOR_LIFE; s.wm = REPAIR_WM; this.barSig = ''; this.buildBag(); SFX.fuse();
+      this.message('「' + s.n + '」修補好了：壽命回滿，損耗從 ×1.5 起算。'); return true;
+    }
     takeOff(slot) {
       const p = this.player, s = p.worn[slot]; if (!s) return;
       if (p.bag.length >= SLOTS) { this.message('囊已滿。'); SFX.fail(); return; }
@@ -110,11 +125,11 @@
     armorHit() {         // 挨了一下：十五息內算同一輪，一下 1.05、兩下 1.12、三下 1.2、四下 1.5，五下甲襯褲碎
       const p = this.player, win = p.hitWin, now = this.world.time, worn = this.wornList();
       if (!worn.length) return;
-      if (win.n && now - win.start > 15) { for (const s of worn) s.wm = (s.wm || 1) * HIT_MULT[win.n]; win.n = 0; }
+      if (win.n && now - win.start > 15) { for (const s of worn) s.wm = Math.min(WEAR_CAP, (s.wm || 1) * HIT_MULT[win.n]); win.n = 0; }
       if (!win.n) win.start = now;
       win.n++;
       if (win.n >= 5) {
-        for (const s of worn) s.wm = (s.wm || 1) * HIT_MULT[4];
+        for (const s of worn) s.wm = Math.min(WEAR_CAP, (s.wm || 1) * HIT_MULT[4]);
         const gone = [];
         for (const k of ['甲', '襯', '褲']) if (p.worn[k]) { gone.push(p.worn[k].n); p.worn[k] = null; }
         win.n = 0; this.barSig = '';
@@ -142,7 +157,9 @@
     }
     // 照明：手裡的火把或蠟燭、頭上的燈帽
     heldLight() { const s = this.held(); const it = s && ITEMS[s.n]; return it && it.light ? it.light : 0; }
-    lightRadius() { return Math.max(this.heldLight(), this.has('燈帽') ? ITEMS['燈帽'].light : 0); }
+    hat() { return this.player.bag.find(s => s.n === '燈帽') || null; }
+    hatLight() { const h = this.hat(); return h && h.fuel > 0 ? ITEMS['燈帽'].light : 0; }
+    lightRadius() { return Math.max(this.heldLight(), this.hatLight()); }
     hasLight() { return this.lightRadius() > 0; }
     torchLit() { return this.darkness() > 0.5 && this.hasLight(); }
     playerLight() { return 4.5 - 1.5 * this.darkness() + this.lightRadius(); }
@@ -216,6 +233,8 @@
         p.burn[hs.n] = (p.burn[hs.n] || 0) + dt;
         if (p.burn[hs.n] >= hit.life) { p.burn[hs.n] = 0; this.removeItem(hs.n, 1); this.message('一支' + hs.n + '燃盡了。'); }
       }
+      const hat = this.hat();
+      if (dark > 0.5 && hat && hat.fuel > 0) { hat.fuel = Math.max(0, hat.fuel - dt); if (hat.fuel <= 0) { this.toast('燈帽暗了', '蠟燭燒完了。選中蠟燭按 V 續上。'); this.barSig = ''; } }
       // 力：每兩息回一點；愜意：每十五息掉一點
       p.sta = Math.min(p.staMax, p.sta + 0.5 * m * dt);
       p.san = Math.max(0, p.san - dt / 15 * drain);
@@ -257,7 +276,7 @@
       if (this.ghostNight() && !p.warned['g' + nn]) { p.warned['g' + nn] = true; this.toast('第 ' + nn + ' 夜', '魄來了。穿牆，不怕磚；手裡有光六格內即煙滅。', 8000); }
       // 衣甲：一百八十日勻速穿破；挨打那一輪過了十五息，加速便固定下來
       const win = p.hitWin;
-      if (win.n && w.time - win.start > 15) { for (const s of this.wornList()) s.wm = (s.wm || 1) * HIT_MULT[win.n]; win.n = 0; }
+      if (win.n && w.time - win.start > 15) { for (const s of this.wornList()) s.wm = Math.min(WEAR_CAP, (s.wm || 1) * HIT_MULT[win.n]); win.n = 0; }
       const wearRate = HIT_MULT[win.n] || 1;
       for (const k of SLOT_ORDER) {
         const s = p.worn[k]; if (!s) continue;
@@ -318,17 +337,17 @@
     count(n) { let c = 0; for (const s of this.player.bag) if (s.n === n) c += s.c; return c; }
     canAdd(n, c) {
       c = c || 1; const bag = this.player.bag, it = G.item(n);
-      if (it && it.dur) return Math.max(0, c - (TOOL_SLOTS - this.player.tools.length)) + bag.length <= SLOTS;
+      if (it && (it.dur || it.single)) return Math.max(0, c - (it.dur ? TOOL_SLOTS - this.player.tools.length : 0)) + bag.length <= SLOTS;
       const day = n === '果' ? this.day() : undefined;
       for (const s of bag) if (s.n === n && s.d === day && s.c < STACK) c -= Math.min(c, STACK - s.c);
       return c <= 0 || bag.length + Math.ceil(c / STACK) <= SLOTS;
     }
     addItem(n, c, extra) {
       const bag = this.player.bag, it = G.item(n);
-      if ((it && it.dur) || (extra && extra.dur !== undefined)) {     // 工具與穿過的衣甲各佔一格
+      if ((it && (it.dur || it.single)) || (extra && extra.dur !== undefined)) {     // 工具、穿過的衣甲、燈帽各佔一格
         const tools = this.player.tools, isTool = this.isTool(n);
         while (c > 0 && isTool && tools.length < TOOL_SLOTS) { tools.push(Object.assign({ n, c: 1, dur: it.dur }, extra || {})); if (this.player.tool < 0) this.player.tool = tools.length - 1; c--; }
-        while (c > 0 && bag.length < SLOTS) { bag.push(Object.assign({ n, c: 1 }, it && it.dur ? { dur: it.dur } : {}, extra || {})); c--; }
+        while (c > 0 && bag.length < SLOTS) { bag.push(Object.assign({ n, c: 1 }, it && it.dur ? { dur: it.dur } : {}, it && it.single && it.fuel !== undefined ? { fuel: it.fuel } : {}, extra || {})); c--; }
         this.barSig = ''; return c;
       }
       const day = n === '果' ? (extra && extra.d !== undefined ? extra.d : this.day()) : undefined;
@@ -589,6 +608,11 @@
       const p = this.player, s = this.held(); if (!s || !this.canAct()) return;
       const it = G.item(s.n), f = it.food, tl = ITEMS[s.n] || {};
       if (tl.slot) { this.wearItem(p.sel); return; }
+      if (s.n === '蠟燭') {
+        const hat = this.hat();
+        if (hat && hat.fuel < HAT_FUEL) { this.removeItem('蠟燭', 1); hat.fuel = HAT_FUEL; this.barSig = ''; this.buildBag(); this.message('燈帽續上一根蠟燭：四百息。'); SFX.write(); return; }
+        this.message(hat ? '燈帽裡的蠟燭還是滿的。' : '蠟燭拿在手上就亮；有燈帽時按 V 可以續進去。'); return;
+      }
       if (s.n === '海水瓶') { this.message('海水鹹，喝不得。放在旺的灶上蒸餾。'); return; }
       if (!f) { this.message(tl.tool && tl.dur ? '「' + s.n + '」是工具，按 F 移進具欄。' : tl.tool || tl.kind === 'wear' ? '「' + s.n + '」在囊中即生效。' : '「' + s.n + '」不能吃，按 F 放到地上。'); return; }
       this.removeItem(s.n, 1);
@@ -655,11 +679,17 @@
       }
       if (!this.canAdd(out, n)) { this.message('囊已滿。'); SFX.fail(); return; }
       for (const m in r.need) this.removeItem(m, r.need[m]);
-      p.sta -= r.sta; this.addItem(out, n); this.afterCraft(r);
-      this.toast('造了「' + out + '」' + (n > 1 ? ' ×' + n : ''), G.item(out).flavor); SFX.fuse();
+      p.sta -= r.sta; this.addItem(out, n); const gain = this.afterCraft(r);
+      this.toast('造了「' + out + '」' + (n > 1 ? ' ×' + n : ''), G.item(out).flavor + '　愜意 +' + Math.round(gain * 10) / 10); SFX.fuse();
       this.buildCraft(); this.buildBag();
     }
-    afterCraft(r) { const p = this.player; p.san = Math.min(100, p.san + 8 * this.mult()); this.addCourage(r.sta); this.stats.crafted++; }
+    afterCraft(r) {
+      const p = this.player, now = this.world.time, e = p.craftLog[r.id], n = e && now - e.t <= 60 ? e.n + 1 : 1;
+      p.craftLog[r.id] = { t: now, n };
+      const gain = [8, 4, 2, 1][Math.min(n - 1, 3)] * this.mult();
+      p.san = Math.min(100, p.san + gain); this.addCourage(r.sta); this.stats.crafted++;
+      return gain;
+    }
 
     // ---------- 睡（R） ----------
     bedNear() { const p = this.player; for (const [dx, dy] of [[p.fx, p.fy]].concat(N8)) if (this.world.get(p.x + dx, p.y + dy) === '床') return true; return false; }
@@ -709,7 +739,7 @@
       if (!box) return;
       if (from === 'chest') {
         const s = box[i]; if (!s) return;
-        const left = this.addItem(s.n, s.c, { dur: s.dur, d: s.d, wm: s.wm });
+        const left = this.addItem(s.n, s.c, { dur: s.dur, d: s.d, wm: s.wm, fuel: s.fuel });
         if (left > 0) { s.c = left; this.message('囊裡放不下這麼多。'); } else box.splice(i, 1);
       } else {
         const s = p.bag[i]; if (!s) return;
@@ -793,7 +823,7 @@
     pickBag(t) {
       const k = U.key(t.x, t.y), items = this.world.bags.get(k) || [];
       const left = [];
-      for (const s of items) { const r = this.addItem(s.n, s.c, { dur: s.dur, d: s.d, wm: s.wm }); if (r > 0) left.push({ n: s.n, c: r, dur: s.dur, d: s.d, wm: s.wm }); }
+      for (const s of items) { const r = this.addItem(s.n, s.c, { dur: s.dur, d: s.d, wm: s.wm, fuel: s.fuel }); if (r > 0) left.push({ n: s.n, c: r, dur: s.dur, d: s.d, wm: s.wm, fuel: s.fuel }); }
       if (left.length) { this.world.bags.set(k, left); this.message('囊已滿，還有些東西留在荷包裡。'); }
       else { this.world.set(t.x, t.y, '白'); this.message('取回了荷包。'); }
       SFX.absorb();
@@ -893,6 +923,7 @@
       $('chest-close').addEventListener('click', () => this.closeChest());
       $('chest-take').addEventListener('click', () => this.takeChest());
       $('btn-pause').addEventListener('click', () => this.togglePause());
+      $('totemswitch').addEventListener('click', () => { if (!this.player.dead) this.toggleTotem(); });
       $('pause-resume').addEventListener('click', () => this.togglePause());
       $('btn-map').addEventListener('click', () => { if (this.userPaused || this.player.dead || this.player.knock > 0) return; $('journal').classList.add('hidden'); $('craft').classList.add('hidden'); this.toggleMap(); });
       $('minimap').addEventListener('click', () => $('btn-map').click());
@@ -920,9 +951,11 @@
           const it = G.item(s.n);
           let sub = '×' + s.c;
           if (s.dur !== undefined) sub = this.durText(s);
+          else if (s.fuel !== undefined) sub = s.fuel > 0 ? Math.ceil(s.fuel) + '息' : '滅';
           else if (s.d !== undefined) { const age = this.day() - s.d; sub = '×' + s.c + (age >= FERMENT_NIGHTS - 3 ? ' 將醉' : age >= 1 ? ' ' + age + '夜' : ''); }
           el.innerHTML = '<span class="num">' + (i < 9 ? i + 1 : '') + '</span><span class="ch' + (s.n.length > 1 ? ' word' : '') + '">' + s.n + '</span><span class="cost">' + sub + '</span>';
           if (s.dur !== undefined) el.innerHTML += '<i class="dur" style="width:' + Math.round(100 * s.dur / (it.dur || ARMOR_LIFE)) + '%"></i>';
+          else if (s.fuel !== undefined) el.innerHTML += '<i class="dur" style="width:' + Math.round(100 * s.fuel / HAT_FUEL) + '%"></i>';
           el.title = it.flavor;
         }
         el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; if (this.isTool(s.n) && this.equipFromBag(i)) return; p.sel = i; this.buildBag(); });
@@ -947,13 +980,16 @@
         for (const k of keys) {
           const s = p.worn[k], el = document.createElement('div');
           el.className = 'slot bag worn' + (s ? '' : ' empty');
-          if (s) { const rate = Math.round(this.wearRate(s) * 100) / 100; el.innerHTML = '<span class="ch word">' + s.n + '</span><span class="cost">' + this.effDays(s) + '日</span><i class="dur" style="width:' + Math.round(100 * s.dur / ARMOR_LIFE) + '%"></i>'; el.title = ITEMS[s.n].flavor + '（照目前損耗速度 ×' + rate + ' 還能穿 ' + this.effDays(s) + ' 日；點一下脫下）'; }
+          if (s) { const rate = Math.round(this.wearRate(s) * 100) / 100; el.innerHTML = '<span class="ch word">' + s.n + '</span><span class="cost">' + this.effDays(s) + '日</span><i class="dur" style="width:' + Math.round(100 * s.dur / ARMOR_LIFE) + '%"></i>'; el.title = ITEMS[s.n].flavor + '（照目前損耗速度 ×' + rate + ' 還能穿 ' + this.effDays(s) + ' 日；點一下脫下，右鍵修補：' + (ITEMS[s.n].iron ? '鐵' : '麻布') + '一、力 4）'; }
           else { el.innerHTML = '<span class="ch">' + k + '</span>'; el.title = '身上：' + k + '。囊裡選中衣甲按 F 穿上。'; }
-          el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (s) this.takeOff(k); });
+          el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; if (ev.button === 2) this.repairWorn(k); else this.takeOff(k); });
+          el.addEventListener('contextmenu', (ev) => ev.preventDefault());
           row.appendChild(el);
         }
       });
-      const on = this.totemOn();
+      const on = this.totemOn(), sw = $('totemswitch');
+      sw.classList.toggle('on', !p.totemOff); sw.classList.toggle('ready', this.totemReady());
+      sw.querySelector('.state').textContent = p.totemOff ? '關 · 普通服' : (this.totemReady() ? '開 · 山海衣' : '開（未齊）');
       $('wornstats').innerHTML = (on ? '<div class="totem">山海衣 · 獸紋已顯</div>' : '')
         + '<div><span>傷害獲取</span><b>' + Math.round(this.takenMult() * 100) + '%</b></div>'
         + '<div><span>移動速度</span><b>' + Math.round(this.ironSpeed() * 100) + '%</b></div>'
@@ -963,7 +999,8 @@
     updateHUD() {
       const p = this.player, w = this.world, t = this.facing();
       // 身上的四個數會隨膽氣、衣甲變，變了就重畫囊與身上
-      const ws = (this.totemOn() ? 1 : 0) + '|' + Math.round(this.takenMult() * 1000) + '|' + Math.round(this.dmgMult() * 1000) + '|' + Math.round(this.ironSpeed() * 1000) + '|' + this.wornList().map(s => this.effDays(s)).join(',');
+      const hat = this.hat();
+      const ws = (this.totemOn() ? 1 : 0) + (this.totemReady() ? 1 : 0) + '|' + (hat ? Math.ceil(hat.fuel / 10) : '') + '|' + Math.round(this.takenMult() * 1000) + '|' + Math.round(this.dmgMult() * 1000) + '|' + Math.round(this.ironSpeed() * 1000) + '|' + this.wornList().map(s => this.effDays(s)).join(',');
       if (ws !== this.wornSig) { this.wornSig = ws; this.barSig = ''; }
       if (this.barSig === '') this.buildBag();
       const sig = [Math.round(p.hp), Math.round(p.food), Math.round(p.warm), Math.round(p.sta), p.staMax, Math.round(p.san), this.shichen(), p.x, p.y, w.get(p.x, p.y), this.daylight() > 0.5, this.day(), w.tideName(), p.sailing].join('|');
@@ -1038,7 +1075,7 @@
       try {
         localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 5, seed: this.seed, savedAt: Date.now(), world: this.world.serialize(), ents: this.ents.serialize(),
           player: { x: p.x, y: p.y, fx: p.fx, fy: p.fy, hp: p.hp, food: p.food, warm: p.warm, sta: p.sta, staMax: p.staMax, san: p.san, cour: p.cour, bag: p.bag, sel: p.sel, home: p.home, readSteles: p.readSteles,
-            places: p.places, creatures: p.creatures, raftTaken: p.raftTaken, dragon: p.dragon, finished: p.finished, deaths: p.deaths, burn: p.burn, lastDay: p.lastDay, poisonT: p.poisonT, poisonPer: p.poisonPer, sailing: p.sailing, tools: p.tools, tool: p.tool, decayAt: p.decayAt, worn: p.worn, hitWin: p.hitWin }, stats: this.stats }));
+            places: p.places, creatures: p.creatures, raftTaken: p.raftTaken, dragon: p.dragon, finished: p.finished, deaths: p.deaths, burn: p.burn, lastDay: p.lastDay, poisonT: p.poisonT, poisonPer: p.poisonPer, sailing: p.sailing, tools: p.tools, tool: p.tool, decayAt: p.decayAt, worn: p.worn, hitWin: p.hitWin, totemOff: p.totemOff }, stats: this.stats }));
       } catch (err) { /* 隱私模式等情況下存不了，就算了 */ }
     }
     load(s) {
@@ -1046,13 +1083,14 @@
       this.world.restore(s.world || {});
       this.ents.restore(s.ents);
       const sp = s.player || {};
-      for (const k of ['x', 'y', 'fx', 'fy', 'hp', 'food', 'warm', 'sta', 'staMax', 'san', 'cour', 'bag', 'sel', 'home', 'readSteles', 'places', 'creatures', 'raftTaken', 'dragon', 'finished', 'deaths', 'burn', 'lastDay', 'poisonT', 'poisonPer', 'sailing', 'tools', 'tool', 'decayAt', 'worn', 'hitWin']) if (sp[k] !== undefined) p[k] = sp[k];
+      for (const k of ['x', 'y', 'fx', 'fy', 'hp', 'food', 'warm', 'sta', 'staMax', 'san', 'cour', 'bag', 'sel', 'home', 'readSteles', 'places', 'creatures', 'raftTaken', 'dragon', 'finished', 'deaths', 'burn', 'lastDay', 'poisonT', 'poisonPer', 'sailing', 'tools', 'tool', 'decayAt', 'worn', 'hitWin', 'totemOff']) if (sp[k] !== undefined) p[k] = sp[k];
       // 舊存檔裡已經不存在的東西丟掉，身上的衣甲要對得上格子
       const known = (s) => !!(s && G.item(s.n));
       p.bag = (p.bag || []).filter(known); p.tools = (p.tools || []).filter(known);
       if (p.tool >= p.tools.length) p.tool = p.tools.length - 1;
       const worn = {}; for (const k of SLOT_ORDER) { const s = p.worn && p.worn[k]; worn[k] = known(s) && ITEMS[s.n].slot === k ? s : null; } p.worn = worn;
       if (!p.hitWin || typeof p.hitWin.n !== 'number') p.hitWin = { start: -99, n: 0 };
+      for (const s of p.bag) if (s.n === '燈帽' && s.fuel === undefined) { s.fuel = HAT_FUEL; s.c = 1; }   // 舊存檔的燈帽補上蠟燭
       p.rx = p.x; p.ry = p.y; p.moveT = 0;
       Object.assign(this.stats, s.stats || {});
     }

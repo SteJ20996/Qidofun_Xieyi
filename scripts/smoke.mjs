@@ -159,6 +159,13 @@ const result = await page.evaluate(async () => {
   // 手持火把：六格內煙滅
   g.addItem('火把', 1); hold('火把'); await until(() => !g.ents.list.includes(gh), 4000);
   ok('held torch dispels a ghost within six tiles', !g.ents.list.includes(gh) && g.hasLight());
+  g.removeItem('火把', 9); hold('木'); g.addItem('燈帽', 1); const hat = p.bag.find(s => s.n === '燈帽');
+  ok('lamp hat comes with a 400-second candle and lights without being held', hat && hat.fuel === 400 && g.lightRadius() === 2, hat && hat.fuel);
+  hat.fuel = 0.3; await until(() => hat.fuel <= 0, 3000);
+  ok('when the candle burns out the hat goes dark', hat.fuel === 0 && g.lightRadius() === 0);
+  g.addItem('蠟燭', 1); hold('蠟燭'); g.useItem();
+  ok('a candle refills the hat', hat.fuel === 400 && g.count('蠟燭') === 0 && g.lightRadius() === 2);
+  g.removeItem('燈帽', 1); hold('木');
   // 白天：林裡凍住，林外煙滅
   w.time = DAY * 13 + DAY * 0.25;
   const g1 = g.ents.add('魄', p.x + 20, p.y + 20, { moveT: 99 }); w.set(p.x + 20, p.y + 20, '林');
@@ -217,6 +224,9 @@ const result = await page.evaluate(async () => {
   trim(['木', '石', '石子', '草', '土', '石劍', '石鎬', '磚']);
   p.san = 50; p.cour = 0; g.addItem('土', 2); g.addItem('草', 1); p.sta = 50; g.craft('brick');
   ok('crafting adds 8 sanity and courage equal to its stamina', p.san === 58 && p.cour === 3, [p.san, p.cour]);
+  g.addItem('土', 8); g.addItem('草', 4); p.sta = 100; const sg = [];
+  for (let i = 0; i < 4; i++) { const s0 = p.san; g.craft('brick'); sg.push(Math.round((p.san - s0) * 100) / 100); }
+  ok('repeating the same recipe within 60 s gives 4, 2, 1, 1 sanity', sg.join(',') === '4,2,1,1', sg);
   p.san = 0; await sleep(300);
   ok('zero sanity makes you insane with blue tint', p.insane && g.vignette().blue > 0.5);
   const ctrl0 = p.ctrl; p.ctrlT = 0; await sleep(200);
@@ -237,6 +247,10 @@ const result = await page.evaluate(async () => {
   ok('four cloth pieces worn: 8.5% less damage, no 山海衣 yet', Math.abs(g.armorRed() - 0.085) < 1e-9 && !g.totemOn() && g.wornList().length === 4 && g.dmgMult() === 1, g.armorRed());
   hold('布靴'); g.useItem();
   ok('fifth piece at level 10 wakes the 山海衣: attack ×1.15, taken ×1 (×0.9 from cloth)', g.totemOn() && Math.abs(g.armorRed() - 0.10) < 1e-9 && Math.abs(g.dmgMult() - 1.15) < 1e-9 && Math.abs(g.takenMult() - 0.9) < 1e-9, [g.dmgMult(), g.takenMult()]);
+  document.getElementById('totemswitch').click();
+  ok('the switch turns the 山海衣 off into plain clothes', p.totemOff && !g.totemOn() && g.totemReady() && g.dmgMult() === 1 && Math.abs(g.takenMult() - 0.9) < 1e-9);
+  document.getElementById('totemswitch').click();
+  ok('and back on', !p.totemOff && g.totemOn());
   p.cour = g.levelAt(17); ok('level 17: attack ×1.15², taken ÷1.15', Math.abs(g.dmgMult() - 1.15 * 1.15) < 1e-9 && Math.abs(g.takenMult() - 0.9 / 1.15) < 1e-9);
   p.cour = g.levelAt(24); ok('level 24: attack ×1.15³, taken ÷1.15²', Math.abs(g.dmgMult() - Math.pow(1.15, 3)) < 1e-9 && Math.abs(g.takenMult() - 0.9 / 1.15 / 1.15) < 1e-9);
   p.cour = g.levelAt(10); p.hp = 100; p.hitWin = { start: -99, n: 0 }; g.hit({ type: '虎', x: p.x + 1, y: p.y }, 20);
@@ -260,6 +274,10 @@ const result = await page.evaluate(async () => {
   ok('worn panel shows days left at the current wear rate', document.getElementById('worn1').textContent.indexOf(Math.ceil(vest.dur / 1.12 / DAY) + '日') >= 0, document.getElementById('worn1').textContent);
   for (let i = 0; i < 5; i++) g.hit({ type: '狼', x: p.x + 1, y: p.y }, 1);
   ok('five hits within 15 s shatter 甲, 襯 and 褲 but not 盔 and 靴', !p.worn['甲'] && !p.worn['襯'] && !p.worn['褲'] && p.worn['盔'] && p.worn['靴'] && !g.totemOn() && Math.abs(p.worn['盔'].wm - 1.12 * 1.5) < 1e-9, g.wornList().map(s => s.n + '@' + s.wm));
+  p.worn['盔'].wm = 5; p.hitWin = { start: w.time, n: 4 }; w.time += 16; await sleep(80);
+  ok('the wear multiplier caps at ×6', Math.abs(p.worn['盔'].wm - 6) < 1e-9 && p.hitWin.n === 0, p.worn['盔'].wm);
+  g.addItem('麻布', 1); p.sta = 50; g.repairWorn('盔');
+  ok('repairing with 麻布 restores 180 days and restarts wear at ×1.5', Math.round(p.worn['盔'].dur / DAY) === 180 && p.worn['盔'].wm === 1.5 && g.count('麻布') === 0 && p.sta === 46, [p.worn['盔'].wm, g.count('麻布')]);
   p.hp = 100; p.hurtT = 0; g.takeOff('盔'); g.takeOff('靴'); trim(['木', '石', '石子', '草', '土', '磚', '大船']);
   // 拆回自己放的東西不長膽氣；稻草人拆得回來
   p.cour = 0; face(0, -1); w.set(T().x, T().y, '土'); g.addItem('磚', 1); hold('磚'); g.pressPlace(); g.addItem('石鎬', 1); hold('石鎬'); g.action = null; g.pressGather(); await until(() => !g.action, 12000);
@@ -275,6 +293,8 @@ const result = await page.evaluate(async () => {
   ok('full iron: 30% less damage, poison immune, 25% slower, +5% attack, +8% drain', Math.abs(g.armorRed() - 0.30) < 1e-9 && g.ironFull() && Math.abs(g.ironSpeed() - 0.75) < 1e-9 && Math.abs(g.dmgMult() - 1.05) < 1e-9 && Math.abs(g.ironDrain() - 1.08) < 1e-9 && Math.abs(g.takenMult() - 0.7) < 1e-9, [g.armorRed(), g.dmgMult(), g.takenMult()]);
   p.poisonT = 0; p.poisonPer = 0; g.bite({ type: '蛇', x: p.x + 1, y: p.y }, 3);
   ok('iron-clad, a snake bite does not poison', p.poisonT === 0 && p.poisonPer === 0);
+  p.worn['甲'].wm = 3; g.addItem('鐵', 1); p.sta = 50; g.repairWorn('甲');
+  ok('iron pieces are repaired with 鐵', p.worn['甲'].wm === 1.5 && g.count('鐵') === 0);
   for (const k of ['襯', '甲', '褲', '盔', '靴']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚', '大船']); p.hitWin = { start: -99, n: 0 };
   // 煤與鐵：山裡有礦；礦二煤一入旺灶煉鐵；煤是好柴
   let coal = 0, iron = 0; for (let x = -60; x <= 60; x++) for (let y = -60; y <= 60; y++) { const b = w.base(x, y); if (b === '煤') coal++; else if (b === '鐵') iron++; }
@@ -379,6 +399,16 @@ const result = await page.evaluate(async () => {
   const dong = by('dong'); goNextTo(dong.x, dong.y); g.pressGather(); await sleep(30); await press('KeyE', 20);
   await until(() => p.creatures.indexOf('龍') >= 0, 4000);
   ok('洞 releases a dragon that follows', g.ents.list.some(e => e.type === '龍') && p.dragon && p.creatures.indexOf('龍') >= 0);
+  { const dr = g.ents.list.find(e => e.type === '龍'); setDay(0.75); hold('木'); g.removeItem('燈帽', 9);
+    const spot = [[6, 0], [-6, 0], [0, 6], [0, -6]].map(([dx, dy]) => [dr.x + dx, dr.y + dy]).find(([x, y]) => !w.lightNear(x, y, 7) && U.cheb(x, y, p.x, p.y) > 6);
+    if (spot) {
+      const dir = [Math.sign(spot[0] - dr.x), Math.sign(spot[1] - dr.y)];
+      const gh5 = g.ents.add('魄', dr.x + dir[0] * 5, dr.y + dir[1] * 5, { moveT: 99 }), gh4 = g.ents.add('魄', dr.x + dir[0] * 4, dr.y + dir[1] * 4, { moveT: 99 }); dr.moveT = 99;
+      await until(() => !g.ents.list.includes(gh4), 4000);
+      ok('the dragon dispels 魄 within four tiles, not five', !g.ents.list.includes(gh4) && g.ents.list.includes(gh5), [g.ents.list.includes(gh4), g.ents.list.includes(gh5)]);
+      g.ents.remove(gh5); dr.moveT = 0;
+    } else ok('the dragon dispels 魄 within four tiles, not five (no dark spot to test here)', true);
+  }
   const cun = by('cun'); const gx = cun.x + 2, gy = cun.y; w.set(gx, gy - 1, '草'); p.x = p.rx = gx; p.y = p.ry = gy - 1; face(0, 1);
   for (const pl of w.places) if (pl.id !== 'ta') p.places[pl.id] = 1;
   g.pressGather(); await sleep(30);

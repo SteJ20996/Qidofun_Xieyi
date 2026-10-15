@@ -151,7 +151,7 @@
         if (e.fade !== undefined && e.fade < 1) { e.fade -= dt * 1.2; if (e.fade <= 0) this.list.splice(i, 1); continue; }   // 正在煙滅
         if (e.type === '魄') {
           // 六格內有光即煙滅：地上的燈與火、玩家手裡的光、龍
-          const lit = w.lightNear(e.x, e.y, 6) || (g.hasLight() && d <= 6) || this.dragonNear(e.x, e.y, 6);
+          const lit = w.lightNear(e.x, e.y, 6) || (g.hasLight() && d <= 6) || this.dragonNear(e.x, e.y, 4);   // 龍只驅四格
           if (lit) { e.fade = 0.99; continue; }
           if (g.daylight() > 0.3) {
             if (FOREST.indexOf(w.get(e.x, e.y)) >= 0) { e.frozen = true; continue; }     // 白日藏於林中，不動
