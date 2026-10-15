@@ -212,6 +212,8 @@
           else if (hostile && d <= 6) { e.moveT = 0.35; this.stepTo(e, p.x, p.y, false, night); }
           else { e.moveT = 1 + Math.random() * 2; if (Math.random() < 0.4) this.wander(e, night, e.type === '蟾' ? '草沙土水' : null); }
         }
+        // 圖騰衣：七格內主動攻擊的獸行動慢一倍
+        if (g.totemNear && ('虎豹狼蛇'.indexOf(e.type) >= 0 || (e.angry && (e.type === '蛛' || e.type === '蟾'))) && g.totemNear(e.x, e.y)) e.moveT *= 2;
       }
     }
 

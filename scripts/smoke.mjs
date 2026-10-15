@@ -29,7 +29,9 @@ const result = await page.evaluate(async () => {
   const press = (code, ms) => { window.dispatchEvent(new KeyboardEvent('keydown', { code, bubbles: true })); return sleep(ms || 30).then(() => window.dispatchEvent(new KeyboardEvent('keyup', { code, bubbles: true }))); };
   const face = (dx, dy) => { p.fx = dx; p.fy = dy; };
   const T = () => ({ x: p.x + p.fx, y: p.y + p.fy });
-  const hold = (n) => { const i = p.bag.findIndex(s => s.n === n); p.sel = i < 0 ? 0 : i; return i >= 0; };
+  const hold = (n) => { const ti = p.tools.findIndex(s => s.n === n); if (ti >= 0) { p.tool = ti; return true; } const i = p.bag.findIndex(s => s.n === n); p.sel = i < 0 ? 0 : i; return i >= 0; };
+  const tool = (n) => p.tools.find(s => s.n === n);
+  const unarm = () => { p.tool = -1; };
   const bag = () => p.bag.map(s => s.n + '×' + s.c + (s.dur !== undefined ? '(' + s.dur + ')' : '')).join(',');
   const clearBag = () => { p.bag = []; p.sel = 0; };
   const trim = (keep) => { p.bag = p.bag.filter(s => keep.indexOf(s.n) >= 0); p.sel = 0; g.barSig = ''; };
@@ -74,8 +76,8 @@ const result = await page.evaluate(async () => {
   ok('door/bed/stove/torch/lamp crafted', g.count('門') === 1 && g.count('床') === 1 && g.count('灶') === 1 && g.count('火把') === 1 && g.count('燈') === 1, bag());
   g.removeItem('土', 99); g.removeItem('草', 99); g.removeItem('燈', 99); g.removeItem('火把', 99);   // 騰出格子，工具不疊
   g.craft('grind', '石劍'); g.craft('grind', '石鎬'); g.craft('grind', '石斧'); g.craft('grind', '石鋤');
-  const sword = p.bag.find(s => s.n === '石劍');
-  ok('grinding makes tools with durability', !!sword && sword.dur === 40 && g.has('石鎬') && g.has('石斧') && g.has('石鋤'), bag());
+  const sword = tool('石劍');
+  ok('grinding makes tools with durability and they go to the tool bar', !!sword && sword.dur === 40 && tool('石鎬') && tool('石斧') && tool('石鋤') && p.tools.length === 4 && !p.bag.some(s => s.dur !== undefined), bag());
   const staBefore = p.sta; p.sta = 2; const bricks = g.count('磚'); g.craft('brick');
   ok('crafting needs stamina', g.count('磚') === bricks && p.sta === 2); p.sta = staBefore;
   sword.dur = 5; hold('石劍'); const pebbles = g.count('石子'); g.craft('regrind');
@@ -83,15 +85,16 @@ const result = await page.evaluate(async () => {
   await press('KeyC', 20); await sleep(30);
   ok('craft panel opens with C and lists recipes', !hidden('craft') && document.querySelectorAll('#craft-list .recipe').length === G.RECIPES.length);
   ok('sixteen bag slots', document.querySelectorAll('#bagbar .slot').length === 16);
+  ok('six tool slots', document.querySelectorAll('#toolbar .slot').length === 6 && document.querySelectorAll('#toolbar .slot.sel').length === 1);
   await press('KeyC', 20); await sleep(30); ok('craft panel closes', hidden('craft'));
 
   // ============ C. 放置、擋路、灶、鋤、鎬 ============
   face(1, 0); w.set(T().x, T().y, '白'); hold('磚'); g.pressPlace();
-  ok('placed 磚 blocks beasts and ghosts', w.get(T().x, T().y) === '磚' && !g.ents.canStand('虎', T().x, T().y, true) && !g.ents.canStand('鬼', T().x, T().y, true) && !g.pass(T().x, T().y), w.get(T().x, T().y));
+  ok('placed 磚 blocks beasts and ghosts', w.get(T().x, T().y) === '磚' && !g.ents.canStand('虎', T().x, T().y, true) && !g.ents.canStand('狼', T().x, T().y, true) && !g.pass(T().x, T().y), w.get(T().x, T().y));
   face(0, -1); w.set(T().x, T().y, '草'); hold('門'); g.pressPlace();
   ok('cannot place on grass before clearing it', w.get(T().x, T().y) === '草');
   w.set(T().x, T().y, '土'); g.pressPlace();
-  ok('placed 門: player passes, ghosts do not', w.get(T().x, T().y) === '門' && g.pass(T().x, T().y) && !g.ents.canStand('鬼', T().x, T().y, true) && !g.ents.canStand('虎', T().x, T().y, true));
+  ok('placed 門: player passes, ghosts do not', w.get(T().x, T().y) === '門' && g.pass(T().x, T().y) && !g.ents.canStand('狼', T().x, T().y, true) && !g.ents.canStand('虎', T().x, T().y, true));
   face(-1, 0); w.set(T().x, T().y, '土'); hold('床'); g.pressPlace();
   const bed = T();
   ok('placed 床 sets home', w.get(bed.x, bed.y) === '床' && p.home && p.home.x === bed.x, p.home);
@@ -104,23 +107,23 @@ const result = await page.evaluate(async () => {
   ok('魚 on lit 灶 becomes 烤魚', g.count('烤魚') === 1 && g.count('魚') === 0, bag());
   p.food = 50; hold('烤魚'); g.useItem();
   ok('eating 烤魚 +40', Math.round(p.food) === 90 && g.count('烤魚') === 0, p.food);
-  w.set(stove.x, stove.y, '土'); hold('石鋤'); g.pressPlace();
-  ok('鋤 turns 土 into 田 and wears', w.get(stove.x, stove.y) === '田' && p.bag.find(s => s.n === '石鋤').dur === 39);
+  w.set(stove.x, stove.y, '土'); hold('石鋤'); g.action = null; g.pressGather();
+  ok('鋤 in hand turns 土 into 田 with E and wears', w.get(stove.x, stove.y) === '田' && tool('石鋤').dur === 39 && !g.action);
   w.set(stove.x, stove.y, '山'); hold('石鎬'); g.action = null; g.pressGather(); await until(() => !g.action, 12000);
   ok('鎬 mines 山 into 石 and yields 石×2', w.get(stove.x, stove.y) === '石' && g.count('石') >= 2, [w.get(stove.x, stove.y), g.count('石')]);
   w.set(stove.x, stove.y, '木'); hold('石斧'); g.action = null; g.pressGather();
   ok('斧 halves wood time', g.action && Math.abs(g.action.dur - 0.7) < 0.01, g.action && g.action.dur); g.action = null;
 
   // ============ D. 戰鬥 ============
-  hold('石劍'); const sd0 = p.bag.find(s => s.n === '石劍').dur;
+  hold('石劍'); const sd0 = tool('石劍').dur;
   face(0, 1); w.set(T().x, T().y, '草'); g.ents.list = g.ents.list.filter(e => e.type !== '虎');
   const tiger = g.ents.add('虎', T().x, T().y, { calm: 9, moveT: 9 });
   g.pressGather(); ok('sword hits tiger for 2', tiger.hp === 1, tiger.hp);
   g.pressGather(); ok('attack has a cooldown', tiger.hp === 1); p.atkT = 0; tiger.x = T().x; tiger.y = T().y;
-  g.pressGather(); ok('second blow kills the tiger, 肉×3, sword wears 2', !g.ents.list.includes(tiger) && g.count('肉') === 3 && p.bag.find(s => s.n === '石劍').dur === sd0 - 2, bag());
+  g.pressGather(); ok('second blow kills the tiger, 肉×3, sword wears 2', !g.ents.list.includes(tiger) && g.count('肉') === 3 && tool('石劍').dur === sd0 - 2, bag());
   const deer = g.ents.add('鹿', T().x, T().y, { calm: 9, moveT: 9 }); p.atkT = 0; g.pressGather();
   ok('one blow kills a deer, 肉×2', !g.ents.list.includes(deer) && g.count('肉') === 5, g.count('肉'));
-  const deer2 = g.ents.add('鹿', T().x, T().y, { calm: 9, moveT: 9 }); hold('木'); p.atkT = 0; g.pressGather();
+  const deer2 = g.ents.add('鹿', T().x, T().y, { calm: 9, moveT: 9 }); hold('木'); unarm(); p.atkT = 0; g.pressGather();
   ok('bare hands cannot attack', g.ents.list.includes(deer2) && deer2.hp === 1); g.ents.remove(deer2);
 
   // ============ E. 睡覺、發酵、醉果 ============
@@ -218,11 +221,39 @@ const result = await page.evaluate(async () => {
   p.san = 12; await sleep(200);
   ok('sanity above ten restores control', !p.insane && p.ctrl);
   // 膽氣：每 20 點一重，回復倍率
-  p.cour = 40; g.addCourage(0);
+  p.cour = 45; g.addCourage(0);
   ok('courage level 2 gives 1.2x recovery', g.level() === 2 && Math.abs(g.mult() - 1.2) < 1e-9);
+  ok('level thresholds grow as 20×(1+0.1n)²', g.levelCost(0) === 20 && g.levelCost(1) === 24.2 && g.levelCost(2) === 28.8 && g.levelCost(3) === 33.8 && g.levelCost(4) === 39.2 && g.levelAt(1) === 20 && g.levelAt(2) === 44.2 && g.levelAt(8) === 300 && g.levelAt(10) === 437, [g.levelAt(8), g.levelAt(10), g.levelAt(31)]);
   ok('ship recipe locked below level 8', (() => { g.addItem('木板', 12); g.addItem('船槳', 2); g.addItem('船帆', 1); p.sta = 100; g.craft('ship'); return g.count('大船') === 0; })());
-  p.cour = 160; g.craft('ship');
-  ok('ship craftable at level 8', g.count('大船') === 1 && g.level() >= 8, [g.count('大船'), g.level()]);
+  p.cour = 300; g.craft('ship');
+  ok('ship craftable at level 8', g.count('大船') === 1 && g.level() === 8, [g.count('大船'), g.level()]);
+  p.cour = g.levelAt(9); ok('no damage ladder below level 10', g.dmgMult() === 1 && g.takenMult() === 1 && !g.totemOn());
+  p.cour = g.levelAt(10); ok('level 10: damage ×1.25, damage taken ×0.8', g.dmgMult() === 1.25 && Math.abs(g.takenMult() - 0.8) < 1e-9);
+  p.cour = g.levelAt(17); ok('level 17: ×1.5625 and ×0.64', Math.abs(g.dmgMult() - 1.5625) < 1e-9 && Math.abs(g.takenMult() - 0.64) < 1e-9);
+  p.cour = g.levelAt(10); g.addItem('衣', 1); g.addItem('麻布', 2); g.addItem('石子', 4); p.sta = 100; g.craft('totem');
+  ok('totem garb craftable at level 10', g.has('圖騰衣') && g.totemOn(), bag());
+  p.hp = 100; g.hit({ type: '虎', x: p.x + 1, y: p.y }, 20);
+  ok('near the totem beasts hit 5/3 harder, player takes ×0.8', Math.abs(p.hp - (100 - 20 * 5 / 3 * 0.8)) < 0.1, p.hp);
+  w.set(p.x + 3, p.y, '草'); const tt = g.ents.add('虎', p.x + 3, p.y, { moveT: 0, calm: 0, atk: 0 }); g.ents.update(0.01, g);
+  ok('near the totem hostile beasts move at half speed', Math.abs(tt.moveT - 0.6) < 1e-6, tt.moveT); g.ents.remove(tt);
+  g.removeItem('圖騰衣', 1); p.hp = 100; g.hit({ type: '虎', x: p.x + 1, y: p.y }, 20);
+  ok('without the garb only the ladder applies', Math.abs(p.hp - 84) < 0.1, p.hp); p.hurtT = 0;
+  p.cour = g.levelAt(33) + 5; p.decayAt = 0; await sleep(150);
+  ok('above level 31 a three-day decay timer starts', g.level() === 33 && p.decayAt > w.time && !hidden('courdecay'), [g.level(), p.decayAt - w.time]);
+  w.time = p.decayAt + 0.5; await sleep(150);
+  ok('three days later courage drops one level', g.level() === 32 && toasts().indexOf('膽氣衰減') >= 0, g.level());
+  w.time = p.decayAt + 0.5; await sleep(150);
+  ok('but never below level 31', g.level() === 31 && p.decayAt === 0 && hidden('courdecay'), g.level());
+  p.cour = 0; p.decayAt = 0;
+  document.getElementById('btn-pause').click(); const tp = w.time; await sleep(150);
+  ok('pause button stops the world', g.paused && !hidden('pause') && w.time === tp);
+  await press('Escape', 20); await sleep(60);
+  ok('Esc resumes', !g.paused && hidden('pause'));
+  document.getElementById('btn-map').click(); await sleep(60); const mo = !hidden('map'); document.getElementById('map-close').click(); await sleep(30);
+  ok('map button opens the big map', mo && hidden('map'));
+  const tl0 = p.tool; await press('KeyP', 20); await sleep(30);
+  ok('P cycles the tool in hand', p.tools.length > 0 && p.tool !== tl0, [tl0, p.tool]); hold('石劍');
+  ok('vital bars keep the same margin top and bottom', document.getElementById('hpfill').style.getPropertyValue('--p') !== '' && getComputedStyle(document.getElementById('hpfill')).height !== '');
   // 力：取一次 −1，打一下 −1，力盡掉血
   p.cour = 0; p.sta = 50; hold('木'); face(0, 1); w.set(T().x, T().y, '草'); g.action = null; g.pressGather(); await until(() => !g.action, 4000);
   ok('gathering costs one stamina', p.sta < 49.9 && p.sta > 48, p.sta);

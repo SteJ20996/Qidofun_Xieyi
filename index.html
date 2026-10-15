@@ -26,12 +26,14 @@
     <div id="status"></div>
     <div id="mapwrap" title="膽氣：採集、製作、擊敗野獸都會長；滿一圈升一重，回復更快"><canvas id="minimap" width="150" height="150"></canvas></div>
     <div id="courlabel">膽氣 · 初</div>
+    <div id="courdecay" class="hidden"></div>
+    <div class="hudbtns"><button id="btn-pause" title="暫停／繼續（Esc）">暫停</button><button id="btn-map" title="放大地圖（M）">放大地圖</button></div>
   </div>
   <div id="toasts"></div>
   <div id="bottom">
     <div id="msg"></div>
-    <div class="rowline"><span class="rowlabel">囊</span><div id="bagbar"></div></div>
-    <div id="keys">WASD 走 · <kbd>E</kbd> 取／攻擊 · <kbd>F</kbd> 放／用 · <kbd>V</kbd> 吃 · <kbd>C</kbd> 製作 · <kbd>R</kbd> 睡 · 1-9 選 · <kbd>M</kbd> 地圖 · <kbd>J</kbd> 見聞 · <kbd>N</kbd> 靜音 · <kbd>H</kbd> 幫助</div>
+    <div class="rowline"><span class="rowlabel" title="具欄：工具放這裡，P 換手持">具</span><div id="toolbar"></div><span class="rowlabel">囊</span><div id="bagbar"></div></div>
+    <div id="keys">WASD 走 · <kbd>E</kbd> 取／攻擊 · <kbd>F</kbd> 放／用 · <kbd>V</kbd> 吃 · <kbd>C</kbd> 製作 · <kbd>R</kbd> 睡 · <kbd>P</kbd> 換工具 · 1-9 選 · <kbd>M</kbd> 地圖 · <kbd>J</kbd> 見聞 · <kbd>Esc</kbd> 暫停 · <kbd>N</kbd> 靜音 · <kbd>H</kbd> 幫助</div>
   </div>
 </div>
 
@@ -45,7 +47,8 @@
         <p><b>取</b>：面向一個字按 <kbd>E</kbd>，按住可連取。樹得木，野棉得棉，碎石地得石子，石地得石。山與磊要用鎬。</p>
         <p><b>製作</b>：按 <kbd>C</kbd>，每樣東西都要力氣。磚＝土二草一；門＝木三；床＝棉六木二；灶＝石六；火把＝木一草二；燈＝石二火把一。</p>
         <p><b>磨礪</b>：石一、石子一、木一，選方向：刀、鎬、鋤、劍、斧。工具有耐久，鈍了用石子重磨。</p>
-        <p><b>放</b>：選中囊裡的東西，面向地面按 <kbd>F</kbd>。磚與門擋得住獸，魄則穿牆而過，只怕光。魚、肉、蛇肉、蟾蜍放在旺的灶上會烤熟；沙三燒成瓶；海水瓶蒸餾成淡水；木放在灶上是添柴。鋤面向土按 F，鋤成田。</p>
+        <p><b>放</b>：選中囊裡的東西，面向地面按 <kbd>F</kbd>。磚與門擋得住獸，魄則穿牆而過，只怕光。魚、肉、蛇肉、蟾蜍放在旺的灶上會烤熟；沙三燒成瓶；海水瓶蒸餾成淡水；木放在灶上是添柴。</p>
+        <p><b>具</b>：囊左邊六格是具欄，磨出的工具放這裡，<kbd>P</kbd> 輪流換手持（含空手）。囊裡的工具點一下或按 F 移進具欄，具欄的工具按右鍵移回囊。鋤在手，面向土或草按 <kbd>E</kbd>，鋤成田。</p>
         <p><b>探索</b>：地圖只畫走過的地方（<kbd>M</kbd>）。登塔可見全圖。島上八處地方各留了一段話，面向村口的門按 E 可問路。退潮時沙路通往島外的燈。</p>
       </div>
       <div>
@@ -56,7 +59,7 @@
           <li><b>暖</b>：夜裡冷，雪上與水中更冷。灶邊、火把、棉衣。</li>
           <li><b>力</b>：每兩息回一點，取一次、打一下各耗一點，製作另計。力盡則每秒掉兩滴血。睡一覺全回；讀碑上限 +10。</li>
           <li><b>愜意</b>：每十五息掉一點。製作 +8、睡床 +20、果酒 +20、烤蟾蜍 +10、讀地標 +10；每分鐘聽見鹿呦、鳥鳴、海浪各 +1。歸零則神志不清：時而能走時而亂走，畫面泛藍。</li>
-          <li><b>膽氣</b>：採集、製作、擊敗野獸都會長，右上地圖一圈一重，膽氣越高血、力、愜意回得越快（十重兩倍）。死則歸零。八重可造大船。</li>
+          <li><b>膽氣</b>：採集、製作、擊敗野獸都會長，右上地圖一圈一重，膽氣越高血、力、愜意回得越快（十重兩倍）。每一重要得比上一重多：20、24.2、28.8、33.8、39.2……死則歸零。八重可造大船；十重起造成的傷害 ×1.25、受到的 ×0.8，此後每七重再乘一次；十重可造圖騰衣，七格內主動攻擊的獸行動慢一倍、下口卻狠三分之二。過了卅一重，三日一減，不低於卅一重。</li>
           <li><b>毒</b>：蛇與蜘蛛咬人，五秒內每秒三滴，六秒內連咬十五口必死；畫面泛綠。藥可解毒。生吃蟾蜍也中毒。</li>
           <li><b>魄</b>：第十三夜起夜行，穿牆，不傷身而蝕心：四格內無光，愜意每秒 −3、力 −2。手持火把或蠟燭、戴燈帽、地上有燈，六格內即煙滅。白日藏於林中。</li>
           <li><b>睡</b>：夜裡面向床按 <kbd>R</kbd>，一覺到天明；附近有魄睡不著。醉果吃了昏迷一刻，周圍照常。</li>
@@ -126,6 +129,14 @@
     <p class="lore" id="voyage-text"></p>
     <div class="row"><button id="voyage-new">再來一座島</button><button id="voyage-back" class="ghost">回頭</button></div>
     <p class="dim small">再來一座島會帶著膽氣，其餘重新開始。</p>
+  </div>
+</div>
+
+<div id="pause" class="overlay hidden">
+  <div class="panel title">
+    <h1><span>暫</span><span>停</span></h1>
+    <p class="dim small">島上的一切都停了。按 <kbd>Esc</kbd> 或點「繼續」回去。</p>
+    <div class="row"><button id="pause-resume">繼續</button></div>
   </div>
 </div>
 

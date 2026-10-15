@@ -16,4 +16,4 @@
 ## 位置
 - 分支 `claude/xieyi-open-world`，PR #1。
 - 規則表：`src/glyphs.js`（`DB` 字庫與取物、`ITEMS` 物品與工具、`RECIPES` 配方、`PLACES` 地標、`STELES` 碑文）。
-- 數值：`src/game.js` 頂部常數（`GHOST_NIGHT`=13、`FERMENT_NIGHTS`=15、`SLOTS`=16、`SHIP_LEVEL`=8、`LEVEL_PTS`=20）與 `updateStats`。
+- 數值：`src/game.js` 頂部常數（`GHOST_NIGHT`=13、`FERMENT_NIGHTS`=15、`SLOTS`=16、`TOOL_SLOTS`=6、`SHIP_LEVEL`=8、`TOTEM_LEVEL`=10、`DECAY_LEVEL`=31、`LEVEL_UNIT`=20 與 `levelCost(n)`=20×(1+0.1n)²）與 `updateStats`。

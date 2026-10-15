@@ -23,7 +23,7 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 /* 墨量與生存：幾條豎著的條 */
 #vitals { position: absolute; left: calc(24px + env(safe-area-inset-left, 0px)); top: calc(110px + env(safe-area-inset-top, 0px)); display: flex; gap: 24px; align-items: flex-start; }
 .bar { position: relative; width: 22px; height: 180px; border: 2px solid rgba(28,26,23,.75); border-radius: 12px; background: rgba(239,229,207,.5); overflow: visible; }
-.bar > div { position: absolute; left: 3px; right: 3px; bottom: 3px; height: 30%; border-radius: 9px; transition: height .25s ease; opacity: .88; }
+.bar > div { position: absolute; left: 3px; right: 3px; bottom: 3px; height: calc((100% - 6px) * var(--p, 0.3)); border-radius: 9px; transition: height .25s ease; opacity: .88; }
 .bar > span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 6px; width: 44px; text-align: center; line-height: 1.15; font: 15px/1.15 var(--font); color: var(--ink); background: rgba(239,229,207,.55); padding: 3px 0; border-radius: 4px; }
 #inkfill { background: linear-gradient(180deg, #3a3530, var(--ink)); }
 
@@ -41,11 +41,19 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 #mapwrap { --cour: 0%; width: 166px; height: 166px; border-radius: 50%; padding: 8px; background: conic-gradient(var(--red) var(--cour), rgba(28,26,23,.18) 0); box-shadow: 0 2px 6px rgba(0,0,0,.15); }
 #minimap { display: block; width: 150px; height: 150px; border-radius: 50%; border: 2px solid var(--ink); background: var(--paper); image-rendering: pixelated; }
 #courlabel { font: 15px var(--font); color: var(--ink-2); background: rgba(239,229,207,.75); padding: 2px 10px; border-radius: 3px; }
+#courdecay { font: 13px var(--font); color: var(--red-2); background: rgba(239,229,207,.75); padding: 1px 8px; border-radius: 3px; }
+#courdecay.hidden { display: none; }
+.hudbtns { display: flex; gap: 6px; }
+.hudbtns button { font: 14px var(--font); padding: 4px 12px; }
+#minimap { cursor: zoom-in; }
 
 #bottom { position: absolute; left: 0; right: 0; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: flex; flex-direction: column; align-items: center; gap: 8px; }
 #msg { min-height: 24px; max-width: 90vw; font: 16px/1.5 var(--font); color: var(--ink); background: rgba(239,229,207,.8); padding: 3px 14px; border-radius: 4px; border: 1px solid rgba(28,26,23,.25); }
 #msg b { font-size: 19px; } #msg i { color: var(--red-2); font-style: normal; } #msg i.fire { color: var(--red); }
-.rowline { display: flex; align-items: center; gap: 8px; }
+.rowline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
+#toolbar { display: flex; gap: 6px; align-items: stretch; padding: 4px; border-radius: 8px; border: 1px dashed rgba(74,66,56,.35); background: rgba(226,214,186,.35); margin-right: 10px; }
+.slot.tool { background: rgba(232,220,192,.9); }
+.slot.tool.sel { background: #f2e4c4; }
 .rowlabel { font: 18px var(--font); color: var(--dim); width: 22px; text-align: center; }
 #hotbar, #bagbar { display: flex; gap: 6px; align-items: stretch; padding: 4px; border-radius: 8px; border: 1px dashed transparent; }
 #hotbar.active, #bagbar.active { border-color: rgba(180,57,42,.6); background: rgba(239,229,207,.35); }

@@ -7,7 +7,11 @@
   const SHICHEN = '子丑寅卯辰巳午未申酉戌亥';
   const DIRS = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] };
   const N8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
-  const SLOTS = 16, STACK = 64, CHEST_SLOTS = 24, GHOST_NIGHT = 13, FERMENT_NIGHTS = 15, SHIP_LEVEL = 8, LEVEL_PTS = 20;
+  const SLOTS = 16, STACK = 64, CHEST_SLOTS = 24, TOOL_SLOTS = 6, GHOST_NIGHT = 13, FERMENT_NIGHTS = 15, SHIP_LEVEL = 8, TOTEM_LEVEL = 10, DECAY_LEVEL = 31, DECAY_DAYS = 3;
+  // 膽氣：第 n 重升到 n+1 重要 20×(1+0.1n)² 點：20、24.2、28.8、33.8、39.2……八重共 300，十重 437，卅一重 4371
+  const LEVEL_UNIT = 20;
+  const levelCost = (n) => Math.round(LEVEL_UNIT * (1 + 0.1 * n) * (1 + 0.1 * n) * 100) / 100;
+  const CUM = [0]; for (let n = 0; n < 120; n++) CUM.push(Math.round((CUM[n] + levelCost(n)) * 100) / 100);
   const $ = (id) => document.getElementById(id);
 
   class Game {
@@ -20,9 +24,9 @@
       this.mapAcc = 0;
       this.player = { x: 0, y: 0, rx: 0, ry: 0, fx: 0, fy: 1, fromX: 0, fromY: 0, moveT: 0, stepDur: 0.2,
         hp: 100, food: 100, warm: 100, sta: 100, staMax: 100, san: 100, cour: 0,
-        hurtT: 0, atkT: 0, bag: [], sel: 0, home: null, readSteles: [], places: {}, creatures: [], raftTaken: false, dragon: false, finished: false,
+        hurtT: 0, atkT: 0, bag: [], sel: 0, tools: [], tool: -1, home: null, readSteles: [], places: {}, creatures: [], raftTaken: false, dragon: false, finished: false,
         deaths: 0, dead: false, warned: {}, burn: {}, lastDay: 1,
-        poisonT: 0, poisonPer: 0, biteN: 0, biteLast: -99, zeroSan: 0, insane: false, ctrl: true, ctrlT: 0, knock: 0, sailing: false, crossed: false };
+        poisonT: 0, poisonPer: 0, biteN: 0, biteLast: -99, zeroSan: 0, insane: false, ctrl: true, ctrlT: 0, knock: 0, sailing: false, crossed: false, decayAt: 0 };
       this.stats = { gathered: 0, crafted: 0, kills: 0, read: 0, nights: 0, bites: 0 };
       this.keys = new Set();
       this.action = null;
@@ -31,7 +35,7 @@
       this.saveAcc = 0; this.sanAcc = 0;
       this.last = 0;
       this.msgText = ''; this.hudSig = ''; this.barSig = ''; this.courSig = '';
-      this.chestAt = null;
+      this.chestAt = null; this.userPaused = false;
       this.spawn = this.world.findSpawn();
       if (save) this.load(save);
       else {
@@ -53,11 +57,33 @@
     ghostNight() { return this.darkness() > 0.5 && this.nightNo() >= GHOST_NIGHT; }
     ghostCap() { return Math.min(6, 2 + Math.floor((this.nightNo() - GHOST_NIGHT) / 2)); }
     shichen() { const hour = (6 + this.dayT() * 24) % 24; return SHICHEN[Math.floor(((hour + 1) % 24) / 2)] + '時'; }
-    level() { return Math.floor(this.player.cour / LEVEL_PTS); }
+    level() { const c = this.player.cour; let l = 0; while (l + 1 < CUM.length && c >= CUM[l + 1]) l++; return l; }
+    levelAt(l) { return CUM[Math.max(0, Math.min(CUM.length - 1, l))]; }     // 到第 l 重要累積多少膽氣
+    levelCost(n) { return levelCost(n); }
+    levelFrac() { const l = this.level(); return U.clamp((this.player.cour - CUM[l]) / levelCost(l), 0, 1); }
     mult() { return 1 + Math.min(10, this.level()) / 10; }                 // 膽氣越高回得越快，十重兩倍
+    ladder() { const l = this.level(); return l >= TOTEM_LEVEL ? Math.floor((l - TOTEM_LEVEL) / 7) + 1 : 0; }   // 十重一檔，之後每七重一檔
+    dmgMult() { return Math.pow(1.25, this.ladder()); }                     // 造成的傷害
+    takenMult() { return Math.pow(0.8, this.ladder()); }                    // 受到的傷害
+    totemOn() { return this.level() >= TOTEM_LEVEL && this.has('圖騰衣'); }
+    totemNear(x, y) { return this.totemOn() && U.cheb(x, y, this.player.x, this.player.y) <= 7; }
     addCourage(n) {
       const p = this.player, l0 = this.level(); p.cour += n;
-      if (this.level() > l0) { this.toast('膽氣長了一重', '第 ' + this.level() + ' 重：血、力、愜意回得快 ' + Math.round(this.mult() * 100) / 100 + ' 倍' + (this.level() >= SHIP_LEVEL ? '。可以造大船了。' : '。')); SFX.learn(); }
+      const l = this.level();
+      if (l > l0) {
+        let extra = '';
+        if (l === SHIP_LEVEL) extra = '可以造大船了。';
+        else if (l === TOTEM_LEVEL) extra = '可以造圖騰衣了。此後造成的傷害 ×1.25、受到的 ×0.8，每七重再乘一次。';
+        else if (l > TOTEM_LEVEL && (l - TOTEM_LEVEL) % 7 === 0) extra = '傷害再乘 1.25，受傷再乘 0.8。';
+        else if (l === DECAY_LEVEL + 1) extra = '過了卅一重，三日一減，不低於卅一重。';
+        this.toast('膽氣長了一重', '第 ' + l + ' 重：回復 ' + Math.round(this.mult() * 100) / 100 + ' 倍。' + extra); SFX.learn();
+      }
+    }
+    decayCourage() {
+      const p = this.player, l = this.level(); if (l <= DECAY_LEVEL) return;
+      const frac = (p.cour - CUM[l]) / levelCost(l);
+      p.cour = Math.min(CUM[l] - 1, Math.floor(CUM[l - 1] + frac * levelCost(l - 1)));
+      this.toast('膽氣衰減', '過了卅一重，三日一減：現在第 ' + this.level() + ' 重。', 6000);
     }
     // 照明：手裡的火把或蠟燭、頭上的燈帽
     heldLight() { const s = this.held(); const it = s && ITEMS[s.n]; return it && it.light ? it.light : 0; }
@@ -124,7 +150,7 @@
         dw = dark > 0.5 ? -0.7 : 1.5;
         if (tile === '雪') dw -= 1.2;
         if (td.kind === 'water') dw -= 1.0;
-        if (dw < 0) { if (this.has('衣')) dw *= 0.5; if (this.torchLit()) dw *= 0.4; }
+        if (dw < 0) { if (this.has('衣') || this.has('圖騰衣')) dw *= 0.5; if (this.torchLit()) dw *= 0.4; }
       }
       p.warm = U.clamp(p.warm + dw * dt, 0, 100);
       if (w.nearChar(p.x, p.y, '泉', 1)) { p.hp = Math.min(100, p.hp + 2 * dt); p.warm = Math.min(100, p.warm + 1.5 * dt); }
@@ -173,6 +199,11 @@
       const nn = this.nightNo();
       if (nn === GHOST_NIGHT - 1 && dark > 0.5 && !p.warned.eve) { p.warned.eve = true; this.toast('第十二夜', '明晚起，魄夜行。備好火把、蠟燭或燈帽。', 8000); }
       if (this.ghostNight() && !p.warned['g' + nn]) { p.warned['g' + nn] = true; this.toast('第 ' + nn + ' 夜', '魄來了。穿牆，不怕磚；手裡有光六格內即煙滅。', 8000); }
+      // 膽氣過了卅一重，三日一減，不低於卅一重
+      if (this.level() > DECAY_LEVEL) {
+        if (!p.decayAt) p.decayAt = w.time + DECAY_DAYS * DAY;
+        else if (w.time >= p.decayAt) { this.decayCourage(); p.decayAt = w.time + DECAY_DAYS * DAY; }
+      } else p.decayAt = 0;
       // 渡海：開到海的盡頭
       if (p.sailing && !p.crossed && Math.hypot(p.x, p.y) > G.ISLAND_R + 20) this.crossSea();
       if (p.hp <= 0) this.die(p.food <= 0 ? '餓' : p.warm <= 0 ? '凍' : p.sta <= 0 ? '累' : p.poisonT > 0 ? '毒' : '傷');
@@ -180,14 +211,15 @@
     die(cause) {
       const p = this.player, w = this.world;
       p.dead = true; p.deaths++; p.knock = 0; $('knock').classList.add('hidden');
-      if (p.bag.length) {
+      const drop = p.bag.concat(p.tools);
+      if (drop.length) {
         let spot = null;
         for (const [dx, dy] of [[0, 0]].concat(N8)) {
           const x = p.x + dx, y = p.y + dy, d = w.info(x, y);
           if (d.walk > 0 && d.kind !== 'object' && d.kind !== 'place' && !w.stele(x, y)) { spot = [x, y]; break; }
         }
-        if (spot) { w.set(spot[0], spot[1], '囊'); w.bags.set(U.key(spot[0], spot[1]), p.bag); }
-        p.bag = [];
+        if (spot) { w.set(spot[0], spot[1], '囊'); w.bags.set(U.key(spot[0], spot[1]), drop); }
+        p.bag = []; p.tools = []; p.tool = -1;
       }
       this.paused = true;
       $('dead-text').innerHTML = '第 ' + this.day() + ' 日，你' + ({ '餓': '餓死了', '凍': '凍死了', '傷': '傷重而亡', '毒': '毒發身亡', '累': '力竭而亡' })[cause] + '。<br>囊落在原地，可以回去取。膽氣歸零。';
@@ -199,7 +231,7 @@
       const h = p.home, homeOk = h && w.get(h.x, h.y) === '床';
       const at = homeOk ? this.freeNear(h.x, h.y) : this.spawn;
       p.x = p.rx = at.x; p.y = p.ry = at.y; p.moveT = 0;
-      p.hp = 60; p.food = 60; p.warm = 60; p.sta = p.staMax; p.san = Math.max(p.san, 50); p.cour = 0;
+      p.hp = 60; p.food = 60; p.warm = 60; p.sta = p.staMax; p.san = Math.max(p.san, 50); p.cour = 0; p.decayAt = 0;
       p.hurtT = 0; p.dead = false; p.warned = {}; p.poisonT = 0; p.poisonPer = 0; p.biteN = 0; p.insane = false; p.ctrl = true; p.zeroSan = 0; p.sailing = false; p.crossed = false;
       this.action = null;
       w.time = Math.floor(w.time / DAY) * DAY + DAY * 1.03;
@@ -216,14 +248,19 @@
     count(n) { let c = 0; for (const s of this.player.bag) if (s.n === n) c += s.c; return c; }
     canAdd(n, c) {
       c = c || 1; const bag = this.player.bag, it = G.item(n);
-      if (it && it.dur) return bag.length + c <= SLOTS;
+      if (it && it.dur) return Math.max(0, c - (TOOL_SLOTS - this.player.tools.length)) + bag.length <= SLOTS;
       const day = n === '果' ? this.day() : undefined;
       for (const s of bag) if (s.n === n && s.d === day && s.c < STACK) c -= Math.min(c, STACK - s.c);
       return c <= 0 || bag.length + Math.ceil(c / STACK) <= SLOTS;
     }
     addItem(n, c, extra) {
       const bag = this.player.bag, it = G.item(n);
-      if (it && it.dur) { while (c > 0 && bag.length < SLOTS) { bag.push(Object.assign({ n, c: 1, dur: it.dur }, extra || {})); c--; } this.barSig = ''; return c; }
+      if (it && it.dur) {
+        const tools = this.player.tools;
+        while (c > 0 && tools.length < TOOL_SLOTS) { tools.push(Object.assign({ n, c: 1, dur: it.dur }, extra || {})); if (this.player.tool < 0) this.player.tool = tools.length - 1; c--; }
+        while (c > 0 && bag.length < SLOTS) { bag.push(Object.assign({ n, c: 1, dur: it.dur }, extra || {})); c--; }
+        this.barSig = ''; return c;
+      }
       const day = n === '果' ? (extra && extra.d !== undefined ? extra.d : this.day()) : undefined;
       for (const s of bag) { if (s.n === n && s.d === day && s.c < STACK) { const k = Math.min(c, STACK - s.c); s.c += k; c -= k; if (!c) break; } }
       while (c > 0 && bag.length < SLOTS) { const k = Math.min(c, STACK); const s = { n, c: k }; if (day !== undefined) s.d = day; bag.push(s); c -= k; }
@@ -237,12 +274,34 @@
       this.barSig = '';
     }
     held() { return this.player.bag[this.player.sel] || null; }
-    heldTool() { const s = this.held(); const it = s && ITEMS[s.n]; return it && it.tool ? it.tool : null; }
-    heldDmg() { const s = this.held(); const it = s && ITEMS[s.n]; return it && it.dmg ? it.dmg : 0; }
+    // 具欄：六格工具，P 換手持（含空手）
+    isTool(n) { const it = ITEMS[n]; return !!(it && it.tool && it.dur); }
+    activeTool() { return this.player.tools[this.player.tool] || null; }
+    heldTool() { const s = this.activeTool(); return s ? ITEMS[s.n].tool : null; }
+    heldDmg() { const s = this.activeTool(); return s ? (ITEMS[s.n].dmg || 0) : 0; }
     wearTool() {
-      const s = this.held(); if (!s || s.dur === undefined) return;
+      const p = this.player, s = this.activeTool(); if (!s) return;
       s.dur--; this.barSig = '';
-      if (s.dur <= 0) { const n = s.n; this.player.bag.splice(this.player.bag.indexOf(s), 1); if (this.player.sel >= this.player.bag.length) this.player.sel = Math.max(0, this.player.bag.length - 1); this.toast('「' + n + '」鈍壞了', '石子磨石，再做一把。'); SFX.fail(); }
+      if (s.dur <= 0) { const n = s.n; p.tools.splice(p.tool, 1); if (p.tool >= p.tools.length) p.tool = p.tools.length - 1; this.toast('「' + n + '」鈍壞了', '石子磨石，再做一把。'); SFX.fail(); }
+    }
+    cycleTool(d) {
+      const p = this.player, n = p.tools.length;
+      if (!n) { p.tool = -1; this.message('具欄空空。石一、石子一、木一可磨出工具。'); return; }
+      p.tool = p.tool + d; if (p.tool >= n) p.tool = -1; else if (p.tool < -1) p.tool = n - 1;
+      this.message(p.tool < 0 ? '空手。' : '手持「' + p.tools[p.tool].n + '」。'); this.buildBag();
+    }
+    equipFromBag(i) {
+      const p = this.player, s = p.bag[i]; if (!s || !this.isTool(s.n)) return false;
+      if (p.tools.length >= TOOL_SLOTS) { this.message('具欄滿了。'); SFX.fail(); return false; }
+      p.bag.splice(i, 1); p.tools.push(s); if (p.tool < 0) p.tool = p.tools.length - 1;
+      if (p.sel >= p.bag.length) p.sel = Math.max(0, p.bag.length - 1);
+      this.barSig = ''; this.buildBag(); this.message('「' + s.n + '」移進具欄。'); SFX.write(); return true;
+    }
+    unequipToBag(i) {
+      const p = this.player, s = p.tools[i]; if (!s) return;
+      if (p.bag.length >= SLOTS) { this.message('囊已滿。'); SFX.fail(); return; }
+      p.tools.splice(i, 1); p.bag.push(s); if (p.tool >= p.tools.length) p.tool = p.tools.length - 1;
+      this.barSig = ''; this.buildBag(); this.message('「' + s.n + '」移回囊。'); SFX.write();
     }
     spendSta(n) { const p = this.player; if (p.sta < n) { this.message('力氣不夠，歇一歇。'); SFX.fail(); return false; } p.sta -= n; return true; }
 
@@ -315,9 +374,15 @@
       if (ch === '櫃') { this.openChest(t); return; }
       if (ch === '舟') { this.board(t); return; }
       if (ch === '偶') { const days = w.scareDays(t.x, t.y); this.message(days > 0 ? '稻草人還能守 ' + Math.ceil(days) + ' 天（' + (days > 15 ? '十' : '七') + '格內獸不近）。再放一個可續。' : '稻草人已經不靈了。再放一個新的在它身上。'); return; }
+      const tool = this.heldTool();
+      if (tool === '鋤' && (ch === '土' || ch === '草')) {
+        if (p.sta < 1) { if (!silent) this.message('力氣不夠，歇一歇。'); return; }
+        p.sta -= 1; w.set(t.x, t.y, '田'); w.extinguish(t.x, t.y); this.wearTool(); this.addCourage(1); this.message('鋤之成田。'); SFX.write();
+        this.fx.push({ type: 'write', x: t.x, y: t.y, ch: '田', color: DB['田'].ink, t: 0, dur: 0.35 });
+        return;
+      }
       if (!d.yield) { if (!silent) this.message(ch === '白' ? '白紙上無物可取。' : '「' + ch + '」取不走。'); return; }
       if (ch === '櫃' && (w.chests.get(U.key(t.x, t.y)) || []).length) { this.message('櫃裡還有東西。'); return; }
-      const tool = this.heldTool();
       if (d.need && tool !== d.need) { if (!silent) this.message('「' + ch + '」要用' + G.TOOL_NAMES[d.need] + '。'); return; }
       for (const n in d.yield) if (!this.canAdd(n, d.yield[n])) { if (!silent) this.message('囊已滿。'); return; }
       if (p.sta < 1) { if (!silent) this.message('力氣不夠，歇一歇。'); return; }
@@ -357,17 +422,19 @@
       } else { this.message('魚溜了。'); e.moveT = 0; }
     }
     attack(e) {
-      const p = this.player, dmg = this.heldDmg(), s = this.held();
-      if (!dmg) { this.message('徒手打不了「' + e.type + '」。石子磨石可成刀、劍。'); return; }
+      const p = this.player, base = this.heldDmg();
+      if (!base) { this.message('徒手打不了「' + e.type + '」。石子磨石可成刀、劍，放進具欄。'); return; }
       if (p.atkT > 0) return;
       if (p.sta < 1) { this.message('力氣不夠，歇一歇。'); return; }
+      const dmg = Math.round(base * this.dmgMult() * 100) / 100;
       p.atkT = 0.45; p.sta -= 1;
-      e.hp -= dmg; e.angry = true; this.wearTool(); SFX.write(); this.renderer.shake = 0.15;
+      e.hp = Math.round((e.hp - dmg) * 100) / 100; e.angry = true; this.wearTool(); SFX.write(); this.renderer.shake = 0.15;
       this.fx.push({ type: 'float', x: e.x, y: e.y, text: '−' + dmg, color: G.INK.red, t: 0, dur: 0.7 });
       if (e.hp <= 0) { this.kill(e); return; }
+      const left = Math.ceil(e.hp * 10) / 10;
       if (e.type === '鹿') e.moveT = 0;
-      else if (e.type === '虎' || e.type === '豹') { e.calm = 2; e.moveT = 0.3; this.message(e.type + '受創而退（還有 ' + e.hp + '）。'); }
-      else this.message(e.type + '（還有 ' + e.hp + '）。');
+      else if (e.type === '虎' || e.type === '豹') { e.calm = 2; e.moveT = 0.3; this.message(e.type + '受創而退（還有 ' + left + '）。'); }
+      else this.message(e.type + '（還有 ' + left + '）。');
     }
     kill(e) {
       const drops = { '鹿': ['肉', 2], '虎': ['肉', 3], '豹': ['肉', 2], '狼': ['肉', 2], '蛇': ['蛇肉', 1], '蟾': ['蟾蜍', 1] }[e.type];
@@ -379,16 +446,16 @@
     }
     // 獸的撲咬與毒咬（由實體呼叫）
     hit(e, dmg) {
-      const p = this.player;
-      p.hp = Math.max(0, p.hp - dmg); p.hurtT = 6; this.renderer.shake = 0.5; SFX.tiger();
-      this.message(e.type + '！命 −' + dmg + '。');
+      const p = this.player, d = Math.round(dmg * (this.totemNear(e.x, e.y) ? 5 / 3 : 1) * this.takenMult() * 10) / 10;
+      p.hp = Math.max(0, p.hp - d); p.hurtT = 6; this.renderer.shake = 0.5; SFX.tiger();
+      this.message(e.type + '！命 −' + d + '。');
     }
     bite(e, per) {
-      const p = this.player, now = this.world.time;
+      const p = this.player, now = this.world.time, per2 = Math.round(per * (this.totemNear(e.x, e.y) ? 5 / 3 : 1) * this.takenMult() * 10) / 10;
       p.biteN = (now - p.biteLast <= 6) ? p.biteN + 1 : 1; p.biteLast = now; this.stats.bites++;
-      this.poison(per, 5); p.hurtT = 6; this.renderer.shake = 0.3; SFX.fail();
+      this.poison(per2, 5); p.hurtT = 6; this.renderer.shake = 0.3; SFX.fail();
       if (p.biteN >= 15) { p.hp = 0; this.message('連咬十五口，毒發身亡。'); return; }
-      this.message(e.type + '咬了你一口（連咬 ' + p.biteN + '）。中毒：每秒 −' + per + '。藥可解。');
+      this.message(e.type + '咬了你一口（連咬 ' + p.biteN + '）。中毒：每秒 −' + per2 + '。藥可解。');
     }
     poison(per, sec) { const p = this.player; p.poisonPer = Math.max(p.poisonPer, per); p.poisonT = Math.max(p.poisonT, sec); }
 
@@ -400,12 +467,8 @@
       if (p.sailing) { this.message('船上做不了這個，先靠岸。'); return; }
       const name = s.n, t = this.facing(), base = w.get(t.x, t.y), bd = DB[base], it = ITEMS[name] || {};
       const fail = () => this.fx.push({ type: 'fail', x: t.x, y: t.y, t: 0, dur: 0.6 });
-      if (it.tool === '鋤') {
-        if (base === '土' || base === '草') { if (!this.spendSta(1)) return; w.set(t.x, t.y, '田'); this.wearTool(); this.message('鋤之成田。'); SFX.write(); }
-        else { this.message('鋤只能鋤土與草。'); fail(); }
-        return;
-      }
-      if (it.tool || it.kind === 'wear') { this.message('「' + name + '」' + (it.light ? '拿在手上就亮。' : '在囊中即生效；工具用 E。')); return; }
+      if (it.tool && it.dur) { this.equipFromBag(p.sel); return; }
+      if (it.tool || it.kind === 'wear') { this.message('「' + name + '」' + (it.light ? '拿在手上就亮。' : '在囊中即生效。')); return; }
       if (base === '灶') {
         const ck = G.COOK[name];
         if (ck) {
@@ -450,7 +513,7 @@
       const p = this.player, s = this.held(); if (!s || !this.canAct()) return;
       const it = G.item(s.n), f = it.food, tl = ITEMS[s.n] || {};
       if (s.n === '海水瓶') { this.message('海水鹹，喝不得。放在旺的灶上蒸餾。'); return; }
-      if (!f) { this.message(tl.tool || tl.kind === 'wear' ? '「' + s.n + '」在囊中即生效。' : '「' + s.n + '」不能吃，按 F 放到地上。'); return; }
+      if (!f) { this.message(tl.tool && tl.dur ? '「' + s.n + '」是工具，按 F 移進具欄。' : tl.tool || tl.kind === 'wear' ? '「' + s.n + '」在囊中即生效。' : '「' + s.n + '」不能吃，按 F 放到地上。'); return; }
       this.removeItem(s.n, 1);
       if (f.bottle) this.addItem('玻璃瓶', 1);
       if (f.knock) { this.knockOut(f); return; }
@@ -509,7 +572,7 @@
       let out = r.out, n = r.n || 1;
       if (r.choose) { if (!choice) { this.message('選一個方向：刀、鎬、鋤、劍、斧。'); return; } out = choice; }
       if (r.regrind) {
-        const s = this.held(); if (!s || s.dur === undefined) { this.message('手裡要拿著工具。'); SFX.fail(); return; }
+        const s = this.activeTool(); if (!s) { this.message('具欄裡要選中一把工具（P 換）。'); SFX.fail(); return; }
         for (const m in r.need) this.removeItem(m, r.need[m]);
         p.sta -= r.sta; s.dur = ITEMS[s.n].dur; this.barSig = ''; this.afterCraft(r); this.message('「' + s.n + '」磨利了。'); SFX.fuse(); this.buildCraft(); this.buildBag(); return;
       }
@@ -675,7 +738,7 @@
         h += '<li>' + (st === 0 ? '<span class="dim">＿＿</span>' : '<b>' + pl.name + '</b>' + (st === 2 ? '　' + esc(pl.text) : '　<span class="dim">（見過，未讀）</span>')) + '</li>';
       }
       h += '</ul><h3>生靈</h3><p>' + (p.creatures.length ? p.creatures.join('　') : '<span class="dim">還沒見過</span>') + '</p>';
-      h += '<h3>日子</h3><p>第 ' + this.day() + ' 日 · 膽氣第 ' + this.level() + ' 重（' + p.cour + '） · 睡過 ' + this.stats.nights + ' 夜 · 走過 ' + w.seenCount() + ' 格 · 取了 ' + this.stats.gathered + ' 次 · 造了 ' + this.stats.crafted + ' 件 · 斃 ' + this.stats.kills + ' · 被咬 ' + this.stats.bites + ' 口 · 死過 ' + p.deaths + ' 次</p>';
+      h += '<h3>日子</h3><p>第 ' + this.day() + ' 日 · 膽氣第 ' + this.level() + ' 重（' + Math.floor(p.cour) + '，下一重 ' + this.levelAt(this.level() + 1) + '） · 睡過 ' + this.stats.nights + ' 夜 · 走過 ' + w.seenCount() + ' 格 · 取了 ' + this.stats.gathered + ' 次 · 造了 ' + this.stats.crafted + ' 件 · 斃 ' + this.stats.kills + ' · 被咬 ' + this.stats.bites + ' 口 · 死過 ' + p.deaths + ' 次</p>';
       $('journal-body').innerHTML = h;
     }
 
@@ -686,10 +749,15 @@
         if (!$('start').classList.contains('hidden')) { if (ev.code === 'Enter') { ev.preventDefault(); $('btn-continue').classList.contains('hidden') ? $('btn-new').click() : $('btn-continue').click(); } return; }
         if (this.player.dead) { if (ev.code === 'Enter' || ev.code === 'Space') { ev.preventDefault(); this.respawn(); } return; }
         if (!$('voyage').classList.contains('hidden')) return;
+        if (this.userPaused) { if (ev.code === 'Escape') { this.togglePause(); ev.preventDefault(); } return; }
         if (this.player.knock > 0) { ev.preventDefault(); return; }
         if (!$('read').classList.contains('hidden')) { if (['KeyE', 'Enter', 'Space', 'Escape'].indexOf(ev.code) >= 0) { this.closeRead(); ev.preventDefault(); } return; }
         if (this.chestAt) { if (['KeyE', 'Escape'].indexOf(ev.code) >= 0) { this.closeChest(); ev.preventDefault(); } return; }
-        if (ev.code === 'Escape') { for (const id of ['help', 'map', 'journal', 'craft']) $(id).classList.add('hidden'); ev.preventDefault(); return; }
+        if (ev.code === 'Escape') {
+          const open = ['help', 'map', 'journal', 'craft'].filter(id => !$(id).classList.contains('hidden'));
+          if (open.length) open.forEach(id => $(id).classList.add('hidden')); else this.togglePause();
+          ev.preventDefault(); return;
+        }
         if (ev.code === 'KeyH') { $('help').classList.toggle('hidden'); ev.preventDefault(); return; }
         if (!$('help').classList.contains('hidden')) return;
         if (ev.code === 'KeyM') { $('journal').classList.add('hidden'); $('craft').classList.add('hidden'); this.toggleMap(); ev.preventDefault(); return; }
@@ -709,6 +777,7 @@
           case 'KeyF': case 'Enter': this.pressPlace(); break;
           case 'KeyV': this.useItem(); break;
           case 'KeyR': this.sleep(); break;
+          case 'KeyP': this.cycleTool(1); break;
           case 'KeyN': this.message(SFX.toggle() ? '已靜音' : '聲音已開'); break;
           case 'BracketLeft': case 'KeyQ': this.cycle(-1); break;
           case 'BracketRight': case 'KeyZ': case 'Tab': this.cycle(1); break;
@@ -737,15 +806,24 @@
       $('map-close').addEventListener('click', () => this.toggleMap());
       $('craft-close').addEventListener('click', () => this.toggleCraft());
       $('chest-close').addEventListener('click', () => this.closeChest());
+      $('btn-pause').addEventListener('click', () => this.togglePause());
+      $('pause-resume').addEventListener('click', () => this.togglePause());
+      $('btn-map').addEventListener('click', () => { if (this.userPaused || this.player.dead || this.player.knock > 0) return; $('journal').classList.add('hidden'); $('craft').classList.add('hidden'); this.toggleMap(); });
+      $('minimap').addEventListener('click', () => $('btn-map').click());
       $('voyage-back').addEventListener('click', () => { $('voyage').classList.add('hidden'); this.paused = false; this.message('回頭。再開出去就走了。'); });
       $('voyage-new').addEventListener('click', () => { try { localStorage.setItem(CARRY_KEY, String(this.player.cour)); } catch (e) { /* ignore */ } Game.clearSave(); location.reload(); });
     }
     cycle(d) { const p = this.player; if (p.bag.length) p.sel = (p.sel + d + p.bag.length) % p.bag.length; this.buildBag(); }
+    togglePause() {
+      if (this.player.dead || !$('start').classList.contains('hidden') || !$('voyage').classList.contains('hidden')) return;
+      this.userPaused = !this.userPaused; this.paused = this.userPaused;
+      $('pause').classList.toggle('hidden', !this.userPaused); this.keys.clear(); this.action = null;
+    }
 
     // ---------- HUD ----------
     buildBag() {
       const p = this.player, bar = $('bagbar');
-      const sig = p.bag.map(s => s.n + s.c + (s.dur !== undefined ? 'd' + s.dur : '') + (s.d !== undefined ? '@' + s.d : '')).join(',') + '|' + p.sel + '|' + this.day();
+      const sig = p.bag.map(s => s.n + s.c + (s.dur !== undefined ? 'd' + s.dur : '') + (s.d !== undefined ? '@' + s.d : '')).join(',') + '|' + p.sel + '|' + this.day() + '|' + p.tools.map(s => s.n + s.dur).join(',') + '|' + p.tool;
       if (sig === this.barSig) return;
       this.barSig = sig; bar.innerHTML = '';
       for (let i = 0; i < SLOTS; i++) {
@@ -760,8 +838,21 @@
           if (s.dur !== undefined) el.innerHTML += '<i class="dur" style="width:' + Math.round(100 * s.dur / it.dur) + '%"></i>';
           el.title = it.flavor;
         }
-        el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; p.sel = i; this.buildBag(); });
+        el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; if (this.isTool(s.n) && this.equipFromBag(i)) return; p.sel = i; this.buildBag(); });
         bar.appendChild(el);
+      }
+      const tb = $('toolbar'); tb.innerHTML = '';
+      for (let i = 0; i < TOOL_SLOTS; i++) {
+        const s = p.tools[i], el = document.createElement('div');
+        el.className = 'slot bag tool' + (s ? '' : ' empty') + (s && i === p.tool ? ' sel' : '');
+        if (s) {
+          const it = ITEMS[s.n];
+          el.innerHTML = '<span class="ch' + (s.n.length > 1 ? ' word' : '') + '">' + s.n + '</span><span class="cost">耐 ' + s.dur + '</span><i class="dur" style="width:' + Math.round(100 * s.dur / it.dur) + '%"></i>';
+          el.title = it.flavor + '（點一下手持，再點一下空手；右鍵移回囊）';
+        } else el.title = '具欄：工具放這裡，P 換手持';
+        el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; if (ev.button === 2) { this.unequipToBag(i); return; } p.tool = (p.tool === i) ? -1 : i; this.buildBag(); });
+        el.addEventListener('contextmenu', (ev) => ev.preventDefault());
+        tb.appendChild(el);
       }
     }
     updateHUD() {
@@ -769,17 +860,22 @@
       const sig = [Math.round(p.hp), Math.round(p.food), Math.round(p.warm), Math.round(p.sta), p.staMax, Math.round(p.san), this.shichen(), p.x, p.y, w.get(p.x, p.y), this.daylight() > 0.5, this.day(), w.tideName(), p.sailing].join('|');
       if (sig !== this.hudSig) {
         this.hudSig = sig;
-        $('hpfill').style.height = Math.round(p.hp) + '%'; $('foodfill').style.height = Math.round(p.food) + '%'; $('warmfill').style.height = Math.round(p.warm) + '%'; $('stafill').style.height = Math.round(100 * p.sta / p.staMax) + '%'; $('sanfill').style.height = Math.round(p.san) + '%';
+        const fill = (id, v) => $(id).style.setProperty('--p', U.clamp(v, 0, 1).toFixed(3));
+        fill('hpfill', p.hp / 100); fill('foodfill', p.food / 100); fill('warmfill', p.warm / 100); fill('stafill', p.sta / p.staMax); fill('sanfill', p.san / 100);
         $('hpfill').parentNode.classList.toggle('low', p.hp < 30); $('foodfill').parentNode.classList.toggle('low', p.food < 25); $('warmfill').parentNode.classList.toggle('low', p.warm < 30); $('stafill').parentNode.classList.toggle('low', p.sta < 15); $('sanfill').parentNode.classList.toggle('low', p.san < 20);
         $('hplabel').innerHTML = '命<br>' + Math.round(p.hp); $('foodlabel').innerHTML = '飽<br>' + Math.round(p.food); $('warmlabel').innerHTML = '暖<br>' + Math.round(p.warm); $('stalabel').innerHTML = '力<br>' + Math.round(p.sta); $('sanlabel').innerHTML = '愜<br>' + Math.round(p.san);
         const nn = this.nightNo();
         $('status').innerHTML = '<b>第 ' + this.day() + ' 日</b> &nbsp;' + this.shichen() + ' ' + (this.daylight() > 0.5 ? '日' : '月') + (this.isNight() ? '<span class="dim">（第 ' + nn + ' 夜' + (nn >= GHOST_NIGHT ? '，魄夜' : '') + '）</span>' : '') + ' &nbsp;·&nbsp; ' + w.tideName() + ' &nbsp;·&nbsp; ' + (p.sailing ? '船上' : G.biomeName(w.get(p.x, p.y))) + ' &nbsp;·&nbsp; <span class="dim">(' + p.x + ', ' + p.y + ')</span>';
       }
-      const cs = p.cour + '|' + this.level();
+      const lv = this.level(), daysLeft = p.decayAt ? Math.max(1, Math.ceil((p.decayAt - w.time) / DAY)) : 0;
+      const cs = p.cour + '|' + lv + '|' + daysLeft;
       if (cs !== this.courSig) {
         this.courSig = cs;
-        $('mapwrap').style.setProperty('--cour', Math.round(100 * (p.cour % LEVEL_PTS) / LEVEL_PTS) + '%');
-        $('courlabel').textContent = this.level() === 0 ? '膽氣 · 初' : '膽氣 · 第 ' + this.level() + ' 重';
+        $('mapwrap').style.setProperty('--cour', Math.round(100 * this.levelFrac()) + '%');
+        $('courlabel').textContent = (lv === 0 ? '膽氣 · 初' : '膽氣 · 第 ' + lv + ' 重') + (this.ladder() ? ' · 傷 ×' + Math.round(this.dmgMult() * 100) / 100 : '');
+        const dec = $('courdecay');
+        if (lv > DECAY_LEVEL && daysLeft) { dec.classList.remove('hidden'); dec.textContent = '卅一重以上三日一減 · 還有 ' + daysLeft + ' 日'; }
+        else dec.classList.add('hidden');
       }
       let s;
       const ch = w.get(t.x, t.y), d = DB[ch], e = this.ents.at(t.x, t.y), plc = w.placeAt(t.x, t.y), hs = this.held();
@@ -789,7 +885,7 @@
       else if (plc) s = '「' + plc.name + '」 · <kbd>E</kbd> 讀' + (hs && hs.n === '玻璃瓶' && (ch === '泉' || ch === '井') ? '　<kbd>E</kbd> 取淡水' : '');
       else if (e && e.type === '龍') s = '你的龍。';
       else if (e && e.type === '魄') s = '魄 · 無形。手裡有光六格內即煙滅';
-      else if (e) s = '「' + e.type + '」' + (e.type === '蟾' ? (e.venom ? '（有毒）' : '（無毒）') : '') + (e.hp > 1 ? '（' + e.hp + '）' : '') + ' · <kbd>E</kbd> ' + (e.type === '魚' ? '捉' : e.type === '鳥' ? '驚' : this.heldDmg() ? '攻擊（' + hs.n + '）' : '<i>徒手打不了</i>');
+      else if (e) s = '「' + e.type + '」' + (e.type === '蟾' ? (e.venom ? '（有毒）' : '（無毒）') : '') + (e.hp > 1 ? '（' + e.hp + '）' : '') + ' · <kbd>E</kbd> ' + (e.type === '魚' ? '捉' : e.type === '鳥' ? '驚' : this.heldDmg() ? '攻擊（' + this.activeTool().n + '）' : '<i>徒手打不了，具欄裡選把刀劍</i>');
       else if (ch === '碑') s = '一塊古碑 · <kbd>E</kbd> 讀碑';
       else if (ch === '囊') s = '落下的囊 · <kbd>E</kbd> 取回';
       else if (ch === '漁') s = '魚梁 · <kbd>E</kbd> 取魚' + (w.time < (w.weirs.get(U.key(t.x, t.y)) || 0) ? '（魚還沒來）' : '');
@@ -799,14 +895,16 @@
       else if (ch === '偶') { const days = w.scareDays(t.x, t.y); s = '稻草人 · 還能守 ' + Math.ceil(days) + ' 天' + (hs && hs.n === '偶' ? ' · <kbd>F</kbd> 續' : ''); }
       else {
         s = '面前：' + (ch === '白' ? '白紙' : '<b>' + ch + '</b>') + (w.isBurning(t.x, t.y) ? ' <i class="fire">燃燒中</i>' : '') + (ch === '灶' ? (w.stoveLit(t.x, t.y) ? ' <i class="fire">火旺</i>' : ' <i>冷灶</i>') : '');
+        const tool = this.heldTool();
         if (hs && hs.n === '玻璃瓶' && d.kind === 'water') s += ' · <kbd>E</kbd> 取海水';
+        else if (tool === '鋤' && (ch === '土' || ch === '草')) s += ' · <kbd>E</kbd> 鋤成田';
         else if (d.yield) {
-          const tool = this.heldTool(), need = d.need && tool !== d.need;
+          const need = d.need && tool !== d.need;
           s += ' · <kbd>E</kbd> ' + (need ? '<i>要用' + G.TOOL_NAMES[d.need] + '</i>' : '取 ' + Object.keys(d.yield).map(n => n + (d.yield[n] > 1 ? '×' + d.yield[n] : '')).join(' ') + (d.fast ? (tool === d.fast ? '（' + d.fast + '，快）' : '（' + d.fast + '更快）') : ''));
         }
         if (hs) {
           const it = G.item(hs.n), tl = ITEMS[hs.n] || {};
-          if (tl.tool === '鋤' && (ch === '土' || ch === '草')) s += ' · <kbd>F</kbd> 鋤成田';
+          if (tl.tool && tl.dur) s += ' · <kbd>F</kbd> 移進具欄';
           else if (ch === '灶') { const ck = G.COOK[hs.n]; s += ck ? ' · <kbd>F</kbd> ' + (ck.out === '玻璃瓶' ? '燒瓶（沙三）' : ck.out === '淡水瓶' ? '蒸餾' : '烤') : (DB[hs.n] && DB[hs.n].flam > 0 ? ' · <kbd>F</kbd> 添柴' : ''); }
           else if ((DB[tl.tile || hs.n] || {}).place) s += ' · <kbd>F</kbd> 放「' + hs.n + '」';
           if (it.food) s += ' · <kbd>V</kbd> ' + (hs.n.indexOf('瓶') >= 0 || hs.n === '果酒' ? '喝' : '吃');
@@ -830,7 +928,7 @@
       try {
         localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 5, seed: this.seed, savedAt: Date.now(), world: this.world.serialize(), ents: this.ents.serialize(),
           player: { x: p.x, y: p.y, fx: p.fx, fy: p.fy, hp: p.hp, food: p.food, warm: p.warm, sta: p.sta, staMax: p.staMax, san: p.san, cour: p.cour, bag: p.bag, sel: p.sel, home: p.home, readSteles: p.readSteles,
-            places: p.places, creatures: p.creatures, raftTaken: p.raftTaken, dragon: p.dragon, finished: p.finished, deaths: p.deaths, burn: p.burn, lastDay: p.lastDay, poisonT: p.poisonT, poisonPer: p.poisonPer, sailing: p.sailing }, stats: this.stats }));
+            places: p.places, creatures: p.creatures, raftTaken: p.raftTaken, dragon: p.dragon, finished: p.finished, deaths: p.deaths, burn: p.burn, lastDay: p.lastDay, poisonT: p.poisonT, poisonPer: p.poisonPer, sailing: p.sailing, tools: p.tools, tool: p.tool, decayAt: p.decayAt }, stats: this.stats }));
       } catch (err) { /* 隱私模式等情況下存不了，就算了 */ }
     }
     load(s) {
@@ -838,7 +936,7 @@
       this.world.restore(s.world || {});
       this.ents.restore(s.ents);
       const sp = s.player || {};
-      for (const k of ['x', 'y', 'fx', 'fy', 'hp', 'food', 'warm', 'sta', 'staMax', 'san', 'cour', 'bag', 'sel', 'home', 'readSteles', 'places', 'creatures', 'raftTaken', 'dragon', 'finished', 'deaths', 'burn', 'lastDay', 'poisonT', 'poisonPer', 'sailing']) if (sp[k] !== undefined) p[k] = sp[k];
+      for (const k of ['x', 'y', 'fx', 'fy', 'hp', 'food', 'warm', 'sta', 'staMax', 'san', 'cour', 'bag', 'sel', 'home', 'readSteles', 'places', 'creatures', 'raftTaken', 'dragon', 'finished', 'deaths', 'burn', 'lastDay', 'poisonT', 'poisonPer', 'sailing', 'tools', 'tool', 'decayAt']) if (sp[k] !== undefined) p[k] = sp[k];
       p.rx = p.x; p.ry = p.y; p.moveT = 0;
       Object.assign(this.stats, s.stats || {});
     }

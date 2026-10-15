@@ -170,6 +170,7 @@
         ctx.fillStyle = halo; ctx.fillRect(px - T, py - T, T * 2, T * 2);
         ctx.fillStyle = 'rgba(30,20,10,0.16)'; ctx.beginPath(); ctx.ellipse(px, py + T * 0.44, T * 0.32, T * 0.1, 0, 0, 7); ctx.fill();
         ctx.restore();
+        if (g.totemOn && g.totemOn()) { ctx.save(); ctx.strokeStyle = 'rgba(180,57,42,.3)'; ctx.lineWidth = 2; ctx.setLineDash([8, 10]); ctx.lineDashOffset = -now * 20; ctx.beginPath(); ctx.arc(px, py, T * 7.5, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
         if (p.sailing) this.drawGlyph('舟', G.INK.brown, px, py + T * 0.18, T * 1.5, Math.sin(now * 1.5) * 0.04, 0.95);
         this.drawGlyph('人', G.INK.black, px, py - (p.sailing ? T * 0.12 : 0), T * 1.18, rot, 1);
         ctx.save(); ctx.fillStyle = G.INK.red; ctx.beginPath(); ctx.arc(px + T * 0.34, py + T * 0.36, T * 0.07, 0, 7); ctx.fill(); ctx.restore();
