@@ -59,6 +59,8 @@ const result = await page.evaluate(async () => {
   await gather('果');
   const fruit = p.bag.find(s => s.n === '果');
   ok('gathering 果 stamps the day', fruit && fruit.c === 2 && fruit.d === g.day() && w.get(T().x, T().y) === '木', bag());
+  p.food = 50; hold('果'); g.useItem();
+  ok('fresh 果 is edible (+20)', Math.round(p.food) === 70 && g.count('果') === 1, [p.food, g.count('果')]);
 
   // ============ B. 製作與磨礪 ============
   clearBag(); g.addItem('土', 4); g.addItem('草', 6); g.addItem('木', 12); g.addItem('棉', 10); g.addItem('石', 12); g.addItem('石子', 8); g.addItem('竹', 12);

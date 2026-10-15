@@ -21,13 +21,12 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 #seal span { line-height: 1; }
 
 /* 墨量與生存：幾條豎著的條 */
-#vitals { position: absolute; left: calc(24px + env(safe-area-inset-left, 0px)); top: calc(110px + env(safe-area-inset-top, 0px)); display: flex; gap: 14px; align-items: flex-start; }
-.bar { position: relative; width: 28px; height: 220px; border: 2px solid var(--ink); border-radius: 14px; background: rgba(239,229,207,.8); overflow: visible; }
-.bar > div { position: absolute; left: 3px; right: 3px; bottom: 3px; height: 30%; border-radius: 10px; transition: height .25s ease; }
-.bar > span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 6px; white-space: nowrap; font: 14px var(--font); color: var(--ink); background: rgba(239,229,207,.8); padding: 1px 6px; border-radius: 3px; }
+#vitals { position: absolute; left: calc(24px + env(safe-area-inset-left, 0px)); top: calc(110px + env(safe-area-inset-top, 0px)); display: flex; gap: 26px; align-items: flex-start; }
+.bar { position: relative; width: 22px; height: 180px; border: 2px solid rgba(28,26,23,.75); border-radius: 12px; background: rgba(239,229,207,.5); overflow: visible; }
+.bar > div { position: absolute; left: 3px; right: 3px; bottom: 3px; height: 30%; border-radius: 9px; transition: height .25s ease; opacity: .88; }
+.bar > span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 6px; width: 44px; text-align: center; line-height: 1.15; font: 15px/1.15 var(--font); color: var(--ink); background: rgba(239,229,207,.55); padding: 3px 0; border-radius: 4px; }
 #inkfill { background: linear-gradient(180deg, #3a3530, var(--ink)); }
-.bar { width: 22px; height: 180px; }
-.bar > span { font-size: 13px; }
+
 .bar.hp > div { background: linear-gradient(180deg, #d0533f, #8f2c20); }
 .bar.food > div { background: linear-gradient(180deg, #c9a24a, #8a6a1f); }
 .bar.warm > div { background: linear-gradient(180deg, #e08a3c, #a8521a); }

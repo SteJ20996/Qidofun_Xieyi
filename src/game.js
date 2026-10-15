@@ -605,7 +605,7 @@
         this.hudSig = sig;
         $('hpfill').style.height = Math.round(p.hp) + '%'; $('foodfill').style.height = Math.round(p.food) + '%'; $('warmfill').style.height = Math.round(p.warm) + '%'; $('stafill').style.height = Math.round(100 * p.sta / p.staMax) + '%';
         $('hpfill').parentNode.classList.toggle('low', p.hp < 30); $('foodfill').parentNode.classList.toggle('low', p.food < 25); $('warmfill').parentNode.classList.toggle('low', p.warm < 30); $('stafill').parentNode.classList.toggle('low', p.sta < 15);
-        $('hplabel').textContent = '命 ' + Math.round(p.hp); $('foodlabel').textContent = '飽 ' + Math.round(p.food); $('warmlabel').textContent = '暖 ' + Math.round(p.warm); $('stalabel').textContent = '力 ' + Math.round(p.sta);
+        $('hplabel').innerHTML = '命<br>' + Math.round(p.hp); $('foodlabel').innerHTML = '飽<br>' + Math.round(p.food); $('warmlabel').innerHTML = '暖<br>' + Math.round(p.warm); $('stalabel').innerHTML = '力<br>' + Math.round(p.sta);
         const nn = this.nightNo();
         $('status').innerHTML = '<b>第 ' + this.day() + ' 日</b> &nbsp;' + this.shichen() + ' ' + (this.daylight() > 0.5 ? '日' : '月') + (this.isNight() ? '<span class="dim">（第 ' + nn + ' 夜' + (nn >= GHOST_NIGHT ? '，鬼夜' : '') + '）</span>' : '') + ' &nbsp;·&nbsp; ' + w.tideName() + ' &nbsp;·&nbsp; ' + G.biomeName(w.get(p.x, p.y)) + ' &nbsp;·&nbsp; <span class="dim">(' + p.x + ', ' + p.y + ')</span>';
       }

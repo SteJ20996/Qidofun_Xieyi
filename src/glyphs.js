@@ -35,7 +35,7 @@
     '花': { s: 8, walk: 1.0, kind: 'plant', flam: 0.4, ink: INK.red, yield: { '花': 1 }, time: 0.5, place: true, flavor: '草間一點硃。' },
     '棉': { s: 12, walk: 1.0, kind: 'plant', flam: 0.5, ink: INK.cotton, yield: { '棉': 2 }, time: 0.8, to: '草', place: true, flavor: '野棉花。六團棉、兩塊木，是一張床。' },
     '木': { s: 4, walk: 0.8, kind: 'plant', flam: 0.6, ink: INK.plant, yield: { '木': 1 }, time: 1.4, fast: '斧', place: true, flavor: '一棵樹。斧伐之快一倍。' },
-    '果': { s: 8, walk: 0.8, kind: 'plant', flam: 0.6, ink: INK.red, yield: { '果': 2 }, time: 0.8, to: '木', place: true, flavor: '野果樹。摘之可食；果在囊裡放過十五夜會醉。' },
+    '果': { s: 8, walk: 0.8, kind: 'plant', flam: 0.6, ink: INK.red, yield: { '果': 2 }, time: 0.8, to: '木', place: true, food: { eat: 20 }, flavor: '野果樹。摘之可食；果在囊裡放過十五夜會醉。' },
     '竹': { s: 6, walk: 0.7, kind: 'plant', flam: 0.7, ink: INK.plant, yield: { '竹': 2 }, time: 1.2, fast: '斧', place: true, flavor: '竹。可為筏、可為魚梁。' },
     '林': { s: 8, walk: 0.6, kind: 'plant', flam: 0.7, ink: INK.forest, yield: { '木': 2 }, time: 2.4, fast: '斧', flavor: '雙木成林。' },
     '森': { s: 12, walk: 0.5, kind: 'plant', flam: 0.8, ink: INK.forest, yield: { '木': 3 }, time: 3.4, fast: '斧', flavor: '三木成森，虎踞其中。' },
