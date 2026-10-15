@@ -496,6 +496,7 @@
       if (ch === '碑') { this.readStele(t); return; }
       if (ch === '包') { this.pickBag(t); return; }
       if (ch === '漁') { this.harvestWeir(t); return; }
+      if (d.net) { this.useNet(t); return; }
       if (ch === '門') { this.askRoad(t); return; }
       if (ch === '櫃') { this.openChest(t); return; }
       if (ch === '舟') { this.board(t); return; }
@@ -609,8 +610,8 @@
       const p = this.player, w = this.world, s = this.held();
       if (!this.canAct()) return;
       if (!s) { this.message('囊中空空。'); return; }
-      if (p.sailing) { this.message('船上做不了這個，先靠岸。'); return; }
       const name = s.n, t = this.facing(), base = w.get(t.x, t.y), bd = DB[base], it = ITEMS[name] || {};
+      if (p.sailing && !(it.tile && DB[it.tile] && DB[it.tile].net)) { this.message('船上做不了這個，先靠岸。'); return; }   // 船上可以下網
       const fail = () => this.fx.push({ type: 'fail', x: t.x, y: t.y, t: 0, dur: 0.6 });
       const ent = this.ents.at(t.x, t.y);
       if (ent && ent.type === '鷹' && name === '魚') { this.feedEagle(ent); return; }
@@ -642,6 +643,7 @@
         return;
       }
       const tileName = it.tile || name;             // 大船放下是「舟」
+      if (DB[tileName] && DB[tileName].net) { this.placeNet(t, tileName, name); return; }
       if (!DB[tileName] || !DB[tileName].place) { this.message('「' + name + '」放不到地上。'); fail(); return; }
       if (DB[tileName].onWater) { if (base !== '水') { this.message('「' + name + '」要放在淺水上。'); fail(); return; } }
       else {
@@ -656,6 +658,32 @@
       else this.message('放下「' + name + '」。');
       SFX.write();
       this.fx.push({ type: 'write', x: t.x, y: t.y, ch: tileName, color: DB[tileName].ink, t: 0, dur: 0.35 });
+    }
+
+    // ---------- 漁網 ----------
+    placeNet(t, tile, name) {
+      const w = this.world, size = DB[tile].net, cells = [];
+      for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) cells.push([t.x + i, t.y + j]);
+      for (const [x, y] of cells) {
+        const ch = w.get(x, y);
+        if (DB[ch].kind !== 'water' || w.placeAt(x, y)) { this.message(size === 1 ? '小網要放在淺水上。' : '要有 ' + size + '×' + size + ' 格的水面才放得下（面前那格是左上角）。'); this.fx.push({ type: 'fail', x, y, t: 0, dur: 0.6 }); return; }
+        if (size === 1 && ch !== '水') { this.message('小網只放得了淺水；深水要中網或大網。'); this.fx.push({ type: 'fail', x, y, t: 0, dur: 0.6 }); return; }
+        if (w.raw(x, y) === '灘') { this.message('潮間的灘上下不了網，退潮會擱淺。'); this.fx.push({ type: 'fail', x, y, t: 0, dur: 0.6 }); return; }
+      }
+      w.addNet(t.x, t.y, size, w.time); this.removeItem(name, 1); SFX.write();
+      const r = w.netRule(size);
+      this.message('下了' + name + '：每 ' + r.every + ' 息一條魚，存 ' + r.cap + ' 條。面向按 E 取魚，空網再按 E 收回。');
+    }
+    useNet(t) {
+      const w = this.world, rec = w.netAt(t.x, t.y); if (!rec) return;
+      const fish = w.netFish(rec, w.time), name = rec.size === 1 ? '漁網' : rec.size === 2 ? '中漁網' : '大漁網';
+      if (fish > 0) {
+        let take = 0; while (take < fish && this.canAdd('魚', 1)) { this.addItem('魚', 1); take++; }
+        if (!take) { this.message('囊已滿。'); return; }
+        rec.fish -= take; if (rec.fish <= 0) rec.t = w.time; this.addCourage(1); this.message('網裡得魚 ' + take + ' 條' + (rec.fish ? '，還剩 ' + rec.fish + ' 條' : '') + '。'); SFX.absorb(); return;
+      }
+      if (!this.canAdd(name, 1)) { this.message('囊已滿。'); return; }
+      w.removeNet(rec); this.addItem(name, 1); this.message('收回了' + name + '。'); SFX.absorb();
     }
 
     // ---------- 吃（V） ----------
@@ -1130,6 +1158,7 @@
       else if (e) s = '「' + e.type + '」' + (e.type === '蟾' ? (e.venom ? '（有毒）' : '（無毒）') : '') + (e.hp > 1 ? '（' + e.hp + '）' : '') + ' · <kbd>E</kbd> ' + (e.type === '魚' ? '捉' : e.type === '鳥' ? '驚' : this.heldDmg() ? '攻擊（' + this.activeTool().n + '）' : '<i>徒手打不了，具欄裡選把刀劍</i>');
       else if (ch === '碑') s = '一塊古碑 · <kbd>E</kbd> 讀碑';
       else if (ch === '包') s = '落下的荷包 · <kbd>E</kbd> 取回';
+      else if (d.net) { const rec = w.netAt(t.x, t.y), f = rec ? w.netFish(rec, w.time) : 0, r = w.netRule(d.net); s = (d.net === 1 ? '小網' : d.net === 2 ? '中網' : '大網') + ' · 魚 ' + f + '/' + r.cap + '（' + r.every + ' 息一條）' + (f ? ' · <kbd>E</kbd> 取魚' : ' · <kbd>E</kbd> 收回'); }
       else if (ch === '漁') s = '魚梁 · <kbd>E</kbd> 取魚' + (w.time < (w.weirs.get(U.key(t.x, t.y)) || 0) ? '（魚還沒來）' : '');
       else if (ch === '門') s = '門 · <kbd>E</kbd> 問路';
       else if (ch === '櫃') s = '櫃 · <kbd>E</kbd> 開';

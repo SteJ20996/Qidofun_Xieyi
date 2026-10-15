@@ -18,6 +18,8 @@
       this.timers = new Map();   // "x,y" -> { from: 現在的字, to: 目標字, at: 世界時間 }（灰化土、草木長回來）
       this.scarecrows = new Map(); // "x,y" -> 稻草人失效的世界時間
       this.chests = new Map();   // "x,y" -> 櫃裡的東西
+      this.nets = new Map();     // 錨點 "x,y" -> { size, x, y, fish, t }：漁網（一乘一、二乘二、三乘三）
+      this.netCells = new Map(); // 每一格 -> 錨點
       this.stoves = new Map();   // "x,y" -> 灶裡剩餘的柴火（秒）
       this.bags = new Map();     // "x,y" -> 落在地上的囊（物品列表）
       this.weirs = new Map();    // "x,y" -> 魚梁下一次有魚的時間
@@ -81,6 +83,7 @@
       if (ch === '灶' && !this.stoves.has(k)) this.stoves.set(k, 0);
       if (old === '包' && ch !== '包') this.bags.delete(k);
       if (old === '偶' && ch !== '偶') this.scarecrows.delete(k);
+      if ('網罟罾'.indexOf(old) >= 0 && '網罟罾'.indexOf(ch) < 0 && this.netCells.has(k)) { const rec = this.nets.get(this.netCells.get(k)); if (rec) this.removeNet(rec); }
       if (old === '櫃' && ch !== '櫃') this.chests.delete(k);
       if (old === '漁' && ch !== '漁') this.weirs.delete(k);
       if (ch === '漁' && !this.weirs.has(k)) this.weirs.set(k, this.time + 45);
@@ -109,6 +112,29 @@
         if (U.cheb(x, y, sx, sy) <= (days > 15 ? 10 : 7)) return true;
       }
       return false;
+    }
+    // 漁網：小網三條九十息一條，中網八條三十息一條，大網二十條十息一條；魚是懶算的
+    addNet(x, y, size, now) {
+      const key = U.key(x, y), rec = { size, x, y, fish: 0, t: now, under: [] }, ch = size === 1 ? '網' : size === 2 ? '罟' : '罾';
+      this.nets.set(key, rec);
+      for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) { rec.under.push(this.raw(x + i, y + j)); this.netCells.set(U.key(x + i, y + j), key); this.set(x + i, y + j, ch); }   // 記住網下原本的水，收網時還原
+      return rec;
+    }
+    netAt(x, y) { const a = this.netCells.get(U.key(x, y)); return a ? this.nets.get(a) || null : null; }
+    netRule(size) { return size === 1 ? { cap: 3, every: 90 } : size === 2 ? { cap: 8, every: 30 } : { cap: 20, every: 10 }; }
+    netFish(rec, now) {
+      const r = this.netRule(rec.size), n = Math.floor((now - rec.t) / r.every);
+      if (n > 0) { rec.fish = Math.min(r.cap, rec.fish + n); rec.t += n * r.every; }
+      if (rec.fish >= r.cap) rec.t = now;
+      return rec.fish;
+    }
+    removeNet(rec) {
+      const key = U.key(rec.x, rec.y); this.nets.delete(key);
+      for (let j = 0; j < rec.size; j++) for (let i = 0; i < rec.size; i++) {
+        const cx = rec.x + i, cy = rec.y + j; this.netCells.delete(U.key(cx, cy));
+        const u = rec.under && rec.under[j * rec.size + i], b = this.base(cx, cy);
+        this.set(cx, cy, u && u !== '網' && u !== '罟' && u !== '罾' ? u : (DB[b] && DB[b].kind === 'water' ? b : '水'));
+      }
     }
     // 灶
     stoveFuel(x, y) { return this.stoves.get(U.key(x, y)) || 0; }
@@ -260,12 +286,13 @@
       const timers = {}; for (const [k, v] of this.timers) timers[k] = [v.to, Math.round(v.at), v.from || '灰'];
       const scarecrows = {}; for (const [k, v] of this.scarecrows) scarecrows[k] = Math.round(v);
       const chests = {}; for (const [k, v] of this.chests) chests[k] = v;
+      const nets = {}; for (const [k, v] of this.nets) nets[k] = [v.size, v.x, v.y, v.fish, Math.round(v.t), (v.under || []).join('')];
       const stoves = {}; for (const [k, v] of this.stoves) stoves[k] = Math.round(v);
       const bags = {}; for (const [k, v] of this.bags) bags[k] = v;
       const weirs = {}; for (const [k, v] of this.weirs) weirs[k] = Math.round(v);
       const explored = {}; for (const [k, b] of this.explored) explored[k] = Array.from(b, v => v.toString(16).padStart(2, '0')).join('');
       const seen = this.places.filter(p => p.seen).map(p => p.id);
-      return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers, stoves, bags, weirs, explored, seen, scarecrows, chests };
+      return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers, stoves, bags, weirs, explored, seen, scarecrows, chests, nets };
     }
     restore(s) {
       this.time = s.time || 30;
@@ -274,6 +301,8 @@
       this.timers = new Map(Object.entries(s.timers || {}).map(([k, v]) => [k, { to: v[0], at: v[1], from: v[2] || '灰' }]));
       this.scarecrows = new Map(Object.entries(s.scarecrows || {}));
       this.chests = new Map(Object.entries(s.chests || {}));
+      this.nets = new Map(); this.netCells = new Map();
+      for (const [k, v] of Object.entries(s.nets || {})) { const rec = { size: v[0], x: v[1], y: v[2], fish: v[3], t: v[4], under: v[5] ? Array.from(v[5]) : [] }; this.nets.set(k, rec); for (let j = 0; j < rec.size; j++) for (let i = 0; i < rec.size; i++) this.netCells.set(U.key(rec.x + i, rec.y + j), k); }
       this.stoves = new Map(Object.entries(s.stoves || {}));
       this.bags = new Map(Object.entries(s.bags || {}));
       this.weirs = new Map(Object.entries(s.weirs || {}));

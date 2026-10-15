@@ -118,10 +118,10 @@ const result = await page.evaluate(async () => {
   hold('石劍'); const sd0 = tool('石劍').dur;
   face(0, 1); w.set(T().x, T().y, '草'); g.ents.list = g.ents.list.filter(e => e.type !== '虎');
   const tiger = g.ents.add('虎', T().x, T().y, { calm: 9, moveT: 9 });
-  g.pressGather(); ok('sword hits tiger for 40 (150 hp)', tiger.hp === 110, tiger.hp);
-  g.pressGather(); ok('attack has a cooldown', tiger.hp === 110);
-  for (let i = 0; i < 3; i++) { p.atkT = 0; tiger.x = T().x; tiger.y = T().y; g.pressGather(); }
-  ok('four blows kill the tiger, 肉×3, sword wears 4', !g.ents.list.includes(tiger) && g.count('肉') === 3 && tool('石劍').dur === sd0 - 4, bag());
+  g.pressGather(); ok('sword hits tiger for 40 (300 hp)', tiger.hp === 260, tiger.hp);
+  g.pressGather(); ok('attack has a cooldown', tiger.hp === 260);
+  for (let i = 0; i < 7; i++) { p.atkT = 0; tiger.x = T().x; tiger.y = T().y; g.pressGather(); }
+  ok('eight blows kill the tiger, 肉×3, sword wears 8', !g.ents.list.includes(tiger) && g.count('肉') === 3 && tool('石劍').dur === sd0 - 8, bag());
   const deer = g.ents.add('鹿', T().x, T().y, { calm: 9, moveT: 9 }); p.atkT = 0; g.pressGather();
   ok('one blow kills a deer, 肉×2', !g.ents.list.includes(deer) && g.count('肉') === 5, g.count('肉'));
   const deer2 = g.ents.add('鹿', T().x, T().y, { calm: 9, moveT: 9 }); hold('木'); unarm(); p.atkT = 0; g.pressGather();
@@ -185,6 +185,7 @@ const result = await page.evaluate(async () => {
   face(1, 0); w.set(T().x, T().y, '草'); const snake = g.ents.add('蛇', T().x, T().y, { moveT: 0, atk: 0 }); p.hp = 100; p.biteN = 0; p.biteLast = -99;
   await until(() => p.poisonT > 0, 3000);
   ok('snake bite poisons (3/s for 5 s)', p.poisonT > 0 && p.poisonPer === 3 && p.biteN === 1, [p.poisonT, p.poisonPer, p.biteN]);
+  ok('hostile beasts bite every 2.67 s and maul every 1.6 s (a quarter slower)', Math.abs(snake.atk - 2.0 * 4 / 3) < 0.3 && snake.hp === 90, [snake.atk, snake.hp]);
   const hpP = p.hp; await sleep(1000);
   ok('poison drains hp and screen tints green', p.hp < hpP && g.vignette().green > 0, [hpP - p.hp]);
   g.addItem('藥', 1); hold('藥'); g.useItem();
@@ -202,7 +203,7 @@ const result = await page.evaluate(async () => {
   ok('spider leaves you alone unless provoked', p.poisonT === 0 && !spider.angry && g.ents.list.includes(spider));
   spider.x = p.x + 1; spider.y = p.y + 1; spider.moveT = 99;
   g.addItem('石劍', 1); hold('石劍'); face(1, 1); p.atkT = 0; g.pressGather();
-  ok('attacking a spider makes it angry (45 hp − 40)', spider.angry && spider.hp === 5, spider.hp);
+  ok('attacking a spider makes it angry (90 hp − 40)', spider.angry && spider.hp === 50, spider.hp);
   g.ents.remove(spider);
   const rnd2 = Math.random; Math.random = () => 0.05; const spiders0 = g.ents.count('蛛');
   face(0, 1); w.set(T().x, T().y, '草'); hold('木'); g.action = null; g.pressGather(); await until(() => !g.action, 4000); Math.random = rnd2;
@@ -333,10 +334,10 @@ const result = await page.evaluate(async () => {
   hold('九閽鳴雷'); face(1, 0); for (const [dx, dy] of [[1, 0], [3, 2], [4, 0]]) w.set(p.x + dx, p.y + dy, '草');
   const h1 = g.ents.add('虎', p.x + 1, p.y, { moveT: 99, calm: 99 }), h2 = g.ents.add('狼', p.x + 3, p.y + 2, { moveT: 99, calm: 99 }), h3 = g.ents.add('鹿', p.x + 4, p.y, { moveT: 99 });
   p.atkT = 0; p.sta = 50; g.pressGather();
-  ok('one swing hits every beast within three tiles for 120, not the deer four away', Math.abs(h1.hp - 30) < 1e-6 && !g.ents.list.includes(h2) && h3.hp === 30 && tool('九閽鳴雷').dur === 198, [h1.hp, g.ents.list.includes(h2), h3.hp]);
+  ok('one swing hits every beast within three tiles for 120, not the deer four away', Math.abs(h1.hp - 180) < 1e-6 && Math.abs(h2.hp - 40) < 1e-6 && h3.hp === 30 && tool('九閽鳴雷').dur === 198, [h1.hp, h2.hp, h3.hp]);
   p.cour = g.levelAt(30); p.atkT = 0; g.pressGather();
-  ok('below level 31 it cannot be swung', Math.abs(h1.hp - 30) < 1e-6);
-  for (const e of [h1, h3]) g.ents.remove(e);
+  ok('below level 31 it cannot be swung', Math.abs(h1.hp - 180) < 1e-6);
+  for (const e of [h1, h2, h3]) g.ents.remove(e);
   p.tools = p.tools.filter(s => s.n !== '九閽鳴雷'); p.tool = -1; hold('石劍'); p.cour = 0; p.decayAt = 0; g.barSig = '';
   // 鷹：半友好；魚可馴，第一隻 35%、第二隻 25%、第三隻起 10%；馴了替你打獸、餵魚回力；右邊顯示
   g.ents.list = g.ents.list.filter(e => e.type !== '鷹' && e.type !== '虎');
@@ -355,8 +356,8 @@ const result = await page.evaluate(async () => {
   await sleep(80);
   ok('companion panel shows the eagle with two vertical bars', document.querySelectorAll('#companions .comp').length === 1 && document.querySelectorAll('#companions .vbars i').length === 2);
   eg.x = p.x + 3; eg.y = p.y + 3; eg.moveT = 0; eg.atk = 0; w.set(p.x + 5, p.y, '草'); const prey = g.ents.add('虎', p.x + 5, p.y, { moveT: 99, calm: 99, atk: 0 });
-  await until(() => prey.hp < 150, 6000);
-  ok('a tamed eagle attacks a hostile beast near you and spends stamina', prey.hp < 150 && eg.sta < 70 && prey.foe === eg, [prey.hp, eg.sta]);
+  await until(() => prey.hp < 300, 6000);
+  ok('a tamed eagle attacks a hostile beast near you and spends stamina', prey.hp < 300 && eg.sta < 70 && prey.foe === eg, [prey.hp, eg.sta]);
   prey.moveT = 0; prey.atk = 0; const eh = eg.hp; await until(() => eg.hp < eh, 4000);
   ok('the beast fights back at the eagle', eg.hp < eh, [eh, eg.hp]);
   g.ents.remove(prey); eg.sta = 100;
@@ -372,6 +373,33 @@ const result = await page.evaluate(async () => {
   g.addItem('龜甲', 1); hold('龜甲'); Math.random = () => 0.1; g.useItem(); Math.random = rnd3;
   ok('a good omen: five days without ghosts', g.peaceDays() === 5 && (() => { const t0 = w.time; w.time = Math.floor((p.noGhostUntil - DAY) / DAY) * DAY + DAY * 0.7; const inside = !g.ghostNight(); w.time = Math.floor(p.noGhostUntil / DAY) * DAY + DAY * 1.7; const after = g.ghostNight(); w.time = t0; return inside && after; })(), [g.peaceDays()]);
   p.noGhostUntil = 0;
+  // 漁網：棉麻草織小網，四小成中，四中或十三小成大；放在水上按時存魚；空網收回
+  trim(['木', '石', '石子', '草', '土', '磚', '大船']); g.removeItem('草', 99); g.removeItem('魚', 99);
+  g.addItem('棉', 26); g.addItem('麻', 26); g.addItem('草', 39);
+  for (let i = 0; i < 13; i++) { p.sta = 100; g.craft('net'); }
+  ok('thirteen small nets from cotton, hemp and grass', g.count('漁網') === 13 && g.count('棉') === 0 && g.count('麻') === 0 && g.count('草') === 0, bag());
+  p.sta = 100; g.craft('bignet13');
+  ok('thirteen small nets weave one big net', g.count('大漁網') === 1 && g.count('漁網') === 0);
+  g.addItem('漁網', 16); for (let i = 0; i < 4; i++) { p.sta = 100; g.craft('midnet'); }
+  ok('four small nets weave a medium net', g.count('中漁網') === 4 && g.count('漁網') === 0);
+  p.sta = 100; g.craft('bignet');
+  ok('four medium nets weave a big net', g.count('大漁網') === 2 && g.count('中漁網') === 0);
+  g.addItem('漁網', 1); face(1, 0); w.set(T().x, T().y, '水'); hold('漁網'); g.pressPlace(); const nk = T(), fish0 = g.count('魚');
+  ok('a small net sits on shallow water', w.get(nk.x, nk.y) === '網' && !!w.netAt(nk.x, nk.y) && g.count('漁網') === 0);
+  w.time += 200; g.action = null; g.pressGather();
+  ok('after 200 s it holds two fish (one per 90 s, at most 3)', g.count('魚') === fish0 + 2, g.count('魚') - fish0);
+  g.pressGather();
+  ok('an empty net is taken back with E', w.get(nk.x, nk.y) === '水' && g.count('漁網') === 1 && !w.netAt(nk.x, nk.y));
+  w.set(nk.x, nk.y, '淼'); g.pressPlace();
+  ok('a small net refuses deep water', w.get(nk.x, nk.y) === '淼' && g.count('漁網') === 1);
+  for (let dx = 0; dx < 3; dx++) for (let dy = 0; dy < 3; dy++) w.set(nk.x + dx, nk.y + dy, '淼');
+  hold('大漁網'); g.pressPlace();
+  ok('a big net covers three by three of deep water', w.get(nk.x + 2, nk.y + 2) === '罾' && w.netAt(nk.x + 2, nk.y + 2) === w.netAt(nk.x, nk.y) && g.count('大漁網') === 1);
+  w.time += 1000; g.pressGather();
+  ok('a big net stores up to twenty fish, one every 10 s', g.count('魚') === fish0 + 22, g.count('魚') - fish0);
+  g.pressGather();
+  ok('taking a big net back clears all nine cells', g.count('大漁網') === 2 && w.get(nk.x + 1, nk.y + 1) === '淼' && !w.netAt(nk.x + 2, nk.y + 2));
+  g.removeItem('魚', 99); g.removeItem('大漁網', 9); g.removeItem('漁網', 9);
   // 煤與鐵：山裡有礦；礦二煤一入旺灶煉鐵；煤是好柴
   let coal = 0, iron = 0; for (let x = -60; x <= 60; x++) for (let y = -60; y <= 60; y++) { const b = w.base(x, y); if (b === '煤') coal++; else if (b === '鐵') iron++; }
   ok('coal seams and iron veins spawn in the mountains', coal >= 5 && iron >= 3, [coal, iron]);

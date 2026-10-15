@@ -6,6 +6,7 @@
   const N8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
   const N4 = [[0, -1], [-1, 0], [1, 0], [0, 1]];
   const SCARED = '虎豹狼蛇蛛蟾';           // 稻草人擋得住的
+  const HOSTILE = '虎豹狼蛇蛛蟾';          // 敵對獸：命翻倍、攻擊間隔放慢四分之一
   const FOREST = '林森竹';
 
   class Entities {
@@ -120,13 +121,13 @@
     }
 
     // 咬人與打人：由遊戲端結算
-    maul(e, g, dt) {       // 近身撲咬，間隔 1.2 秒
+    maul(e, g, dt) {       // 近身撲咬：敵對獸間隔 1.6 秒（原 1.2 秒放慢四分之一），鷹 1.2 秒
       if (e.atk > 0) return;
-      g.hit(e, DB[e.type].atk); e.atk = 1.2;
+      g.hit(e, DB[e.type].atk); e.atk = HOSTILE.indexOf(e.type) >= 0 ? 1.6 : 1.2;
     }
-    bite(e, g) {           // 毒咬，間隔 2 秒
+    bite(e, g) {           // 毒咬，間隔 2.67 秒（原 2 秒放慢四分之一）
       if (e.atk > 0) return;
-      g.bite(e, DB[e.type].bite); e.atk = 2.0;
+      g.bite(e, DB[e.type].bite); e.atk = 2.0 * 4 / 3;
     }
 
     update(dt, g) {
@@ -191,7 +192,7 @@
           if (!this.list.includes(e.foe) || e.foe.hp <= 0 || U.cheb(e.x, e.y, e.foe.x, e.foe.y) > 6) e.foe = null;
           else if (U.cheb(e.x, e.y, e.foe.x, e.foe.y) <= 1 && e.atk <= 0) {
             const dmg = DB[e.type].atk || (DB[e.type].bite || 2) * 4;
-            e.foe.hp = Math.round((e.foe.hp - dmg) * 100) / 100; e.atk = 1.2; e.moveT = 0.5;
+            e.foe.hp = Math.round((e.foe.hp - dmg) * 100) / 100; e.atk = HOSTILE.indexOf(e.type) >= 0 ? 1.6 : 1.2; e.moveT = 0.5;
             if (e.foe.hp <= 0) { g.companionDied(e.foe, e); e.foe = null; }
             continue;
           }

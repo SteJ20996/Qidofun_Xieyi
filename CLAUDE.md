@@ -1,6 +1,6 @@
 # 寫意 · 專案約定
 
-由漢字構成的生存與探索沙盒：收集、製作、砌牆；蛇蛛蟾豹狼、半友好可馴的鷹、少見的龜；第十三夜起怕光穿牆的魄；命飽暖力愜六條數值加膽氣；膽氣八重造船渡海，十重五件衣甲穿齊即山海衣，卅一重可鑄九閽鳴雷；山有煤鐵，鐵可打甲；錦囊擴囊；三種難度；死落荷包。純瀏覽器單頁，零依賴，全繁體。
+由漢字構成的生存與探索沙盒：收集、製作、砌牆；蛇蛛蟾豹狼、半友好可馴的鷹、少見的龜；第十三夜起怕光穿牆的魄；命飽暖力愜六條數值加膽氣；膽氣八重造船渡海，十重五件衣甲穿齊即山海衣，卅一重可鑄九閽鳴雷；山有煤鐵，鐵可打甲；錦囊擴囊；棉麻草織漁網，四小成中、四中或十三小成大；三種難度；死落荷包。純瀏覽器單頁，零依賴，全繁體。
 
 ## 語言
 - 遊戲文案、程式註解、README、回覆一律繁體中文（台灣用語）。
@@ -16,4 +16,4 @@
 ## 位置
 - 分支 `claude/xieyi-open-world`，PR #1。
 - 規則表：`src/glyphs.js`（`DB` 字庫與取物、`ITEMS` 物品與工具、`RECIPES` 配方、`PLACES` 地標、`STELES` 碑文）。
-- 數值：`src/game.js` 頂部常數（`GHOST_NIGHT`=13、`FERMENT_NIGHTS`=15、`SLOTS`=16、`TOOL_SLOTS`=6、`SHIP_LEVEL`=8、`TOTEM_LEVEL`=10、`DECAY_LEVEL`=31、`LEVEL_UNIT`=20 與 `levelCost(n)`=20×(1+0.1n)²、`ARMOR_LIFE`=180 日、`HIT_MULT`、`WEAR_CAP`=6、`REPAIR_WM`=1.5、`HAT_FUEL`=400、`BASE_SLOTS`=16／`BASE_TOOLS`=6／`MAX_POUCHES`=4、`DIFF` 難度表、`HAMMER_*`）與 `updateStats`。生靈的命在 `src/glyphs.js` 的 `DB`（鹿 30、蛇蛛蟾 45、豹狼 80、虎 150、龍 500），工具傷害在 `ITEMS`（石刀 30、石劍 40、鎬鋤斧 15、九閽鳴雷 120）。
+- 數值：`src/game.js` 頂部常數（`GHOST_NIGHT`=13、`FERMENT_NIGHTS`=15、`SLOTS`=16、`TOOL_SLOTS`=6、`SHIP_LEVEL`=8、`TOTEM_LEVEL`=10、`DECAY_LEVEL`=31、`LEVEL_UNIT`=20 與 `levelCost(n)`=20×(1+0.1n)²、`ARMOR_LIFE`=180 日、`HIT_MULT`、`WEAR_CAP`=6、`REPAIR_WM`=1.5、`HAT_FUEL`=400、`BASE_SLOTS`=16／`BASE_TOOLS`=6／`MAX_POUCHES`=4、`DIFF` 難度表、`HAMMER_*`）與 `updateStats`。生靈的命在 `src/glyphs.js` 的 `DB`（鹿 30、龜 50、鷹 60、蛇蛛蟾 90、豹狼 160、虎 300、龍 500；敵對獸撲咬 1.6 秒、毒咬 2.67 秒一次，在 `src/entities.js` 的 `maul`／`bite`），工具傷害在 `ITEMS`（石刀 30、石劍 40、鎬鋤斧 15、九閽鳴雷 120）。
