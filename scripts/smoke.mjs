@@ -260,7 +260,8 @@ const result = await page.evaluate(async () => {
   // 鐵甲：減傷三成、毒不侵、慢四分之一、攻擊加半成、飢愜力掉得快八分
   g.addItem('內襯', 1); g.addItem('鐵甲', 1); g.addItem('鐵褲', 1); g.addItem('鐵盔', 1); g.addItem('鐵靴', 1);
   for (const n of ['內襯', '鐵甲', '鐵褲', '鐵盔', '鐵靴']) { hold(n); g.pressPlace(); }
-  p.cour = 0;
+  p.cour = 0; await sleep(80);
+  ok('worn panel shows the four live numbers', (() => { const t = document.getElementById('wornstats').textContent; return t.indexOf('傷害獲取70%') >= 0 && t.indexOf('移動速度75%') >= 0 && t.indexOf('傷害輸出105%') >= 0 && t.indexOf('現今蟲獸傷害輸出100%') >= 0 && document.querySelectorAll('#worn1 .slot').length === 3 && document.querySelectorAll('#worn2 .slot').length === 2; })(), document.getElementById('wornstats').textContent);
   ok('full iron: 30% less damage, poison immune, 25% slower, +5% attack, +8% drain', Math.abs(g.armorRed() - 0.30) < 1e-9 && g.ironFull() && Math.abs(g.ironSpeed() - 0.75) < 1e-9 && Math.abs(g.dmgMult() - 1.05) < 1e-9 && Math.abs(g.ironDrain() - 1.08) < 1e-9 && Math.abs(g.takenMult() - 0.7) < 1e-9, [g.armorRed(), g.dmgMult(), g.takenMult()]);
   p.poisonT = 0; p.poisonPer = 0; g.bite({ type: '蛇', x: p.x + 1, y: p.y }, 3);
   ok('iron-clad, a snake bite does not poison', p.poisonT === 0 && p.poisonPer === 0);

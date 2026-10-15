@@ -924,21 +924,30 @@
         el.addEventListener('contextmenu', (ev) => ev.preventDefault());
         tb.appendChild(el);
       }
-      const wn = $('worn'); wn.innerHTML = '';
-      for (const k of SLOT_ORDER) {
-        const s = p.worn[k], el = document.createElement('div');
-        el.className = 'slot bag worn' + (s ? '' : ' empty');
-        if (s) { el.innerHTML = '<span class="ch word">' + s.n + '</span><span class="cost">' + this.durText(s) + '</span><i class="dur" style="width:' + Math.round(100 * s.dur / ARMOR_LIFE) + '%"></i>'; el.title = ITEMS[s.n].flavor + '（點一下脫下）'; }
-        else { el.innerHTML = '<span class="ch">' + k + '</span>'; el.title = '身上：' + k + '。囊裡選中衣甲按 F 穿上。'; }
-        el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (s) this.takeOff(k); });
-        wn.appendChild(el);
-      }
-      const red = Math.round(this.armorRed() * 100), wl = $('wornlabel'), on = this.totemOn();
-      wl.textContent = on ? '山海衣 · 減傷 ' + red + '% · 攻 ×' + Math.round(this.dmgMult() * 100) / 100 : this.wornList().length ? '減傷 ' + red + '%' + (this.ironCount() ? ' · 鐵 ' + this.ironCount() + '/4' : '') : '身無衣甲';
-      wl.classList.toggle('totem', on);
+      // 身上：上排襯褲甲，下排盔靴；下面四行是現在的數
+      [['襯', '褲', '甲'], ['盔', '靴']].forEach((keys, ri) => {
+        const row = $('worn' + (ri + 1)); row.innerHTML = '';
+        for (const k of keys) {
+          const s = p.worn[k], el = document.createElement('div');
+          el.className = 'slot bag worn' + (s ? '' : ' empty');
+          if (s) { el.innerHTML = '<span class="ch word">' + s.n + '</span><span class="cost">' + Math.max(1, Math.ceil(s.dur / DAY)) + '日</span><i class="dur" style="width:' + Math.round(100 * s.dur / ARMOR_LIFE) + '%"></i>'; el.title = ITEMS[s.n].flavor + '（點一下脫下）'; }
+          else { el.innerHTML = '<span class="ch">' + k + '</span>'; el.title = '身上：' + k + '。囊裡選中衣甲按 F 穿上。'; }
+          el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (s) this.takeOff(k); });
+          row.appendChild(el);
+        }
+      });
+      const on = this.totemOn();
+      $('wornstats').innerHTML = (on ? '<div class="totem">山海衣 · 獸紋已顯</div>' : '')
+        + '<div><span>傷害獲取</span><b>' + Math.round(this.takenMult() * 100) + '%</b></div>'
+        + '<div><span>移動速度</span><b>' + Math.round(this.ironSpeed() * 100) + '%</b></div>'
+        + '<div><span>傷害輸出</span><b>' + Math.round(this.dmgMult() * 100) + '%</b></div>'
+        + '<div><span>現今蟲獸傷害輸出</span><b>' + (on ? 167 : 100) + '%</b></div>';
     }
     updateHUD() {
       const p = this.player, w = this.world, t = this.facing();
+      // 身上的四個數會隨膽氣、衣甲變，變了就重畫囊與身上
+      const ws = (this.totemOn() ? 1 : 0) + '|' + Math.round(this.takenMult() * 1000) + '|' + Math.round(this.dmgMult() * 1000) + '|' + Math.round(this.ironSpeed() * 1000);
+      if (ws !== this.wornSig) { this.wornSig = ws; this.barSig = ''; }
       if (this.barSig === '') this.buildBag();
       const sig = [Math.round(p.hp), Math.round(p.food), Math.round(p.warm), Math.round(p.sta), p.staMax, Math.round(p.san), this.shichen(), p.x, p.y, w.get(p.x, p.y), this.daylight() > 0.5, this.day(), w.tideName(), p.sailing].join('|');
       if (sig !== this.hudSig) {
