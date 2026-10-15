@@ -548,11 +548,16 @@ const result = await page.evaluate(async () => {
   let beach = null; for (let r = 60; r <= 75 && !beach; r++) for (let a = 0; a < 360 && !beach; a += 2) { const x = Math.round(Math.cos(a * Math.PI / 180) * r), y = Math.round(Math.sin(a * Math.PI / 180) * r); if (w.raw(x, y) === '灘' && w.raw(x + 1, y) === '灘') beach = [x, y]; }
   if (beach) { p.x = p.rx = beach[0]; p.y = p.ry = beach[1]; setDay(0.6); ok('caught by the tide on the causeway you can wade to the next shoal', w.get(beach[0], beach[1]) === '水' && g.pass(beach[0] + 1, beach[1]), beach); p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; }
   else ok('caught by the tide on the causeway you can wade to the next shoal (no causeway found to test)', true);
-  if (beach) {   // 漲潮時灘看起來是水，但船、魚梁、橋都不能停在灘上，否則退潮會堵住去燈塔的路
+  if (beach) {   // 漲潮時灘看起來是水，但船與魚梁不能停在灘上，否則退潮會堵住去燈塔的路；橋可以
     setDay(0.6); p.x = p.rx = beach[0] - 1; p.y = p.ry = beach[1]; face(1, 0); g.addItem('漁', 1); hold('漁'); g.pressPlace();
     const parked = g.parkShip(beach[0], beach[1], true, 60); const pk = parked ? w.base(parked[0], parked[1]) : null; if (parked) w.set(parked[0], parked[1], w.base(parked[0], parked[1]));
-    ok('nothing parks or gets built on the causeway at high tide', w.raw(beach[0], beach[1]) === '灘' && g.count('漁') === 1 && parked && pk === '水', [w.raw(beach[0], beach[1]), g.count('漁'), JSON.stringify(parked), pk]);
-    g.removeItem('漁', 9); p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y;
+    ok('no ship parks and no weir gets built on the causeway at high tide', w.raw(beach[0], beach[1]) === '灘' && g.count('漁') === 1 && parked && pk === '水', [w.raw(beach[0], beach[1]), g.count('漁'), JSON.stringify(parked), pk]);
+    g.removeItem('漁', 9);
+    g.addItem('橋', 1); hold('橋'); g.pressPlace();
+    const bridged = w.get(beach[0], beach[1]) === '橋'; setDay(0.25); const lowWalk = w.walkable(beach[0], beach[1]); setDay(0.6);
+    g.action = null; g.pressGather(); await until(() => !g.action, 4000);
+    ok('a bridge may be built on the causeway, walkable at both tides, and taking it back leaves the causeway', bridged && lowWalk && w.raw(beach[0], beach[1]) === '灘' && g.count('橋') === 1, [bridged, lowWalk, w.raw(beach[0], beach[1]), g.count('橋'), g.msgText]);
+    g.removeItem('橋', 9); p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y;
   }
   p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; p.sailing = false; p.crossed = false;
   // 草木長回來（計時器）

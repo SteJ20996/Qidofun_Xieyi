@@ -587,7 +587,8 @@
     }
     finishGather(a) {
       const w = this.world, p = this.player, d = DB[a.ch];
-      const to = d.to || '白';
+      const under = w.base(a.x, a.y), onWater = d.onWater && (DB[under].kind === 'water' || under === '灘');
+      const to = onWater ? under : (d.to || '白');                       // 拆回橋、魚梁：底下原本是水或灘就還原，不會憑空多出陸地
       w.set(a.x, a.y, to); w.extinguish(a.x, a.y);
       if (d.regrow) w.schedule(a.x, a.y, to, a.ch, d.regrow);         // 草木會長回來
       let got = [];
@@ -712,7 +713,10 @@
       const tileName = it.tile || name;             // 大船放下是「舟」
       if (DB[tileName] && DB[tileName].net) { this.placeNet(t, tileName, name); return; }
       if (!DB[tileName] || !DB[tileName].place) { this.message('「' + name + '」放不到地上。'); fail(); return; }
-      if (DB[tileName].onWater) { if (base !== '水' || w.raw(t.x, t.y) !== '水') { this.message(w.raw(t.x, t.y) === '灘' ? '灘上漲潮才有水，退潮就擱淺了，「' + name + '」要放在真的淺水上。' : '「' + name + '」要放在淺水上。'); fail(); return; } }
+      if (DB[tileName].onWater) {       // 放在水上的東西只放真的淺水；灘上只准架橋（漲潮退潮都走得過，使用者裁定）
+        const raw = w.raw(t.x, t.y), ok = raw === '水' || (tileName === '橋' && raw === '灘');
+        if (!ok) { this.message(raw === '灘' ? '灘上漲潮才有水，退潮就擱淺了，「' + name + '」要放在真的淺水上；灘上只能架橋。' : '「' + name + '」要放在淺水上。'); fail(); return; }
+      }
       else {
         if (!(bd.kind === 'ground' || bd.kind === 'blank')) { this.message('這裡放不下，先把地上的東西取走。'); fail(); return; }
         if (this.ents.beastAt(t.x, t.y)) { this.message('有東西擋著。'); fail(); return; }
