@@ -541,8 +541,8 @@ const result = await page.evaluate(async () => {
   const landBag = [...w.bags.keys()].some(k => { const [x, y] = k.split(',').map(Number); const b = w.base(x, y); return w.get(x, y) === '包' && U.dist(x, y, 0, G.ISLAND_R + 10) < 30 && G.DB[b === '灘' ? '沙' : b].walk > 0 && G.DB[b].kind !== 'water'; });
   const shipLeft = [...w.diff.entries()].some(([k, v]) => v === '舟' && (() => { const [x, y] = k.split(',').map(Number); return U.dist(x, y, 0, G.ISLAND_R + 10) < 30; })());
   ok('dying at sea drops the 荷包 on the nearest land and leaves the ship on shallow water', p.dead && landBag && shipLeft, [landBag, shipLeft]);
-  await press('Enter', 20); await sleep(80);
-  ok('respawn after a sea death is back on land', !p.dead && !p.sailing && w.info(p.x, p.y).walk > 0);
+  await press('Enter', 20); await until(() => !p.dead, 2000); await sleep(80);
+  ok('respawn after a sea death is back on land', !p.dead && !p.sailing && w.info(p.x, p.y).walk > 0, [p.dead, p.sailing, p.x, p.y, w.get(p.x, p.y), JSON.stringify(p.home), JSON.stringify(g.spawn)]);
   // 漲潮困在灘上可以涉水走到別的灘
   let beach = null; for (let r = 60; r <= 75 && !beach; r++) for (let a = 0; a < 360 && !beach; a += 2) { const x = Math.round(Math.cos(a * Math.PI / 180) * r), y = Math.round(Math.sin(a * Math.PI / 180) * r); if (w.raw(x, y) === '灘' && w.raw(x + 1, y) === '灘') beach = [x, y]; }
   if (beach) { p.x = p.rx = beach[0]; p.y = p.ry = beach[1]; setDay(0.6); ok('caught by the tide on the causeway you can wade to the next shoal', w.get(beach[0], beach[1]) === '水' && g.pass(beach[0] + 1, beach[1]), beach); p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; }

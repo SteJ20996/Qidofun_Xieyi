@@ -1,4 +1,4 @@
-/* 寫意 —— 界面樣式：宣紙、墨、硃砂印 */
+/* 山海有形 —— 界面樣式：宣紙、墨、硃砂印 */
 :root {
   --paper: #efe5cf; --paper-2: #e6d9bd; --ink: #1c1a17; --ink-2: #4a4238; --dim: #8a7f6c; --red: #b4392a; --red-2: #8f2c20;
   --font: "LXGW WenKai TC", "BiauKai", "DFKai-SB", "標楷體", "Kaiti TC", "Noto Serif TC", "WenQuanYi Zen Hei", serif;
@@ -15,10 +15,15 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 #hud > * { pointer-events: auto; }
 
 /* 硃砂印 */
-#seal { position: absolute; left: calc(22px + env(safe-area-inset-left, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); width: 46px; height: 74px; background: var(--red); color: #f7efe0; border-radius: 4px;
-  display: grid; grid-template-rows: 1fr 1fr; place-items: center; font: 26px/1 var(--font); box-shadow: 0 2px 0 rgba(0,0,0,.15), inset 0 0 0 2px rgba(255,255,255,.35);
+/* 硃砂印：四字二乘二，照印章的讀法右起直下（山海在右，有形在左） */
+#seal { position: absolute; left: calc(20px + env(safe-area-inset-left, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); width: 72px; height: 72px; background: var(--red); color: #f7efe0; border-radius: 4px;
+  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; place-items: center; font: 25px/1 var(--font); box-shadow: 0 2px 0 rgba(0,0,0,.15), inset 0 0 0 2px rgba(255,255,255,.35);
   transform: rotate(-3deg); }
 #seal span { line-height: 1; }
+#seal span:nth-child(1) { grid-column: 2; grid-row: 1; }
+#seal span:nth-child(2) { grid-column: 2; grid-row: 2; }
+#seal span:nth-child(3) { grid-column: 1; grid-row: 1; }
+#seal span:nth-child(4) { grid-column: 1; grid-row: 2; }
 
 /* 墨量與生存：幾條豎著的條 */
 #vitals { position: absolute; left: calc(24px + env(safe-area-inset-left, 0px)); top: calc(110px + env(safe-area-inset-top, 0px)); display: flex; gap: 24px; align-items: flex-start; }
@@ -139,6 +144,7 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 .panel::before { content: ""; position: absolute; inset: 6px; border: 1px solid rgba(28,26,23,.35); pointer-events: none; }
 .panel h1 { margin: 0; font: 88px/1 var(--font); letter-spacing: .1em; display: flex; gap: .15em; }
 .panel h1 span:first-child { color: var(--red); }
+.panel p.sub.motto { margin-top: -6px; opacity: .72; }
 .panel h2 { margin: 0 0 12px; font: 34px/1.2 var(--font); }
 .panel h3 { margin: 14px 0 6px; font: 20px/1.2 var(--font); color: var(--red-2); }
 .panel p, .panel li { font-size: 15px; line-height: 1.7; margin: 4px 0; }
@@ -155,7 +161,7 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 .panel button.ghost { background: transparent; color: var(--ink); }
 .panel button.ghost:hover { color: var(--paper); }
 #help-close { margin-top: 14px; }
-@media (max-width: 720px) { .panel .cols { grid-template-columns: 1fr; } .panel h1 { font-size: 64px; } #ink { display: none; } #keys { display: none; } }
+@media (max-width: 720px) { .panel .cols { grid-template-columns: 1fr; } .panel h1 { font-size: 52px; letter-spacing: .04em; gap: .1em; } #ink { display: none; } #keys { display: none; } }
 
 /* 全島地圖、見聞錄、讀碑 */
 .panel.mapwrap { width: auto; padding: 20px 24px; }

@@ -361,7 +361,9 @@
     respawn() {
       const p = this.player, w = this.world;
       const h = p.home, homeOk = h && w.get(h.x, h.y) === '床';
-      const at = homeOk ? this.freeNear(h.x, h.y) : this.spawn;
+      let at = homeOk ? this.freeNear(h.x, h.y) : this.spawn;
+      const landOk = (x, y) => w.walkable(x, y) && DB[w.get(x, y)].kind !== 'water';
+      if (!landOk(at.x, at.y)) { const t = this.nearestTile(at.x, at.y, landOk, 40); if (t) at = { x: t[0], y: t[1] }; }   // 出生點被蓋住或淹了，就找最近能站的地
       p.x = p.rx = at.x; p.y = p.ry = at.y; p.moveT = 0;
       p.hp = Math.min(p.hpMax, 60); p.food = 60; p.warm = 60; p.sta = p.staMax; p.san = Math.max(p.san, 50); p.cour = Math.floor(p.cour * 0.4); p.decayAt = 0; p.hitWin = { start: -99, n: 0 };
       p.hurtT = 0; p.dead = false; p.warned = {}; p.poisonT = 0; p.poisonPer = 0; p.biteN = 0; p.insane = false; p.ctrl = true; p.zeroSan = 0; p.sailing = false; p.crossed = false;
@@ -1345,7 +1347,7 @@
       window.XIEYI = { game, Game, DAY, DIFF };
       $('start').classList.add('hidden');
       game.paused = false;
-      game.toast('寫意', '取木、取棉、取石子；砌磚、造床、磨劍。第 ' + game.diff.ghost + ' 夜起有魄，備好火把。按 H 看法子。', 7000);
+      game.toast('山海有形', '取木、取棉、取石子；砌磚、造床、磨劍。第 ' + game.diff.ghost + ' 夜起有魄，備好火把。按 H 看法子。', 7000);
       setTimeout(() => { if (game) game.toast('聽說島上有一座塔', '從塔上能看見整張紙。黃昏時跟著鳥走。', 8000); }, 5000);
       window.addEventListener('beforeunload', () => game.save());
       document.addEventListener('visibilitychange', () => { if (document.hidden) game.save(); });

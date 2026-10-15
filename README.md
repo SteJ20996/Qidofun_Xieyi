@@ -1,4 +1,7 @@
-# 寫意 · Xiěyì
+# 山海有形 · Shanhai Youxing
+
+> 字裡行間 · 一紙之島　　寫木為舟 · 寫水成淵
+> *Where Mountains and Seas Take Form.* 舊名「寫意」是組字造詞時代的名字；改名的來由見 `docs/SPEC.md` §2.2。
 
 > 鳥棲於山，是為島。一張紙落在海上，紙上的字活了。
 

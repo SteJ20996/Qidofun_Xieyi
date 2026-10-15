@@ -15,7 +15,7 @@ body = html[html.index('<body>') + 6: html.index('</body>')]
 font_links = '\n'.join(l.strip() for l in head.splitlines() if 'fonts.g' in l)
 body = re.sub(r'<script src="([^"]+)"></script>',
               lambda m: '<script>\n' + (root / m.group(1)).read_text(encoding='utf-8') + '\n</script>', body)
-fragment = ('<title>寫意</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n' + font_links +
+fragment = ('<title>山海有形</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n' + font_links +
             '\n<style>\n' + css + '\n</style>\n' + body.strip() + '\n')
 
 out_dir = root / 'dist'; out_dir.mkdir(exist_ok=True)
