@@ -7,20 +7,25 @@
   const SHICHEN = '子丑寅卯辰巳午未申酉戌亥';
   const DIRS = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] };
   const N8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
-  const SLOTS = 16, STACK = 64, CHEST_SLOTS = 24, TOOL_SLOTS = 6, GHOST_NIGHT = 13, FERMENT_NIGHTS = 15, SHIP_LEVEL = 8, TOTEM_LEVEL = 10, DECAY_LEVEL = 31, DECAY_DAYS = 3;
+  const BASE_SLOTS = 16, STACK = 64, CHEST_SLOTS = 24, BASE_TOOLS = 6, MAX_POUCHES = 4, FERMENT_NIGHTS = 15, SHIP_LEVEL = 8, TOTEM_LEVEL = 10, DECAY_LEVEL = 31, DECAY_DAYS = 3;
+  // 難度：魄從第幾夜起、受傷與攻擊倍率、夜裡狼虎豹蛇的數量倍率
+  const DIFF = { easy: { key: 'easy', name: '簡單', ghost: 21, taken: 0.9, dmg: 1.1, beasts: 1 }, normal: { key: 'normal', name: '一般', ghost: 13, taken: 1, dmg: 1, beasts: 1 }, hard: { key: 'hard', name: '困難', ghost: 9, taken: 1.1, dmg: 0.9, beasts: 1.5 } };
+  // 九閽鳴雷：卅一重方可造、可掄；三格內諸獸同受其傷；隨身則膽氣二日一減、下限廿五重
+  const HAMMER = '九閽鳴雷', HAMMER_LEVEL = 31, HAMMER_RANGE = 3, HAMMER_FLOOR = 25, HAMMER_DECAY_DAYS = 2;
   // 膽氣：第 n 重升到 n+1 重要 20×(1+0.1n)² 點：20、24.2、28.8、33.8、39.2……八重共 300，十重 437，卅一重 4371
   const LEVEL_UNIT = 20;
   const levelCost = (n) => Math.round(LEVEL_UNIT * (1 + 0.1 * n) * (1 + 0.1 * n) * 100) / 100;
   const CUM = [0]; for (let n = 0; n < 120; n++) CUM.push(Math.round((CUM[n] + levelCost(n)) * 100) / 100);
   // 衣甲：五件一套，一百八十日勻速穿破；十五息內挨打越多壞得越快，且會累加
-  const SLOT_ORDER = ['襯', '褲', '甲', '盔', '靴'], ARMOR_LIFE = 180 * DAY, HIT_MULT = [1, 1.05, 1.12, 1.2, 1.5];
+  const SLOT_ORDER = ['襯', '褲', '甲', '盔', '靴', '帽'], ARMOR_SLOTS = ['襯', '褲', '甲', '盔', '靴'], ARMOR_LIFE = 180 * DAY, HIT_MULT = [1, 1.05, 1.12, 1.2, 1.5];
   const FUEL = { '煤': 120 };   // 灶的好柴：一塊煤燒一百二十息
   const WEAR_CAP = 6, REPAIR_WM = 1.5, HAT_FUEL = 400;   // 衣甲損耗倍率封頂；修補後從 1.5 倍起算；燈帽一根蠟燭四百息
   const $ = (id) => document.getElementById(id);
 
   class Game {
-    constructor(seed, save) {
+    constructor(seed, save, diff) {
       this.seed = seed | 0;
+      this.diff = DIFF[(save && save.diff) || diff] || DIFF.normal;
       this.world = new World(this.seed);
       this.ents = new Entities(this.world);
       this.world.onDiscover = (pl) => this.discover(pl);
@@ -28,7 +33,7 @@
       this.mapAcc = 0;
       this.player = { x: 0, y: 0, rx: 0, ry: 0, fx: 0, fy: 1, fromX: 0, fromY: 0, moveT: 0, stepDur: 0.2,
         hp: 100, food: 100, warm: 100, sta: 100, staMax: 100, san: 100, cour: 0,
-        hurtT: 0, atkT: 0, bag: [], sel: 0, tools: [], tool: -1, worn: { '襯': null, '褲': null, '甲': null, '盔': null, '靴': null }, hitWin: { start: -99, n: 0 }, totemOff: false, craftLog: {}, home: null, readSteles: [], places: {}, creatures: [], raftTaken: false, dragon: false, finished: false,
+        hurtT: 0, atkT: 0, bag: [], sel: 0, tools: [], tool: -1, worn: { '襯': null, '褲': null, '甲': null, '盔': null, '靴': null, '帽': null }, hitWin: { start: -99, n: 0 }, totemOff: false, craftLog: {}, pouches: 0, home: null, readSteles: [], places: {}, creatures: [], raftTaken: false, dragon: false, finished: false,
         deaths: 0, dead: false, warned: {}, burn: {}, lastDay: 1,
         poisonT: 0, poisonPer: 0, biteN: 0, biteLast: -99, zeroSan: 0, insane: false, ctrl: true, ctrlT: 0, knock: 0, sailing: false, crossed: false, decayAt: 0 };
       this.stats = { gathered: 0, crafted: 0, kills: 0, read: 0, nights: 0, bites: 0 };
@@ -58,9 +63,15 @@
     daylight() { const t = this.dayT(); return U.smoothstep(-0.04, 0.08, t) * (1 - U.smoothstep(0.46, 0.58, t)); }
     darkness() { return 1 - this.daylight(); }
     isNight() { const t = this.dayT(); return t > 0.5 || t < 0.06; }
-    ghostNight() { return this.darkness() > 0.5 && this.nightNo() >= GHOST_NIGHT; }
-    ghostCap() { return Math.min(6, 2 + Math.floor((this.nightNo() - GHOST_NIGHT) / 2)); }
+    ghostNight() { return this.darkness() > 0.5 && this.nightNo() >= this.diff.ghost; }
+    ghostCap() { return Math.min(6, 2 + Math.floor((this.nightNo() - this.diff.ghost) / 2)); }
     shichen() { const hour = (6 + this.dayT() * 24) % 24; return SHICHEN[Math.floor(((hour + 1) % 24) / 2)] + '時'; }
+    slots() { return BASE_SLOTS + 2 * this.player.pouches; }          // 錦囊：每個多兩格
+    toolSlots() { return BASE_TOOLS + this.player.pouches; }           // 錦囊：每個多一格具欄
+    beastMult() { return this.diff.beasts; }
+    hasHammer() { return this.player.tools.some(s => s.n === HAMMER) || this.player.bag.some(s => s.n === HAMMER); }
+    decayFloor() { return this.hasHammer() ? HAMMER_FLOOR : DECAY_LEVEL; }
+    decayDays() { return this.hasHammer() ? HAMMER_DECAY_DAYS : DECAY_DAYS; }
     level() { const c = this.player.cour; let l = 0; while (l + 1 < CUM.length && c >= CUM[l + 1]) l++; return l; }
     levelAt(l) { return CUM[Math.max(0, Math.min(CUM.length - 1, l))]; }     // 到第 l 重要累積多少膽氣
     levelCost(n) { return levelCost(n); }
@@ -68,13 +79,14 @@
     mult() { return 1 + Math.min(10, this.level()) / 10; }                 // 膽氣越高回得越快，十重兩倍
     // 衣甲
     wornList() { const w = this.player.worn; return SLOT_ORDER.map(k => w[k]).filter(Boolean); }
-    wornFull() { return this.wornList().length === 5; }
+    wornFull() { return ARMOR_SLOTS.every(k => this.player.worn[k]); }
+    ownedPiece(n) { return this.wornList().find(s => s.n === n) || this.player.bag.find(s => s.n === n) || null; }   // 同一類衣甲只留一件
     ironCount() { return this.wornList().filter(s => ITEMS[s.n].iron).length; }
-    ironFull() { return this.ironCount() === 4; }                                                // 鐵甲鐵褲鐵盔鐵靴齊：毒不侵
-    armorRed() { return this.wornList().reduce((a, s) => a + (ITEMS[s.n].red || 0), 0); }      // 減傷：布五件一成，鐵四件加內襯三成
-    ironSpeed() { return 1 - 0.0625 * this.ironCount(); }                                        // 四件鐵慢四分之一
-    ironAtk() { return 1 + 0.0125 * this.ironCount(); }                                          // 四件鐵攻擊加半成
-    ironDrain() { return 1 + 0.02 * this.ironCount(); }                                          // 四件鐵飢愜力掉得快八分
+    ironFull() { return this.ironCount() === 3; }                                                // 鐵甲鐵盔鐵靴齊：毒不侵
+    armorRed() { return this.wornList().reduce((a, s) => a + (ITEMS[s.n].red || 0), 0); }      // 減傷：布五件一成，鐵三件加內襯布褲三成
+    ironSpeed() { return 1 - 0.25 * this.ironCount() / 3; }                                      // 三件鐵慢四分之一
+    ironAtk() { return 1 + 0.05 * this.ironCount() / 3; }                                        // 三件鐵攻擊加半成
+    ironDrain() { return 1 + 0.08 * this.ironCount() / 3; }                                      // 三件鐵飢愜力掉得快八分
     wornWarm() { return this.wornList().some(s => ITEMS[s.n].warm); }
     // 山海衣：五件穿齊、十重膽氣，衣上浮出獸紋；脫下任何一件即隱
     totemReady() { return this.level() >= TOTEM_LEVEL && this.wornFull(); }
@@ -85,8 +97,8 @@
       else this.message(p.totemOff ? '山海衣收起獸紋，暫作普通服。' : '山海衣獸紋再現。'); SFX.toggle(); SFX.toggle();
     }
     ladder() { return this.totemOn() ? Math.floor((this.level() - TOTEM_LEVEL) / 7) : -1; }     // 十至十六重 0，十七重 1，二十四重 2……
-    dmgMult() { const k = this.ladder(); return (k < 0 ? 1 : Math.pow(1.15, k + 1)) * this.ironAtk(); }        // 造成的傷害
-    takenMult() { const k = this.ladder(); return (k < 0 ? 1 : Math.pow(1.15, -k)) * (1 - this.armorRed()); }  // 受到的傷害
+    dmgMult() { const k = this.ladder(); return (k < 0 ? 1 : Math.pow(1.15, k + 1)) * this.ironAtk() * this.diff.dmg; }        // 造成的傷害
+    takenMult() { const k = this.ladder(); return (k < 0 ? 1 : Math.pow(1.15, -k)) * (1 - this.armorRed()) * this.diff.taken; }  // 受到的傷害
     totemNear(x, y) { return this.totemOn() && U.cheb(x, y, this.player.x, this.player.y) <= 7; }
     durText(s) { if (s.dur === undefined) return '×' + s.c; const it = ITEMS[s.n] || {}; return it.slot ? Math.max(1, Math.ceil(s.dur / DAY)) + ' 日' : '耐 ' + s.dur; }
     wearRate(s) { return (s.wm || 1) * (HIT_MULT[this.player.hitWin.n] || 1); }                 // 這件現在的損耗速度
@@ -97,18 +109,19 @@
       const was = this.totemOn(), old = p.worn[it.slot];
       let piece;
       if (s.c > 1 && s.dur === undefined) { s.c--; piece = { n: s.n, c: 1 }; } else { p.bag.splice(i, 1); piece = s; }
-      if (piece.dur === undefined) piece.dur = ARMOR_LIFE;
+      if (piece.dur === undefined && !it.light) piece.dur = ARMOR_LIFE;
       if (piece.wm === undefined) piece.wm = 1;
       p.worn[it.slot] = piece;
       if (old) p.bag.splice(Math.min(i, p.bag.length), 0, old);
       if (p.sel >= p.bag.length) p.sel = Math.max(0, p.bag.length - 1);
       this.barSig = ''; this.buildBag(); SFX.write();
-      this.message('穿上「' + piece.n + '」' + (old ? '，脫下「' + old.n + '」' : '') + '。減傷 ' + Math.round(this.armorRed() * 100) + '%。');
+      this.message(it.light ? '戴上「' + piece.n + '」。' : '穿上「' + piece.n + '」' + (old ? '，脫下「' + old.n + '」' : '') + '。減傷 ' + Math.round(this.armorRed() * 100) + '%。');
       if (this.totemOn() && !was) this.toast('山海衣', '五件穿齊，十重膽氣，衣上浮出山海經裡的獸紋。七格內的獸慢一倍卻狠三分之二；你的刀更利，皮更厚。');
       return true;
     }
-    repairWorn(slot) {   // 布件用麻布一、鐵件用鐵一，力 4：壽命回滿，損耗從 1.5 倍重新起算
+    repairWorn(slot) {   // 布件用麻布一、鐵件用鐵一，力 4：壽命回滿，損耗從 1.5 倍重新起算；燈帽則是續蠟燭
       const p = this.player, s = p.worn[slot]; if (!s || !this.canAct()) return false;
+      if (slot === '帽') { if (this.count('蠟燭') < 1) { this.message('續燈帽要一根蠟燭。'); SFX.fail(); return false; } this.removeItem('蠟燭', 1); s.fuel = HAT_FUEL; this.barSig = ''; this.buildBag(); this.message('燈帽續上一根蠟燭：四百息。'); SFX.write(); return true; }
       const mat = ITEMS[s.n].iron ? '鐵' : '麻布';
       if (this.count(mat) < 1) { this.message('修補「' + s.n + '」要' + mat + '一。'); SFX.fail(); return false; }
       if (!this.spendSta(4)) return false;
@@ -117,7 +130,7 @@
     }
     takeOff(slot) {
       const p = this.player, s = p.worn[slot]; if (!s) return;
-      if (p.bag.length >= SLOTS) { this.message('囊已滿。'); SFX.fail(); return; }
+      if (p.bag.length >= this.slots()) { this.message('囊已滿。'); SFX.fail(); return; }
       const was = this.totemOn();
       p.worn[slot] = null; p.bag.push(s); this.barSig = ''; this.buildBag(); SFX.write();
       this.message('脫下「' + s.n + '」。' + (was ? '山海衣的獸紋隱去。' : ''));
@@ -150,14 +163,15 @@
       }
     }
     decayCourage() {
-      const p = this.player, l = this.level(); if (l <= DECAY_LEVEL) return;
+      const p = this.player, l = this.level(); if (l <= this.decayFloor()) return;
       const frac = (p.cour - CUM[l]) / levelCost(l);
       p.cour = Math.min(CUM[l] - 1, Math.floor(CUM[l - 1] + frac * levelCost(l - 1)));
-      this.toast('膽氣衰減', '過了卅一重，三日一減：現在第 ' + this.level() + ' 重。', 6000);
+      this.toast('膽氣衰減', (this.hasHammer() ? '身攜九閽鳴雷，二日一減' : '過了卅一重，三日一減') + '：現在第 ' + this.level() + ' 重。', 6000);
     }
     // 照明：手裡的火把或蠟燭、頭上的燈帽
     heldLight() { const s = this.held(); const it = s && ITEMS[s.n]; return it && it.light ? it.light : 0; }
-    hat() { return this.player.bag.find(s => s.n === '燈帽') || null; }
+    hat() { return this.player.worn['帽'] || null; }                                     // 戴在頭上的燈帽才亮
+    anyHat() { return this.player.worn['帽'] || this.player.bag.find(s => s.n === '燈帽') || null; }
     hatLight() { const h = this.hat(); return h && h.fuel > 0 ? ITEMS['燈帽'].light : 0; }
     lightRadius() { return Math.max(this.heldLight(), this.hatLight()); }
     hasLight() { return this.lightRadius() > 0; }
@@ -272,21 +286,21 @@
       if (p.san < 25 && !p.warned.san) { p.warned.san = true; this.toast('心裡發悶', '愜意快盡了。做點東西 +8，睡床 +20，果酒 +20，聽聽鹿呦鳥鳴海浪。'); }
       if (p.san >= 40) p.warned.san = false;
       const nn = this.nightNo();
-      if (nn === GHOST_NIGHT - 1 && dark > 0.5 && !p.warned.eve) { p.warned.eve = true; this.toast('第十二夜', '明晚起，魄夜行。備好火把、蠟燭或燈帽。', 8000); }
+      if (nn === this.diff.ghost - 1 && dark > 0.5 && !p.warned.eve) { p.warned.eve = true; this.toast('第 ' + nn + ' 夜', '明晚起，魄夜行。備好火把、蠟燭或燈帽。', 8000); }
       if (this.ghostNight() && !p.warned['g' + nn]) { p.warned['g' + nn] = true; this.toast('第 ' + nn + ' 夜', '魄來了。穿牆，不怕磚；手裡有光六格內即煙滅。', 8000); }
       // 衣甲：一百八十日勻速穿破；挨打那一輪過了十五息，加速便固定下來
       const win = p.hitWin;
       if (win.n && w.time - win.start > 15) { for (const s of this.wornList()) s.wm = Math.min(WEAR_CAP, (s.wm || 1) * HIT_MULT[win.n]); win.n = 0; }
       const wearRate = HIT_MULT[win.n] || 1;
       for (const k of SLOT_ORDER) {
-        const s = p.worn[k]; if (!s) continue;
+        const s = p.worn[k]; if (!s || s.dur === undefined) continue;
         s.dur -= dt * (s.wm || 1) * wearRate;
         if (s.dur <= 0) { p.worn[k] = null; this.barSig = ''; this.toast('「' + s.n + '」穿破了', '一百八十日的布與鐵，到頭了。'); SFX.fail(); }
       }
       // 膽氣過了卅一重，三日一減，不低於卅一重
-      if (this.level() > DECAY_LEVEL) {
-        if (!p.decayAt) p.decayAt = w.time + DECAY_DAYS * DAY;
-        else if (w.time >= p.decayAt) { this.decayCourage(); p.decayAt = w.time + DECAY_DAYS * DAY; }
+      if (this.level() > this.decayFloor()) {
+        if (!p.decayAt) p.decayAt = w.time + this.decayDays() * DAY;
+        else if (w.time >= p.decayAt) { this.decayCourage(); p.decayAt = w.time + this.decayDays() * DAY; }
       } else p.decayAt = 0;
       // 渡海：開到海的盡頭
       if (p.sailing && !p.crossed && Math.hypot(p.x, p.y) > G.ISLAND_R + 20) this.crossSea();
@@ -337,22 +351,22 @@
     count(n) { let c = 0; for (const s of this.player.bag) if (s.n === n) c += s.c; return c; }
     canAdd(n, c) {
       c = c || 1; const bag = this.player.bag, it = G.item(n);
-      if (it && (it.dur || it.single)) return Math.max(0, c - (it.dur ? TOOL_SLOTS - this.player.tools.length : 0)) + bag.length <= SLOTS;
+      if (it && (it.dur || it.single)) return Math.max(0, c - (it.dur ? this.toolSlots() - this.player.tools.length : 0)) + bag.length <= this.slots();
       const day = n === '果' ? this.day() : undefined;
       for (const s of bag) if (s.n === n && s.d === day && s.c < STACK) c -= Math.min(c, STACK - s.c);
-      return c <= 0 || bag.length + Math.ceil(c / STACK) <= SLOTS;
+      return c <= 0 || bag.length + Math.ceil(c / STACK) <= this.slots();
     }
     addItem(n, c, extra) {
       const bag = this.player.bag, it = G.item(n);
       if ((it && (it.dur || it.single)) || (extra && extra.dur !== undefined)) {     // 工具、穿過的衣甲、燈帽各佔一格
         const tools = this.player.tools, isTool = this.isTool(n);
-        while (c > 0 && isTool && tools.length < TOOL_SLOTS) { tools.push(Object.assign({ n, c: 1, dur: it.dur }, extra || {})); if (this.player.tool < 0) this.player.tool = tools.length - 1; c--; }
-        while (c > 0 && bag.length < SLOTS) { bag.push(Object.assign({ n, c: 1 }, it && it.dur ? { dur: it.dur } : {}, it && it.single && it.fuel !== undefined ? { fuel: it.fuel } : {}, extra || {})); c--; }
+        while (c > 0 && isTool && tools.length < this.toolSlots()) { tools.push(Object.assign({ n, c: 1, dur: it.dur }, extra || {})); if (this.player.tool < 0) this.player.tool = tools.length - 1; c--; }
+        while (c > 0 && bag.length < this.slots()) { bag.push(Object.assign({ n, c: 1 }, it && it.dur ? { dur: it.dur } : {}, it && it.single && it.fuel !== undefined ? { fuel: it.fuel } : {}, extra || {})); c--; }
         this.barSig = ''; return c;
       }
       const day = n === '果' ? (extra && extra.d !== undefined ? extra.d : this.day()) : undefined;
       for (const s of bag) { if (s.n === n && s.d === day && s.dur === undefined && s.c < STACK) { const k = Math.min(c, STACK - s.c); s.c += k; c -= k; if (!c) break; } }
-      while (c > 0 && bag.length < SLOTS) { const k = Math.min(c, STACK); const s = { n, c: k }; if (day !== undefined) s.d = day; bag.push(s); c -= k; }
+      while (c > 0 && bag.length < this.slots()) { const k = Math.min(c, STACK); const s = { n, c: k }; if (day !== undefined) s.d = day; bag.push(s); c -= k; }
       this.barSig = '';
       return c;
     }
@@ -381,14 +395,14 @@
     }
     equipFromBag(i) {
       const p = this.player, s = p.bag[i]; if (!s || !this.isTool(s.n)) return false;
-      if (p.tools.length >= TOOL_SLOTS) { this.message('具欄滿了。'); SFX.fail(); return false; }
+      if (p.tools.length >= this.toolSlots()) { this.message('具欄滿了。'); SFX.fail(); return false; }
       p.bag.splice(i, 1); p.tools.push(s); if (p.tool < 0) p.tool = p.tools.length - 1;
       if (p.sel >= p.bag.length) p.sel = Math.max(0, p.bag.length - 1);
       this.barSig = ''; this.buildBag(); this.message('「' + s.n + '」移進具欄。'); SFX.write(); return true;
     }
     unequipToBag(i) {
       const p = this.player, s = p.tools[i]; if (!s) return;
-      if (p.bag.length >= SLOTS) { this.message('囊已滿。'); SFX.fail(); return; }
+      if (p.bag.length >= this.slots()) { this.message('囊已滿。'); SFX.fail(); return; }
       p.tools.splice(i, 1); p.bag.push(s); if (p.tool >= p.tools.length) p.tool = p.tools.length - 1;
       this.barSig = ''; this.buildBag(); this.message('「' + s.n + '」移回囊。'); SFX.write();
     }
@@ -442,6 +456,10 @@
     pressGather(silent) {
       if (this.action || !this.canAct()) { if (!this.canAct() && !silent) this.message(this.player.ctrl ? '' : '手腳不聽使喚。'); return; }
       const p = this.player, w = this.world, t = this.facing(), e = this.ents.at(t.x, t.y);
+      if (this.heldTool() === '鎚') {
+        const targets = this.ents.list.filter(o => '鹿虎豹狼蛇蛛蟾'.indexOf(o.type) >= 0 && U.cheb(o.x, o.y, p.x, p.y) <= HAMMER_RANGE);
+        if (targets.length || (e && e.type !== '龍')) { this.hammerStrike(targets); return; }
+      }
       if (e) {
         if (e.type === '龍') { this.message('你的龍。'); return; }
         if (e.type === '魄') { this.message('魄無形，打不著；用光。'); return; }
@@ -526,6 +544,23 @@
       else if (e.type === '虎' || e.type === '豹') { e.calm = 2; e.moveT = 0.3; this.message(e.type + '受創而退（還有 ' + left + '）。'); }
       else this.message(e.type + '（還有 ' + left + '）。');
     }
+    hammerStrike(targets) {
+      const p = this.player;
+      if (this.level() < HAMMER_LEVEL) { this.message(HAMMER + '要膽氣卅一重才掄得動。'); SFX.fail(); return; }
+      if (p.atkT > 0) return;
+      if (p.sta < 3) { this.message('力氣不夠，歇一歇。'); return; }
+      if (!targets.length) { this.message('三格內沒有獸。'); return; }
+      const dmg = Math.round(ITEMS[HAMMER].dmg * this.dmgMult() * 100) / 100;
+      p.atkT = 1.5; p.sta = Math.max(0, p.sta - 3 * this.ironDrain()); this.wearTool(); this.renderer.shake = 0.8; SFX.tiger();
+      let slain = 0;
+      for (const o of targets) {
+        o.hp = Math.round((o.hp - dmg) * 100) / 100; o.angry = true;
+        this.fx.push({ type: 'float', x: o.x, y: o.y, text: '−' + dmg, color: G.INK.red, t: 0, dur: 0.8 });
+        if (o.hp <= 0) { this.kill(o); slain++; }
+      }
+      this.fx.push({ type: 'write', x: p.x, y: p.y, ch: '雷', color: G.INK.red, t: 0, dur: 0.5 });
+      this.message('九閽鳴雷落地：' + targets.length + ' 頭獸同受 ' + dmg + ' 傷' + (slain ? '，' + slain + ' 頭斃命' : '') + '。');
+    }
     kill(e) {
       const drops = { '鹿': ['肉', 2], '虎': ['肉', 3], '豹': ['肉', 2], '狼': ['肉', 2], '蛇': ['蛇肉', 1], '蟾': ['蟾蜍', 1] }[e.type];
       const cour = { '鹿': 3, '虎': 15, '豹': 10, '狼': 10, '蛇': 5, '蛛': 5, '蟾': 3 }[e.type] || 2;
@@ -608,8 +643,13 @@
       const p = this.player, s = this.held(); if (!s || !this.canAct()) return;
       const it = G.item(s.n), f = it.food, tl = ITEMS[s.n] || {};
       if (tl.slot) { this.wearItem(p.sel); return; }
+      if (s.n === '錦囊') {
+        if (p.pouches >= MAX_POUCHES) { this.message('已經用了四個錦囊，囊再大也背不動了。'); SFX.fail(); return; }
+        this.removeItem('錦囊', 1); p.pouches++; this.barSig = ''; this.buildBag();
+        this.toast('錦囊用了', '囊多了兩格、具欄多了一格：現在 ' + this.slots() + ' 格與 ' + this.toolSlots() + ' 格。最多四個。'); SFX.learn(); return;
+      }
       if (s.n === '蠟燭') {
-        const hat = this.hat();
+        const hat = this.anyHat();
         if (hat && hat.fuel < HAT_FUEL) { this.removeItem('蠟燭', 1); hat.fuel = HAT_FUEL; this.barSig = ''; this.buildBag(); this.message('燈帽續上一根蠟燭：四百息。'); SFX.write(); return; }
         this.message(hat ? '燈帽裡的蠟燭還是滿的。' : '蠟燭拿在手上就亮；有燈帽時按 V 可以續進去。'); return;
       }
@@ -656,10 +696,11 @@
         const locked = r.level && this.level() < r.level;
         const row = document.createElement('div'); row.className = 'recipe' + (this.canCraft(r) && p.sta >= r.sta && !locked ? '' : ' cant');
         const needs = Object.keys(r.need).map(n => '<span class="' + (this.count(n) >= r.need[n] ? 'ok' : 'lack') + '">' + n + ' ' + this.count(n) + '/' + r.need[n] + '</span>').join(' ');
-        const title = r.out ? r.out + (r.n > 1 ? ' ×' + r.n : '') : (r.regrind ? '重磨' : '磨礪');
+        const owned = r.out && ITEMS[r.out] && ITEMS[r.out].slot && this.ownedPiece(r.out);
+        const title = (r.out ? r.out + (r.n > 1 ? ' ×' + r.n : '') : (r.regrind ? '重磨' : '磨礪')) + (owned ? ' <i class="dim">已有</i>' : '');
         let btns = '';
         if (r.choose) btns = r.choose.map(c => '<button data-r="' + r.id + '" data-c="' + c + '">' + c + '</button>').join('');
-        else btns = '<button data-r="' + r.id + '">' + (r.regrind ? '磨' : '造') + '</button>';
+        else btns = '<button data-r="' + r.id + '">' + (r.regrind ? '磨' : owned ? '翻新' : '造') + '</button>';
         row.innerHTML = '<span class="num">' + (i + 1) + '</span><b>' + title + '</b><span class="needs">' + needs + '</span><span class="sta">力 ' + r.sta + (locked ? '<br><i>需' + r.level + '重</i>' : '') + '</span><span class="note">' + r.note + '</span><span class="btns">' + btns + '</span>';
         list.appendChild(row);
       });
@@ -676,6 +717,14 @@
         const s = this.activeTool(); if (!s) { this.message('具欄裡要選中一把工具（P 換）。'); SFX.fail(); return; }
         for (const m in r.need) this.removeItem(m, r.need[m]);
         p.sta -= r.sta; s.dur = ITEMS[s.n].dur; this.barSig = ''; this.afterCraft(r); this.message('「' + s.n + '」磨利了。'); SFX.fuse(); this.buildCraft(); this.buildBag(); return;
+      }
+      const def = ITEMS[out], owned = def && def.slot ? this.ownedPiece(out) : null;
+      if (owned) {       // 同一類衣甲只留一件：再造只是翻新
+        for (const m in r.need) this.removeItem(m, r.need[m]);
+        p.sta -= r.sta; const gain = this.afterCraft(r);
+        if (def.light) owned.fuel = HAT_FUEL; else { owned.dur = ARMOR_LIFE; owned.wm = 1; }
+        this.barSig = ''; this.toast('「' + out + '」翻新了', '同一類衣甲只留一件：壽命回滿，損耗重新起算。　愜意 +' + Math.round(gain * 10) / 10); SFX.fuse();
+        this.buildCraft(); this.buildBag(); return;
       }
       if (!this.canAdd(out, n)) { this.message('囊已滿。'); SFX.fail(); return; }
       for (const m in r.need) this.removeItem(m, r.need[m]);
@@ -732,7 +781,7 @@
         return el;
       };
       const cg = $('chest-grid'); cg.innerHTML = ''; for (let i = 0; i < CHEST_SLOTS; i++) cg.appendChild(mk(box[i], i, 'chest'));
-      const bg = $('chest-bag'); bg.innerHTML = ''; for (let i = 0; i < SLOTS; i++) bg.appendChild(mk(p.bag[i], i, 'bag'));
+      const bg = $('chest-bag'); bg.innerHTML = ''; for (let i = 0; i < this.slots(); i++) bg.appendChild(mk(p.bag[i], i, 'bag'));
     }
     moveStack(from, i) {
       const box = this.world.chests.get(this.chestAt), p = this.player;
@@ -938,13 +987,21 @@
     }
 
     // ---------- HUD ----------
+    sortBag() {            // 囊分兩段：可食的在前，其餘在後；選中的跟著走
+      const p = this.player, sel = p.bag[p.sel], edible = (s) => { const it = G.item(s.n); return it && it.food ? 1 : 0; };
+      p.bag.sort((a, b) => edible(b) - edible(a));
+      if (sel) p.sel = Math.max(0, p.bag.indexOf(sel)); else if (p.sel >= p.bag.length) p.sel = Math.max(0, p.bag.length - 1);
+    }
     buildBag() {
-      const p = this.player, bar = $('bagbar');
+      const p = this.player, bar = $('bagbar'); this.sortBag();
       const sig = p.bag.map(s => s.n + s.c + (s.dur !== undefined ? 'd' + s.dur : '') + (s.d !== undefined ? '@' + s.d : '')).join(',') + '|' + p.sel + '|' + this.day() + '|' + p.tools.map(s => s.n + s.dur).join(',') + '|' + p.tool
-        + '|' + SLOT_ORDER.map(k => p.worn[k] ? p.worn[k].n + this.effDays(p.worn[k]) : '').join(',') + '|' + (this.totemOn() ? 1 : 0) + '|' + this.ironCount();
+        + '|' + SLOT_ORDER.map(k => p.worn[k] ? p.worn[k].n + (p.worn[k].dur !== undefined ? this.effDays(p.worn[k]) : Math.ceil((p.worn[k].fuel || 0) / 10)) : '').join(',') + '|' + this.slots() + '|' + (this.totemOn() ? 1 : 0) + '|' + this.ironCount();
       if (sig === this.barSig) return;
       this.barSig = sig; bar.innerHTML = '';
-      for (let i = 0; i < SLOTS; i++) {
+      const nEd = p.bag.filter(s => { const it = G.item(s.n); return it && it.food; }).length, mkLabel = (t) => { const l = document.createElement('span'); l.className = 'rowlabel sub'; l.textContent = t; return l; };
+      bar.appendChild(mkLabel('食'));
+      for (let i = 0; i < this.slots(); i++) {
+        if (i === nEd) bar.appendChild(mkLabel('物'));
         const s = p.bag[i], el = document.createElement('div');
         el.className = 'slot bag' + (s ? '' : ' empty') + (s && i === p.sel ? ' sel' : '');
         if (s) {
@@ -953,7 +1010,7 @@
           if (s.dur !== undefined) sub = this.durText(s);
           else if (s.fuel !== undefined) sub = s.fuel > 0 ? Math.ceil(s.fuel) + '息' : '滅';
           else if (s.d !== undefined) { const age = this.day() - s.d; sub = '×' + s.c + (age >= FERMENT_NIGHTS - 3 ? ' 將醉' : age >= 1 ? ' ' + age + '夜' : ''); }
-          el.innerHTML = '<span class="num">' + (i < 9 ? i + 1 : '') + '</span><span class="ch' + (s.n.length > 1 ? ' word' : '') + '">' + s.n + '</span><span class="cost">' + sub + '</span>';
+          el.innerHTML = '<span class="num">' + (i < 9 ? i + 1 : '') + '</span><span class="ch' + (s.n.length > 1 ? ' word' : '') + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">' + sub + '</span>';
           if (s.dur !== undefined) el.innerHTML += '<i class="dur" style="width:' + Math.round(100 * s.dur / (it.dur || ARMOR_LIFE)) + '%"></i>';
           else if (s.fuel !== undefined) el.innerHTML += '<i class="dur" style="width:' + Math.round(100 * s.fuel / HAT_FUEL) + '%"></i>';
           el.title = it.flavor;
@@ -962,12 +1019,12 @@
         bar.appendChild(el);
       }
       const tb = $('toolbar'); tb.innerHTML = '';
-      for (let i = 0; i < TOOL_SLOTS; i++) {
+      for (let i = 0; i < this.toolSlots(); i++) {
         const s = p.tools[i], el = document.createElement('div');
         el.className = 'slot bag tool' + (s ? '' : ' empty') + (s && i === p.tool ? ' sel' : '');
         if (s) {
           const it = ITEMS[s.n];
-          el.innerHTML = '<span class="ch' + (s.n.length > 1 ? ' word' : '') + '">' + s.n + '</span><span class="cost">耐 ' + s.dur + '</span><i class="dur" style="width:' + Math.round(100 * s.dur / it.dur) + '%"></i>';
+          el.innerHTML = '<span class="ch' + (s.n.length > 1 ? ' word' : '') + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">耐 ' + s.dur + '</span><i class="dur" style="width:' + Math.round(100 * s.dur / it.dur) + '%"></i>';
           el.title = it.flavor + '（點一下手持，再點一下空手；右鍵移回囊）';
         } else el.title = '具欄：工具放這裡，P 換手持';
         el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; if (ev.button === 2) { this.unequipToBag(i); return; } p.tool = (p.tool === i) ? -1 : i; this.buildBag(); });
@@ -975,12 +1032,13 @@
         tb.appendChild(el);
       }
       // 身上：上排襯褲甲，下排盔靴；下面四行是現在的數
-      [['襯', '褲', '甲'], ['盔', '靴']].forEach((keys, ri) => {
+      [['襯', '褲', '甲'], ['盔', '靴', '帽']].forEach((keys, ri) => {
         const row = $('worn' + (ri + 1)); row.innerHTML = '';
         for (const k of keys) {
           const s = p.worn[k], el = document.createElement('div');
           el.className = 'slot bag worn' + (s ? '' : ' empty');
-          if (s) { const rate = Math.round(this.wearRate(s) * 100) / 100; el.innerHTML = '<span class="ch word">' + s.n + '</span><span class="cost">' + this.effDays(s) + '日</span><i class="dur" style="width:' + Math.round(100 * s.dur / ARMOR_LIFE) + '%"></i>'; el.title = ITEMS[s.n].flavor + '（照目前損耗速度 ×' + rate + ' 還能穿 ' + this.effDays(s) + ' 日；點一下脫下，右鍵修補：' + (ITEMS[s.n].iron ? '鐵' : '麻布') + '一、力 4）'; }
+          if (s && s.fuel !== undefined) { el.innerHTML = '<span class="ch word">' + s.n + '</span><span class="cost">' + (s.fuel > 0 ? Math.ceil(s.fuel) + '息' : '滅') + '</span><i class="dur" style="width:' + Math.round(100 * s.fuel / HAT_FUEL) + '%"></i>'; el.title = ITEMS[s.n].flavor + '（點一下脫下，右鍵用一根蠟燭續上）'; }
+          else if (s) { const rate = Math.round(this.wearRate(s) * 100) / 100; el.innerHTML = '<span class="ch word">' + s.n + '</span><span class="cost">' + this.effDays(s) + '日</span><i class="dur" style="width:' + Math.round(100 * s.dur / ARMOR_LIFE) + '%"></i>'; el.title = ITEMS[s.n].flavor + '（照目前損耗速度 ×' + rate + ' 還能穿 ' + this.effDays(s) + ' 日；點一下脫下，右鍵修補：' + (ITEMS[s.n].iron ? '鐵' : '麻布') + '一、力 4）'; }
           else { el.innerHTML = '<span class="ch">' + k + '</span>'; el.title = '身上：' + k + '。囊裡選中衣甲按 F 穿上。'; }
           el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; if (ev.button === 2) this.repairWorn(k); else this.takeOff(k); });
           el.addEventListener('contextmenu', (ev) => ev.preventDefault());
@@ -1011,16 +1069,16 @@
         $('hpfill').parentNode.classList.toggle('low', p.hp < 30); $('foodfill').parentNode.classList.toggle('low', p.food < 25); $('warmfill').parentNode.classList.toggle('low', p.warm < 30); $('stafill').parentNode.classList.toggle('low', p.sta < 15); $('sanfill').parentNode.classList.toggle('low', p.san < 20);
         $('hplabel').innerHTML = '命<br>' + Math.round(p.hp); $('foodlabel').innerHTML = '飽<br>' + Math.round(p.food); $('warmlabel').innerHTML = '暖<br>' + Math.round(p.warm); $('stalabel').innerHTML = '力<br>' + Math.round(p.sta); $('sanlabel').innerHTML = '愜<br>' + Math.round(p.san);
         const nn = this.nightNo();
-        $('status').innerHTML = '<b>第 ' + this.day() + ' 日</b> &nbsp;' + this.shichen() + ' ' + (this.daylight() > 0.5 ? '日' : '月') + (this.isNight() ? '<span class="dim">（第 ' + nn + ' 夜' + (nn >= GHOST_NIGHT ? '，魄夜' : '') + '）</span>' : '') + ' &nbsp;·&nbsp; ' + w.tideName() + ' &nbsp;·&nbsp; ' + (p.sailing ? '船上' : G.biomeName(w.get(p.x, p.y))) + ' &nbsp;·&nbsp; <span class="dim">(' + p.x + ', ' + p.y + ')</span>';
+        $('status').innerHTML = '<b>第 ' + this.day() + ' 日</b> &nbsp;' + this.shichen() + ' ' + (this.daylight() > 0.5 ? '日' : '月') + (this.isNight() ? '<span class="dim">（第 ' + nn + ' 夜' + (nn >= this.diff.ghost ? '，魄夜' : '') + '）</span>' : '') + ' &nbsp;·&nbsp; ' + w.tideName() + ' &nbsp;·&nbsp; ' + (p.sailing ? '船上' : G.biomeName(w.get(p.x, p.y))) + ' &nbsp;·&nbsp; <span class="dim">(' + p.x + ', ' + p.y + ') · ' + this.diff.name + '</span>';
       }
       const lv = this.level(), daysLeft = p.decayAt ? Math.max(1, Math.ceil((p.decayAt - w.time) / DAY)) : 0;
-      const cs = p.cour + '|' + lv + '|' + daysLeft;
+      const cs = p.cour + '|' + lv + '|' + daysLeft + '|' + (this.hasHammer() ? 1 : 0);
       if (cs !== this.courSig) {
         this.courSig = cs;
         $('mapwrap').style.setProperty('--cour', Math.round(100 * this.levelFrac()) + '%');
         $('courlabel').textContent = (lv === 0 ? '膽氣 · 初' : '膽氣 · 第 ' + lv + ' 重') + (this.totemOn() ? ' · 山海衣' : '');
         const dec = $('courdecay');
-        if (lv > DECAY_LEVEL && daysLeft) { dec.classList.remove('hidden'); dec.textContent = '卅一重以上三日一減 · 還有 ' + daysLeft + ' 日'; }
+        if (lv > this.decayFloor() && daysLeft) { dec.classList.remove('hidden'); dec.textContent = (this.hasHammer() ? '攜九閽鳴雷：廿五重以上二日一減' : '卅一重以上三日一減') + ' · 還有 ' + daysLeft + ' 日'; }
         else dec.classList.add('hidden');
       }
       let s;
@@ -1040,7 +1098,7 @@
       else if (ch === '舟') s = '大船 · <kbd>E</kbd> 上船';
       else if (ch === '偶') { const days = w.scareDays(t.x, t.y); s = '稻草人 · 還能守 ' + Math.ceil(days) + ' 天' + (hs && hs.n === '偶' ? ' · <kbd>F</kbd> 續' : '') + ' · <kbd>E</kbd> 拆下（重放重計）'; }
       else {
-        s = '面前：' + (ch === '白' ? '白紙' : '<b>' + ch + '</b>') + (w.isBurning(t.x, t.y) ? ' <i class="fire">燃燒中</i>' : '') + (ch === '灶' ? (w.stoveLit(t.x, t.y) ? ' <i class="fire">火旺</i>' : ' <i>冷灶</i>') : '');
+        s = '面前：' + (ch === '白' ? '白紙' : '<b>' + ch + '</b>') + (w.isBurning(t.x, t.y) ? ' <i class="fire">燃燒中</i>' : '') + (ch === '灶' ? (w.stoveLit(t.x, t.y) ? ' <i class="fire">火旺 ' + Math.round(w.stoveFuel(t.x, t.y)) + ' 息</i>' : ' <i>冷灶，先添柴</i>') : '');
         const tool = this.heldTool();
         if (hs && hs.n === '玻璃瓶' && d.kind === 'water') s += ' · <kbd>E</kbd> 取海水';
         else if (tool === '鋤' && (ch === '土' || ch === '草')) s += ' · <kbd>E</kbd> 鋤成田';
@@ -1050,13 +1108,15 @@
         }
         if (hs) {
           const it = G.item(hs.n), tl = ITEMS[hs.n] || {};
-          if (tl.slot) s += ' · <kbd>F</kbd> 穿上';
+          if (tl.slot) s += ' · <kbd>F</kbd> ' + (tl.light ? '戴上' : '穿上');
+          else if (hs.n === '錦囊') s += ' · <kbd>V</kbd> 用掉（囊多兩格、具欄多一格）';
           else if (tl.tool && tl.dur) s += ' · <kbd>F</kbd> 移進具欄';
           else if (ch === '灶') { const ck = G.COOK[hs.n]; s += ck ? ' · <kbd>F</kbd> ' + (ck.out === '玻璃瓶' ? '燒瓶（沙三）' : ck.out === '淡水瓶' ? '蒸餾' : ck.out === '鐵' ? '煉鐵（礦二煤一）' : '烤') : (FUEL[hs.n] ? ' · <kbd>F</kbd> 添煤' : DB[hs.n] && DB[hs.n].flam > 0 ? ' · <kbd>F</kbd> 添柴' : ''); }
           else if ((DB[tl.tile || hs.n] || {}).place) s += ' · <kbd>F</kbd> 放「' + hs.n + '」';
           if (it.food) s += ' · <kbd>V</kbd> ' + (hs.n.indexOf('瓶') >= 0 || hs.n === '果酒' ? '喝' : '吃');
         }
         if (this.bedNear()) s += ' · <kbd>R</kbd> 睡';
+        if (ch === '灶') s += '<br><span class="dim">灶：選中木或煤按 F 添柴；火旺時魚、肉、蛇肉、蟾蜍按 F 烤，沙三燒瓶，海水瓶蒸餾，鐵礦二煤一煉鐵</span>';
       }
       if (this.msgUntil && performance.now() < this.msgUntil) s = this.msgText;
       if (s !== this.lastMsg) { this.lastMsg = s; $('msg').innerHTML = s; }
@@ -1073,9 +1133,9 @@
     save() {
       const p = this.player;
       try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 5, seed: this.seed, savedAt: Date.now(), world: this.world.serialize(), ents: this.ents.serialize(),
+        localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 5, seed: this.seed, diff: this.diff.key, savedAt: Date.now(), world: this.world.serialize(), ents: this.ents.serialize(),
           player: { x: p.x, y: p.y, fx: p.fx, fy: p.fy, hp: p.hp, food: p.food, warm: p.warm, sta: p.sta, staMax: p.staMax, san: p.san, cour: p.cour, bag: p.bag, sel: p.sel, home: p.home, readSteles: p.readSteles,
-            places: p.places, creatures: p.creatures, raftTaken: p.raftTaken, dragon: p.dragon, finished: p.finished, deaths: p.deaths, burn: p.burn, lastDay: p.lastDay, poisonT: p.poisonT, poisonPer: p.poisonPer, sailing: p.sailing, tools: p.tools, tool: p.tool, decayAt: p.decayAt, worn: p.worn, hitWin: p.hitWin, totemOff: p.totemOff }, stats: this.stats }));
+            places: p.places, creatures: p.creatures, raftTaken: p.raftTaken, dragon: p.dragon, finished: p.finished, deaths: p.deaths, burn: p.burn, lastDay: p.lastDay, poisonT: p.poisonT, poisonPer: p.poisonPer, sailing: p.sailing, tools: p.tools, tool: p.tool, decayAt: p.decayAt, worn: p.worn, hitWin: p.hitWin, totemOff: p.totemOff, pouches: p.pouches }, stats: this.stats }));
       } catch (err) { /* 隱私模式等情況下存不了，就算了 */ }
     }
     load(s) {
@@ -1083,7 +1143,7 @@
       this.world.restore(s.world || {});
       this.ents.restore(s.ents);
       const sp = s.player || {};
-      for (const k of ['x', 'y', 'fx', 'fy', 'hp', 'food', 'warm', 'sta', 'staMax', 'san', 'cour', 'bag', 'sel', 'home', 'readSteles', 'places', 'creatures', 'raftTaken', 'dragon', 'finished', 'deaths', 'burn', 'lastDay', 'poisonT', 'poisonPer', 'sailing', 'tools', 'tool', 'decayAt', 'worn', 'hitWin', 'totemOff']) if (sp[k] !== undefined) p[k] = sp[k];
+      for (const k of ['x', 'y', 'fx', 'fy', 'hp', 'food', 'warm', 'sta', 'staMax', 'san', 'cour', 'bag', 'sel', 'home', 'readSteles', 'places', 'creatures', 'raftTaken', 'dragon', 'finished', 'deaths', 'burn', 'lastDay', 'poisonT', 'poisonPer', 'sailing', 'tools', 'tool', 'decayAt', 'worn', 'hitWin', 'totemOff', 'pouches']) if (sp[k] !== undefined) p[k] = sp[k];
       // 舊存檔裡已經不存在的東西丟掉，身上的衣甲要對得上格子
       const known = (s) => !!(s && G.item(s.n));
       p.bag = (p.bag || []).filter(known); p.tools = (p.tools || []).filter(known);
@@ -1102,22 +1162,26 @@
   function boot() {
     const q = new URLSearchParams(location.search);
     const save = Game.readSave();
-    let game = null;
+    let game = null, diff = DIFF[q.get('diff')] ? q.get('diff') : 'normal';
+    const DESC = { easy: '第二十一夜起有魄；受傷九成、攻擊加一成。', normal: '第十三夜起有魄。', hard: '第九夜起有魄；受傷加一成、攻擊九成，夜裡狼虎豹蛇一倍半。' };
+    const pickDiff = (k) => { diff = k; document.querySelectorAll('.diffrow button').forEach(b => b.classList.toggle('on', b.dataset.diff === k)); $('diff-desc').textContent = DESC[k]; };
+    document.querySelectorAll('.diffrow button').forEach(b => b.addEventListener('click', () => pickDiff(b.dataset.diff)));
+    pickDiff(diff);
     const start = (seed, useSave) => {
       if (game) return;
       SFX.init();
-      game = new Game(seed, useSave ? save : null);
-      window.XIEYI = { game, Game, DAY };
+      game = new Game(seed, useSave ? save : null, diff);
+      window.XIEYI = { game, Game, DAY, DIFF };
       $('start').classList.add('hidden');
       game.paused = false;
-      game.toast('寫意', '取木、取棉、取石子；砌磚、造床、磨劍。第十三夜起有魄，備好火把。按 H 看法子。', 7000);
+      game.toast('寫意', '取木、取棉、取石子；砌磚、造床、磨劍。第 ' + game.diff.ghost + ' 夜起有魄，備好火把。按 H 看法子。', 7000);
       setTimeout(() => { if (game) game.toast('聽說島上有一座塔', '從塔上能看見整張紙。黃昏時跟著鳥走。', 8000); }, 5000);
       window.addEventListener('beforeunload', () => game.save());
       document.addEventListener('visibilitychange', () => { if (document.hidden) game.save(); });
     };
     const seedInput = $('seed');
     seedInput.value = q.get('seed') || String(Math.floor(Math.random() * 1e6));
-    if (save) { $('btn-continue').classList.remove('hidden'); $('save-info').textContent = '上次的島 #' + save.seed + '，第 ' + (Math.floor((save.world.time || 0) / DAY) + 1) + ' 日'; }
+    if (save) { $('btn-continue').classList.remove('hidden'); $('save-info').textContent = '上次的島 #' + save.seed + '，第 ' + (Math.floor((save.world.time || 0) / DAY) + 1) + ' 日 · ' + (DIFF[save.diff] || DIFF.normal).name; }
     $('btn-continue').addEventListener('click', () => start(save.seed, true));
     $('btn-new').addEventListener('click', () => { Game.clearSave(); let s = parseInt(seedInput.value, 10); if (isNaN(s)) s = Array.from(seedInput.value).reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7); start(s, false); });
     $('btn-help').addEventListener('click', () => $('help').classList.toggle('hidden'));

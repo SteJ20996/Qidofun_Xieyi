@@ -50,7 +50,7 @@
     '炎': { s: 8, walk: 0, kind: 'fire', light: 3.5, ink: INK.red, flavor: '二火為炎。' },
     '焱': { s: 12, walk: 0, kind: 'fire', light: 4.5, ink: INK.red, flavor: '三火為焱，萬物焦土。' },
     // —— 造物（從囊中放到地上）
-    '灶': { s: 7, walk: 0, kind: 'object', ink: INK.red, yield: { '灶': 1 }, time: 1.0, place: true, flavor: '六石為灶。烤食、燒瓶、蒸餾海水；添木續火。' },
+    '灶': { s: 7, walk: 0, kind: 'object', ink: INK.red, yield: { '灶': 1 }, time: 1.0, place: true, flavor: '六石為灶。選中木或煤按 F 添柴；火旺時，魚、肉、蛇肉、蟾蜍按 F 烤熟，沙三燒成兩瓶，海水瓶蒸餾成淡水，鐵礦二加煤一煉成鐵。' },
     '磚': { s: 16, walk: 0, kind: 'object', ink: INK.brick, yield: { '磚': 1 }, time: 4.0, fast: '鎬', place: true, flavor: '二土一草成磚。獸不得過；魄能穿。鎬拆之快。' },
     '床': { s: 7, walk: 0, kind: 'object', ink: INK.brown, yield: { '床': 1 }, time: 1.0, place: true, flavor: '六團棉、兩塊木。夜裡面向它按 R，一覺到天明。' },
     '門': { s: 8, walk: 1.0, kind: 'object', gate: true, ink: INK.brown, yield: { '門': 1 }, time: 1.0, place: true, flavor: '人能過，獸不能。面向它按 E 可問路。' },
@@ -72,17 +72,17 @@
     '洞': { s: 9, walk: 0, kind: 'place', ink: INK.black, flavor: '黑處藏著龍。' },
     '井': { s: 4, walk: 0, kind: 'place', ink: INK.water, flavor: '井裡有水。空瓶可取淡水。' },
     // —— 獸（hp 血；atk 一擊傷害；bite 每秒毒；passive 不惹不攻擊）
-    '鳥': { s: 11, kind: 'beast', ink: INK.beast, hp: 1, flavor: '飛鳥，見人則起，捉不住。聽鳥鳴，心裡舒坦。' },
-    '魚': { s: 11, kind: 'beast', ink: INK.water, hp: 1, food: { eat: 15, hurt: 5 }, flavor: '游魚。生食傷身，烤之則美。' },
-    '鹿': { s: 11, kind: 'beast', ink: INK.beast, hp: 1, flavor: '林間鹿，見人則走。有刃可獵，得肉。聽鹿呦，心裡舒坦。' },
-    '虎': { s: 8, kind: 'beast', ink: INK.beast, hp: 3, atk: 20, flavor: '森中虎，夜行，畏火與光。劍兩下，刀三下。' },
-    '豹': { s: 10, kind: 'beast', ink: INK.beast, hp: 4, atk: 10, flavor: '林中豹，快，畏火與光。一撲十滴血。' },
-    '狼': { s: 10, kind: 'beast', ink: INK.beast, hp: 4, atk: 10, flavor: '夜裡成群的狼，不怕火，磚與門擋得住。一口十滴血。' },
-    '蛇': { s: 11, kind: 'beast', ink: INK.beast, hp: 3, bite: 3, flavor: '草木之交的毒蛇。每兩秒一口，一口五秒毒；連咬不斷（兩口相隔不過六息）滿十五口必死。' },
-    '蛛': { s: 12, kind: 'beast', ink: INK.beast, hp: 3, bite: 3, passive: true, flavor: '除草時驚出的蜘蛛。不惹不咬；咬起來與蛇同。' },
-    '蟾': { s: 19, kind: 'beast', ink: INK.beast, hp: 3, bite: 2, passive: true, flavor: '水邊的蟾蜍。紅的有毒會反咬；生吃皆中毒，烤了吃令人愜意。' },
+    '鳥': { s: 11, kind: 'beast', ink: INK.beast, hp: 10, flavor: '飛鳥，見人則起，捉不住。聽鳥鳴，心裡舒坦。' },
+    '魚': { s: 11, kind: 'beast', ink: INK.water, hp: 10, food: { eat: 15, hurt: 5 }, flavor: '游魚。生食傷身，烤之則美。' },
+    '鹿': { s: 11, kind: 'beast', ink: INK.beast, hp: 30, flavor: '林間鹿，見人則走。有刃可獵，得肉。聽鹿呦，心裡舒坦。' },
+    '虎': { s: 8, kind: 'beast', ink: INK.beast, hp: 150, atk: 20, flavor: '森中虎，夜行，畏火與光。劍兩下，刀三下。' },
+    '豹': { s: 10, kind: 'beast', ink: INK.beast, hp: 80, atk: 10, flavor: '林中豹，快，畏火與光。一撲十滴血。' },
+    '狼': { s: 10, kind: 'beast', ink: INK.beast, hp: 80, atk: 10, flavor: '夜裡成群的狼，不怕火，磚與門擋得住。一口十滴血。' },
+    '蛇': { s: 11, kind: 'beast', ink: INK.beast, hp: 45, bite: 3, flavor: '草木之交的毒蛇。每兩秒一口，一口五秒毒；連咬不斷（兩口相隔不過六息）滿十五口必死。' },
+    '蛛': { s: 12, kind: 'beast', ink: INK.beast, hp: 45, bite: 3, passive: true, flavor: '除草時驚出的蜘蛛。不惹不咬；咬起來與蛇同。' },
+    '蟾': { s: 19, kind: 'beast', ink: INK.beast, hp: 45, bite: 2, passive: true, flavor: '水邊的蟾蜍。紅的有毒會反咬；生吃皆中毒，烤了吃令人愜意。' },
     '魄': { s: 15, kind: 'beast', ink: INK.ghost, hp: 1, flavor: '第十三夜起夜行。無形，穿牆，不傷身而蝕心：四格內無光，愜意與力氣俱減。火把、蠟燭、燈帽、燈，六格內即煙滅。白日藏於林中。' },
-    '龍': { s: 16, kind: 'beast', light: 3, ink: INK.red, hp: 9, flavor: '洞中之龍。隨你同行，夜能照路，獸與魄不敢近。' },
+    '龍': { s: 16, kind: 'beast', light: 3, ink: INK.red, hp: 500, flavor: '洞中之龍。隨你同行，夜能照路，獸與魄不敢近。' },
   };
   const VIS = { '草': [0.6, 0.42], '花': [0.62, 0.8], '棉': [0.75, 0.85], '麻': [0.72, 0.85], '沙': [0.58, 0.5], '礫': [0.62, 0.6], '田': [0.78, 0.6], '土': [0.6, 0.5], '灰': [0.6, 0.5], '雪': [0.7, 0.55],
     '水': [0.82, 0.8], '淼': [0.95, 0.9], '石': [0.72, 0.85], '山': [1.12, 1], '木': [0.9, 1], '果': [0.9, 1], '竹': [0.85, 0.95], '林': [1.0, 1], '森': [1.08, 1],
@@ -121,13 +121,14 @@
     '布甲': { s: 10, kind: 'wear', slot: '甲', red: 0.03, flavor: '麻布甲。受傷減三分。' },
     '布帽': { s: 12, kind: 'wear', slot: '盔', red: 0.015, flavor: '麻布帽。受傷減一分半。' },
     '布靴': { s: 13, kind: 'wear', slot: '靴', red: 0.015, flavor: '麻布靴。受傷減一分半。' },
-    '鐵甲': { s: 21, kind: 'wear', slot: '甲', red: 0.11, iron: true, flavor: '鐵甲。受傷減一成一；四件鐵齊，毒不侵，但慢四分之一。' },
-    '鐵褲': { s: 21, kind: 'wear', slot: '褲', red: 0.07, iron: true, flavor: '鐵褲。受傷減七分。' },
-    '鐵盔': { s: 21, kind: 'wear', slot: '盔', red: 0.06, iron: true, flavor: '鐵盔。受傷減六分。' },
-    '鐵靴': { s: 21, kind: 'wear', slot: '靴', red: 0.04, iron: true, flavor: '鐵靴。受傷減四分。' },
+    '鐵甲': { s: 21, kind: 'wear', slot: '甲', red: 0.14, iron: true, flavor: '鐵甲。受傷減一成四；鐵甲鐵盔鐵靴三件齊，毒不侵，但慢四分之一。' },
+    '鐵盔': { s: 21, kind: 'wear', slot: '盔', red: 0.07, iron: true, flavor: '鐵盔。受傷減七分。' },
+    '鐵靴': { s: 21, kind: 'wear', slot: '靴', red: 0.05, iron: true, flavor: '鐵靴。受傷減五分。' },
+    '錦囊': { s: 16, kind: 'use', flavor: '麻布三棉二織成的錦囊。選中按 V 用掉：囊永久多兩格、具欄多一格。最多用四個。' },
+    '九閽鳴雷': { s: 26, kind: 'tool', tool: '鎚', dmg: 120, dur: 199, flavor: '撼地之鎚。膽氣卅一重方可造、可掄：面向獸按 E，三格內諸獸同受一百二十傷。隨身則膽氣二日一減、下限廿五重；低於卅一重掄不動。' },
     '鐵礦': { s: 21, flavor: '鐵礦石。礦二煤一入旺灶，煉成鐵。' },
     '鐵': { s: 21, flavor: '煉好的鐵。可打甲、褲、盔、靴。' },
-    '燈帽': { s: 33, kind: 'wear', light: 2, single: true, fuel: 400, flavor: '麻布燈帽。戴著就有光，兩格，不用拿在手上；裝一根蠟燭燒四百息，燒完選中蠟燭按 V 續上。' },
+    '燈帽': { s: 33, kind: 'wear', slot: '帽', light: 2, single: true, fuel: 400, flavor: '麻布燈帽。戴在頭上就有光，兩格，與盔不衝突；裝一根蠟燭燒四百息，燒完選中蠟燭按 V 續上。' },
     '竹筏': { s: 18, kind: 'tool', flavor: '囊中有筏，可行於淺水，捉魚更易。' },
     '火把': { s: 11, kind: 'tool', light: 3, life: 180, flavor: '拿在手上才亮，照路三格，禦寒。燃盡即無。' },
     '蠟燭': { s: 37, kind: 'tool', light: 2, life: 240, flavor: '棉一肉一製成。拿在手上才亮，照路兩格。' },
@@ -135,13 +136,13 @@
     '海水瓶': { s: 36, kind: 'item', flavor: '一瓶海水，鹹，喝不得。放在旺的灶上蒸餾成淡水。' },
     '淡水瓶': { s: 36, kind: 'food', food: { eat: 6, bottle: true }, flavor: '一瓶淡水。飲之解渴（飽 +6）。醉果二合淡水一成果酒。' },
     '果酒': { s: 18, kind: 'food', food: { eat: 12, san: 20, bottle: true }, flavor: '果酒。飽 +12，愜意 +20。' },
-    '石刀': { s: 7, kind: 'tool', tool: '刀', dmg: 1, dur: 40, flavor: '獵鹿一刀，打虎三刀。' },
-    '石鎬': { s: 23, kind: 'tool', tool: '鎬', dmg: 1, dur: 40, flavor: '鑿山採石、拆磚，快一倍。' },
-    '石鋤': { s: 20, kind: 'tool', tool: '鋤', dmg: 1, dur: 40, flavor: '鋤在手，面向土或草按 E，鋤之成田。' },
-    '石劍': { s: 20, kind: 'tool', tool: '劍', dmg: 2, dur: 40, flavor: '傷害二。虎兩劍，蛇蛛蟾兩劍。' },
-    '石斧': { s: 13, kind: 'tool', tool: '斧', dmg: 1, dur: 40, flavor: '伐木伐竹快一倍。' }
+    '石刀': { s: 7, kind: 'tool', tool: '刀', dmg: 30, dur: 40, flavor: '一下三十。獵鹿一刀，蛇蛛蟾兩刀，豹狼三刀，打虎五刀。' },
+    '石鎬': { s: 23, kind: 'tool', tool: '鎬', dmg: 15, dur: 40, flavor: '鑿山採石、拆磚，快一倍。' },
+    '石鋤': { s: 20, kind: 'tool', tool: '鋤', dmg: 15, dur: 40, flavor: '鋤在手，面向土或草按 E，鋤之成田。' },
+    '石劍': { s: 20, kind: 'tool', tool: '劍', dmg: 40, dur: 40, flavor: '一下四十。鹿一劍，蛇蛛蟾兩劍，豹狼兩劍，虎四劍。' },
+    '石斧': { s: 13, kind: 'tool', tool: '斧', dmg: 15, dur: 40, flavor: '伐木伐竹快一倍。' }
   };
-  const TOOL_NAMES = { '刀': '石刀', '鎬': '石鎬', '鋤': '石鋤', '劍': '石劍', '斧': '石斧' };
+  const TOOL_NAMES = { '刀': '石刀', '鎬': '石鎬', '鋤': '石鋤', '劍': '石劍', '斧': '石斧', '鎚': '九閽鳴雷' };
   function item(name) { return ITEMS[name] || DB[name] || null; }
   // 灶上：放什麼變什麼（n 一次要幾個，out 得幾個）
   const COOK = { '魚': { out: '烤魚' }, '肉': { out: '烤肉' }, '蛇肉': { out: '烤蛇' }, '蟾蜍': { out: '烤蟾' }, '海水瓶': { out: '淡水瓶' }, '沙': { n: 3, out: '玻璃瓶', k: 2 }, '鐵礦': { n: 2, out: '鐵', k: 1, extra: { '煤': 1 }, verb: '煉成了' } };
@@ -163,10 +164,10 @@
     { id: 'vest', out: '布甲', n: 1, need: { '麻布': 3, '棉': 3 }, sta: 8, note: '減傷 3%' },
     { id: 'cap', out: '布帽', n: 1, need: { '麻布': 1, '棉': 1 }, sta: 3, note: '減傷 1.5%' },
     { id: 'shoes', out: '布靴', n: 1, need: { '麻布': 1, '棉': 1, '木': 1 }, sta: 4, note: '減傷 1.5%' },
-    { id: 'ironvest', out: '鐵甲', n: 1, need: { '鐵': 5, '麻布': 1 }, sta: 14, note: '減傷 11%；四件鐵齊毒不侵' },
-    { id: 'ironpants', out: '鐵褲', n: 1, need: { '鐵': 4, '麻布': 1 }, sta: 12, note: '減傷 7%' },
-    { id: 'helm', out: '鐵盔', n: 1, need: { '鐵': 3 }, sta: 10, note: '減傷 6%' },
-    { id: 'ironboots', out: '鐵靴', n: 1, need: { '鐵': 2, '麻布': 1 }, sta: 8, note: '減傷 4%' },
+    { id: 'ironvest', out: '鐵甲', n: 1, need: { '鐵': 5, '麻布': 1 }, sta: 14, note: '減傷 14%；鐵三件齊毒不侵' },
+    { id: 'helm', out: '鐵盔', n: 1, need: { '鐵': 3 }, sta: 10, note: '減傷 7%' },
+    { id: 'ironboots', out: '鐵靴', n: 1, need: { '鐵': 2, '麻布': 1 }, sta: 8, note: '減傷 5%' },
+    { id: 'pouch', out: '錦囊', n: 1, need: { '麻布': 3, '棉': 2 }, sta: 10, note: '用掉：囊多兩格、具欄多一格，最多四個' },
     { id: 'hemp', out: '麻布', n: 1, need: { '麻': 4, '棉': 2 }, sta: 4, note: '稻草人、船帆、燈帽都要' },
     { id: 'hat', out: '燈帽', n: 1, need: { '麻布': 2, '蠟燭': 1 }, sta: 5, note: '戴著就有光；一根蠟燭燒四百息' },
     { id: 'scarecrow', out: '偶', n: 1, need: { '麻布': 2, '石子': 2, '木': 3, '草': 4 }, sta: 8, note: '三十天內獸不近身' },
@@ -178,7 +179,8 @@
     { id: 'plank', out: '木板', n: 2, need: { '木': 2 }, sta: 2, note: '造船用' },
     { id: 'oar', out: '船槳', n: 1, need: { '木板': 2, '木': 1 }, sta: 4, note: '造船用' },
     { id: 'sail', out: '船帆', n: 1, need: { '麻布': 4, '木': 2 }, sta: 6, note: '造船用' },
-    { id: 'ship', out: '大船', n: 1, need: { '木板': 12, '船槳': 2, '船帆': 1 }, sta: 20, level: 8, note: '膽氣八重方可造。放在淺水上，渡海而去' }
+    { id: 'ship', out: '大船', n: 1, need: { '木板': 12, '船槳': 2, '船帆': 1 }, sta: 20, level: 8, note: '膽氣八重方可造。放在淺水上，渡海而去' },
+    { id: 'hammer', out: '九閽鳴雷', n: 1, need: { '鐵': 12, '煤': 6, '石子': 9, '麻布': 2, '果酒': 1 }, sta: 60, level: 31, note: '三格內諸獸同受 120 傷；隨身膽氣二日一減、下限廿五重' },
   ];
 
   // ---------- 一紙之島 ----------
@@ -276,10 +278,10 @@
   // 五塊碑，由近到遠各講一個活下去的法子；讀碑力氣上限 +10
   const STELES = [
     { r: 0.26, hint: '六團棉、兩塊木，是一張床。夜裡面向它按 R，一覺到天明，愜意 +20；附近有魄則睡不著。' },
-    { r: 0.42, hint: '二土一草成磚，木三成門，石四木四成櫃。砌一圈留一扇門，獸不得入。麻布二石子二木三草四，是一個稻草人，三十天內獸不近身。' },
+    { r: 0.42, hint: '二土一草成磚，木三成門，石四木四成櫃。砌一圈留一扇門，獸不得入。麻布三棉二織錦囊，用之囊更大。麻布二石子二木三草四，是一個稻草人，三十天內獸不近身。' },
     { r: 0.56, hint: '石子磨石加一根木，可成刀、鎬、鋤、劍、斧。山裡有煤有鐵，礦二煤一入旺灶可煉鐵，鐵可打甲。蛇與蛛咬人有毒，連咬不斷（兩口相隔不過六息）滿十五口必死；藥可解毒。豹與狼一撲十滴血。' },
     { r: 0.70, hint: '第十三夜起，魄夜行，穿牆而過，不傷身而蝕心。手持火把或蠟燭、頭戴燈帽、地上有燈，六格內魄即煙滅。白日藏於林中。' },
-    { r: 0.83, hint: '野果久藏則醉，醉可昏睡一刻。沙三入旺灶成瓶，瓶取泉水，醉果二合淡水成酒，飲之愜意。膽氣八重，可造大船渡海。' }
+    { r: 0.83, hint: '野果久藏則醉，醉可昏睡一刻。沙三入旺灶成瓶，瓶取泉水，醉果二合淡水成酒，飲之愜意。膽氣八重，可造大船渡海；卅一重，鐵十二煤六石子九，可鑄九閽鳴雷。' }
   ];
   function spiralFind(tx, ty, maxR, test) {
     for (let rr = 0; rr < maxR; rr++) {
@@ -303,7 +305,7 @@
   }
 
   // 八處地標。每處一段話，連起來是一個小故事：這座島是誰寫的。
-  const VILLAGE = ['牆牆門牆牆', '牆草草草牆', '門草井草門', '牆草草草牆', '牆牆門牆牆'];
+  const VILLAGE = ['牆牆牆門牆牆牆', '牆草草草草草牆', '牆草草草草草牆', '門草草井草草門', '牆草草草草草牆', '牆草草草草草牆', '牆牆牆門牆牆牆'];   // 七乘七，井在正中
   const PLACES = [
     { id: 'ta', ch: '塔', name: '塔', w: 2, h: 2, r: [0.30, 0.52], want: 'high', effect: 'reveal',
       text: '從塔上能看見整張紙。我在這裡寫了一個「望」字，先生用硃筆把它圈起來了，說：字可以望嗎？我說可以。' },

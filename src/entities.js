@@ -124,7 +124,8 @@
       this.spawnAcc += dt;
       if (this.spawnAcc > 1.5) {
         this.spawnAcc = 0;
-        const caps = { '鳥': night ? 4 : 10, '鹿': 6, '魚': 8, '虎': night ? 3 : 2, '豹': night ? 2 : 1, '狼': night ? 3 : 0, '蛇': 2, '蟾': 3 };
+        const bm = night && g.beastMult ? g.beastMult() : 1;   // 困難：夜裡狼虎豹蛇一倍半
+        const caps = { '鳥': night ? 4 : 10, '鹿': 6, '魚': 8, '虎': night ? Math.ceil(3 * bm) : 2, '豹': night ? Math.ceil(2 * bm) : 1, '狼': night ? Math.ceil(3 * bm) : 0, '蛇': Math.ceil(2 * bm), '蟾': 3 };
         for (const type in caps) {
           if (this.count(type) >= caps[type]) continue;
           if (type === '蛇' && Math.random() > 0.25) continue;        // 蛇出沒機率偏低
