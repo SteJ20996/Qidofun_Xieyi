@@ -412,6 +412,26 @@ const result = await page.evaluate(async () => {
   hold('煤'); const f0 = w.stoveFuel(T().x, T().y); g.pressPlace();
   ok('coal is strong fuel (+120)', Math.abs(w.stoveFuel(T().x, T().y) - f0 - 120) < 1 && g.count('煤') === 0, w.stoveFuel(T().x, T().y) - f0);
   w.set(T().x, T().y, '土'); hold('石劍'); p.hurtT = 0;
+  // 鋼具與鎢鋼具：鐵二木一煤一鍛鋼具（140%）；鐵礦脈 1/30 出鎢礦；八煤成精煤；鎢礦一鐵礦二精煤一煉鎢鋼；鎢鋼具 150%／耐久 200%
+  trim(['木', '石', '石子', '草', '土', '磚', '大船']); g.addItem('鐵', 2); g.addItem('木', 1); g.addItem('煤', 1); p.sta = 100; g.craft('forge', '鋼劍');
+  ok('a steel sword: 56 damage and 56 durability (140% of stone)', !!tool('鋼劍') && tool('鋼劍').dur === 56 && G.ITEMS['鋼劍'].dmg === 56 && g.count('鐵') === 0, bag());
+  ok('iron veins hide tungsten one time in thirty', Math.abs(G.DB['鐵'].bonus['鎢礦'] - 1 / 30) < 1e-9);
+  const rndT = Math.random; Math.random = () => 0.01; face(0, 1); w.set(T().x, T().y, '鐵'); hold('石鎬'); g.action = null; g.pressGather(); await until(() => !g.action, 12000); Math.random = rndT;
+  ok('a lucky swing on an iron vein yields 鎢礦', g.count('鎢礦') >= 1 && g.count('鐵礦') >= 2, bag());
+  g.addItem('煤', 8); p.sta = 100; g.craft('coke');
+  ok('eight coal make one refined coal', g.count('精煤') === 1 && g.count('煤') === 0);
+  w.set(T().x, T().y, '灶'); w.addFuel(T().x, T().y, 100); g.removeItem('鎢礦', 9); g.removeItem('鐵礦', 9); g.addItem('鎢礦', 1); g.addItem('鐵礦', 2); hold('鎢礦'); g.pressPlace();
+  ok('tungsten ore + two iron ore + refined coal smelt one 鎢鋼', g.count('鎢鋼') === 1 && g.count('鎢礦') === 0 && g.count('鐵礦') === 0 && g.count('精煤') === 0, bag());
+  g.addItem('鎢鋼', 1); g.addItem('木', 1); g.addItem('精煤', 1); p.sta = 100; p.food = 80; g.craft('forgew', '鎢鋼劍');
+  ok('a tungsten-steel sword: 84 damage, 112 durability', !!tool('鎢鋼劍') && tool('鎢鋼劍').dur === 112 && G.ITEMS['鎢鋼劍'].dmg === 84, bag());
+  tool('鎢鋼劍').dur = 5; hold('鎢鋼劍'); g.addItem('石子', 1); p.sta = 50; p.food = 50; g.craft('regrind');
+  ok('regrinding tungsten steel costs 8 stamina and 10 food', tool('鎢鋼劍').dur === 112 && p.sta === 42 && Math.round(p.food) === 40, [p.sta, p.food]);
+  g.addItem('鎢鋼甲', 1); hold('鎢鋼甲'); g.pressPlace(); const wv = p.worn['甲'];
+  ok('tungsten armour: 22.4% (160% of iron) and 360 days', !!wv && Math.abs(G.ITEMS['鎢鋼甲'].red - 0.224) < 1e-9 && Math.round(wv.dur / DAY) === 360, wv && wv.dur / DAY);
+  wv.wm = 3; wv.dur = 1000; g.addItem('鎢鋼', 1); p.sta = 50; p.food = 50; g.repairWorn('甲');
+  ok('repairing tungsten armour costs 鎢鋼, 12 stamina and 15 food', Math.round(wv.dur / DAY) === 360 && wv.wm === 1.5 && g.count('鎢鋼') === 0 && p.sta === 38 && Math.round(p.food) === 35, [p.sta, p.food]);
+  g.takeOff('甲'); g.removeItem('鎢鋼甲', 9); p.tools = p.tools.filter(s => s.n !== '鋼劍' && s.n !== '鎢鋼劍'); p.tool = -1; hold('石劍'); p.food = 80;
+  w.set(T().x, T().y, '土');
   p.cour = g.levelAt(33) + 5; p.decayAt = 0; await sleep(150);
   ok('above level 31 a three-day decay timer starts', g.level() === 33 && p.decayAt > w.time && !hidden('courdecay'), [g.level(), p.decayAt - w.time]);
   w.time = p.decayAt + 0.5; await sleep(150);

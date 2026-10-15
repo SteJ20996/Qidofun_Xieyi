@@ -19,7 +19,7 @@
   const CUM = [0]; for (let n = 0; n < 120; n++) CUM.push(Math.round((CUM[n] + levelCost(n)) * 100) / 100);
   // 衣甲：五件一套，一百八十日勻速穿破；十五息內挨打越多壞得越快，且會累加
   const SLOT_ORDER = ['襯', '褲', '甲', '盔', '靴', '帽'], ARMOR_SLOTS = ['襯', '褲', '甲', '盔', '靴'], ARMOR_LIFE = 180 * DAY, HIT_MULT = [1, 1.05, 1.12, 1.2, 1.5];
-  const FUEL = { '煤': 120 };   // 灶的好柴：一塊煤燒一百二十息
+  const FUEL = { '煤': 120, '精煤': 300 };   // 灶的好柴：一塊煤燒一百二十息，精煤三百息
   const WEAR_CAP = 6, REPAIR_WM = 1.5, HAT_FUEL = 400;   // 衣甲損耗倍率封頂；修補後從 1.5 倍起算；燈帽一根蠟燭四百息
   const $ = (id) => document.getElementById(id);
 
@@ -115,6 +115,7 @@
     dmgMult() { const k = this.ladder(); return (k < 0 ? 1 : Math.pow(1.15, k + 1)) * this.ironAtk() * this.diff.dmg; }        // 造成的傷害
     takenMult() { const k = this.ladder(); return (k < 0 ? 1 : Math.pow(1.15, -k)) * (1 - this.armorRed()) * this.diff.taken; }  // 受到的傷害
     totemNear(x, y) { return this.totemOn() && U.cheb(x, y, this.player.x, this.player.y) <= 7; }
+    lifeOf(s) { const it = ITEMS[s.n] || {}; return (it.life || 180) * DAY; }     // 衣甲壽命：一般一百八十日，鎢鋼三百六十日
     durText(s) { if (s.dur === undefined) return '×' + s.c; const it = ITEMS[s.n] || {}; return it.slot ? Math.max(1, Math.ceil(s.dur / DAY)) + ' 日' : '耐 ' + s.dur; }
     wearRate(s) { return (s.wm || 1) * (HIT_MULT[this.player.hitWin.n] || 1); }                 // 這件現在的損耗速度
     effDays(s) { return Math.max(1, Math.ceil(s.dur / this.wearRate(s) / DAY)); }              // 照目前速度還能穿幾日
@@ -124,7 +125,7 @@
       const was = this.totemOn(), old = p.worn[it.slot];
       let piece;
       if (s.c > 1 && s.dur === undefined) { s.c--; piece = { n: s.n, c: 1 }; } else { p.bag.splice(i, 1); piece = s; }
-      if (piece.dur === undefined && !it.light) piece.dur = ARMOR_LIFE;
+      if (piece.dur === undefined && !it.light) piece.dur = this.lifeOf(piece);
       if (piece.wm === undefined) piece.wm = 1;
       p.worn[it.slot] = piece;
       if (old) p.bag.splice(Math.min(i, p.bag.length), 0, old);
@@ -137,10 +138,12 @@
     repairWorn(slot) {   // 布件用麻布一、鐵件用鐵一，力 4：壽命回滿，損耗從 1.5 倍重新起算；燈帽則是續蠟燭
       const p = this.player, s = p.worn[slot]; if (!s || !this.canAct()) return false;
       if (slot === '帽') { if (this.count('蠟燭') < 1) { this.message('續燈帽要一根蠟燭。'); SFX.fail(); return false; } this.removeItem('蠟燭', 1); s.fuel = HAT_FUEL; this.barSig = ''; this.buildBag(); this.message('燈帽續上一根蠟燭：四百息。'); SFX.write(); return true; }
-      const mat = ITEMS[s.n].iron ? '鐵' : '麻布';
-      if (this.count(mat) < 1) { this.message('修補「' + s.n + '」要' + mat + '一。'); SFX.fail(); return false; }
-      if (!this.spendSta(4)) return false;
-      this.removeItem(mat, 1); s.dur = ARMOR_LIFE; s.wm = REPAIR_WM; this.barSig = ''; this.buildBag(); SFX.fuse();
+      const it = ITEMS[s.n], mat = it.tung ? '鎢鋼' : it.iron ? '鐵' : '麻布', sta = it.tung ? 12 : 4, food = it.tung ? 15 : 0;   // 鎢鋼具修補耗力也耗飽
+      if (this.count(mat) < 1) { this.message('修補「' + s.n + '」要' + mat + '一' + (food ? '、力 ' + sta + '、飽 ' + food : '') + '。'); SFX.fail(); return false; }
+      if (food && p.food < food) { this.message('太餓了，修不動鎢鋼。'); SFX.fail(); return false; }
+      if (!this.spendSta(sta)) return false;
+      if (food) p.food -= food;
+      this.removeItem(mat, 1); s.dur = this.lifeOf(s); s.wm = REPAIR_WM; this.barSig = ''; this.buildBag(); SFX.fuse();
       this.message('「' + s.n + '」修補好了：壽命回滿，損耗從 ×1.5 起算。'); return true;
     }
     takeOff(slot) {
@@ -767,16 +770,20 @@
       if (p.sta < r.sta) { this.message('力氣不夠，歇一歇。'); SFX.fail(); return; }
       let out = r.out, n = r.n || 1;
       if (r.choose) { if (!choice) { this.message('選一個方向：刀、鎬、鋤、劍、斧。'); return; } out = choice; }
+      if (r.choose && ITEMS[out] && ITEMS[out].tung && p.food < 10) { this.message('太餓了，鍛不動鎢鋼。'); SFX.fail(); return; }
       if (r.regrind) {
         const s = this.activeTool(); if (!s) { this.message('具欄裡要選中一把工具（P 換）。'); SFX.fail(); return; }
+        const tung = !!ITEMS[s.n].tung, extraSta = tung ? 5 : 0, food = tung ? 10 : 0;   // 鎢鋼具重磨耗力八、飽十
+        if (p.sta < r.sta + extraSta) { this.message('力氣不夠，歇一歇（鎢鋼具要力 ' + (r.sta + extraSta) + '）。'); SFX.fail(); return; }
+        if (food && p.food < food) { this.message('太餓了，磨不動鎢鋼。'); SFX.fail(); return; }
         for (const m in r.need) this.removeItem(m, r.need[m]);
-        p.sta -= r.sta; s.dur = ITEMS[s.n].dur; this.barSig = ''; this.afterCraft(r); this.message('「' + s.n + '」磨利了。'); SFX.fuse(); this.buildCraft(); this.buildBag(); return;
+        p.sta -= r.sta + extraSta; if (food) p.food -= food; s.dur = ITEMS[s.n].dur; this.barSig = ''; this.afterCraft(r); this.message('「' + s.n + '」磨利了。'); SFX.fuse(); this.buildCraft(); this.buildBag(); return;
       }
       const def = ITEMS[out], owned = def && def.slot ? this.ownedPiece(out) : null;
       if (owned) {       // 同一類衣甲只留一件：再造只是翻新
         for (const m in r.need) this.removeItem(m, r.need[m]);
         p.sta -= r.sta; const gain = this.afterCraft(r);
-        if (def.light) owned.fuel = HAT_FUEL; else { owned.dur = ARMOR_LIFE; owned.wm = 1; }
+        if (def.light) owned.fuel = HAT_FUEL; else { owned.dur = this.lifeOf(owned); owned.wm = 1; }
         this.barSig = ''; this.toast('「' + out + '」翻新了', '同一類衣甲只留一件：壽命回滿，損耗重新起算。　愜意 +' + Math.round(gain * 10) / 10); SFX.fuse();
         this.buildCraft(); this.buildBag(); return;
       }
@@ -1066,7 +1073,7 @@
           else if (s.fuel !== undefined) sub = s.fuel > 0 ? Math.ceil(s.fuel) + '息' : '滅';
           else if (s.d !== undefined) { const age = this.day() - s.d; sub = '×' + s.c + (age >= FERMENT_NIGHTS - 3 ? ' 將醉' : age >= 1 ? ' ' + age + '夜' : ''); }
           el.innerHTML = '<span class="num">' + (i < 9 ? i + 1 : '') + '</span><span class="ch' + (s.n.length > 1 ? ' word' : '') + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">' + sub + '</span>';
-          if (s.dur !== undefined) el.innerHTML += '<i class="dur" style="width:' + Math.round(100 * s.dur / (it.dur || ARMOR_LIFE)) + '%"></i>';
+          if (s.dur !== undefined) el.innerHTML += '<i class="dur" style="width:' + Math.round(100 * s.dur / (it.dur || this.lifeOf(s))) + '%"></i>';
           else if (s.fuel !== undefined) el.innerHTML += '<i class="dur" style="width:' + Math.round(100 * s.fuel / HAT_FUEL) + '%"></i>';
           el.title = it.flavor;
         }
@@ -1093,7 +1100,7 @@
           const s = p.worn[k], el = document.createElement('div');
           el.className = 'slot bag worn' + (s ? '' : ' empty');
           if (s && s.fuel !== undefined) { el.innerHTML = '<span class="ch word">' + s.n + '</span><span class="cost">' + (s.fuel > 0 ? Math.ceil(s.fuel) + '息' : '滅') + '</span><i class="dur" style="width:' + Math.round(100 * s.fuel / HAT_FUEL) + '%"></i>'; el.title = ITEMS[s.n].flavor + '（點一下脫下，右鍵用一根蠟燭續上）'; }
-          else if (s) { const rate = Math.round(this.wearRate(s) * 100) / 100; el.innerHTML = '<span class="ch word">' + s.n + '</span><span class="cost">' + this.effDays(s) + '日</span><i class="dur" style="width:' + Math.round(100 * s.dur / ARMOR_LIFE) + '%"></i>'; el.title = ITEMS[s.n].flavor + '（照目前損耗速度 ×' + rate + ' 還能穿 ' + this.effDays(s) + ' 日；點一下脫下，右鍵修補：' + (ITEMS[s.n].iron ? '鐵' : '麻布') + '一、力 4）'; }
+          else if (s) { const rate = Math.round(this.wearRate(s) * 100) / 100; el.innerHTML = '<span class="ch word' + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">' + this.effDays(s) + '日</span><i class="dur" style="width:' + Math.round(100 * s.dur / this.lifeOf(s)) + '%"></i>'; el.title = ITEMS[s.n].flavor + '（照目前損耗速度 ×' + rate + ' 還能穿 ' + this.effDays(s) + ' 日；點一下脫下，右鍵修補：' + (ITEMS[s.n].tung ? '鎢鋼一、力 12、飽 15' : (ITEMS[s.n].iron ? '鐵' : '麻布') + '一、力 4') + '）'; }
           else { el.innerHTML = '<span class="ch">' + k + '</span>'; el.title = '身上：' + k + '。囊裡選中衣甲按 F 穿上。'; }
           el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; if (ev.button === 2) this.repairWorn(k); else this.takeOff(k); });
           el.addEventListener('contextmenu', (ev) => ev.preventDefault());

@@ -44,7 +44,7 @@
     '磊': { s: 15, walk: 0, kind: 'rock', ink: INK.rock, yield: { '石': 3 }, time: 3.0, need: '鎬', flavor: '三石為磊。要用鎬。' },
     '山': { s: 3, walk: 0, kind: 'rock', ink: INK.rock, yield: { '石': 2 }, time: 2.0, need: '鎬', to: '石', flavor: '山不可越，鎬可鑿之。' },
     '煤': { s: 13, walk: 0, kind: 'rock', ink: INK.black, yield: { '煤': 2 }, time: 3.0, need: '鎬', to: '石', flavor: '煤層。要用鎬。入灶火旺而久；礦二煤一入旺灶，煉成鐵。' },
-    '鐵': { s: 21, walk: 0, kind: 'rock', ink: INK.brick, yield: { '鐵礦': 2 }, time: 3.5, need: '鎬', to: '石', flavor: '鐵礦脈。要用鎬。礦二煤一入旺灶，煉成鐵；鐵可打甲、褲、盔、靴。' },
+    '鐵': { s: 21, walk: 0, kind: 'rock', ink: INK.brick, yield: { '鐵礦': 2 }, bonus: { '鎢礦': 1 / 30 }, time: 3.5, need: '鎬', to: '石', flavor: '鐵礦脈。要用鎬。礦二煤一入旺灶，煉成鐵；鐵可打甲、褲、盔、靴。' },
     // —— 火
     '火': { s: 4, walk: 0, kind: 'fire', light: 2.5, ink: INK.red, flavor: '火。虎豹畏之。' },
     '炎': { s: 8, walk: 0, kind: 'fire', light: 3.5, ink: INK.red, flavor: '二火為炎。' },
@@ -136,6 +136,12 @@
     '龜甲': { s: 16, kind: 'use', flavor: '龜甲。選中按 V 灼而卜之：四分之一的機會得吉兆，五日內魄不來；不吉則甲裂無用。' },
     '九閽鳴雷': { s: 26, kind: 'tool', tool: '鎚', dmg: 120, dur: 199, flavor: '撼地之鎚。膽氣卅一重方可造、可掄：面向獸按 E，三格內諸獸同受一百二十傷。隨身則膽氣二日一減、下限廿五重；低於卅一重掄不動。' },
     '鐵礦': { s: 21, flavor: '鐵礦石。礦二煤一入旺灶，煉成鐵。' },
+    '鎢礦': { s: 21, flavor: '鎢礦石，鑿鐵礦脈時三十分之一的機會挖到。鎢礦一、鐵礦二、精煤一入旺灶，煉成鎢鋼。' },
+    '精煤': { s: 14, flavor: '八塊煤煉成的精煤。煉鎢鋼、鍛鎢鋼具要它；入灶可燒三百息。' },
+    '鎢鋼': { s: 21, flavor: '鎢鋼。可鍛刀鎬鋤劍斧，可打甲盔靴，強過鋼。' },
+    '鎢鋼甲': { s: 21, kind: 'wear', slot: '甲', red: 0.224, iron: true, tung: true, life: 360, flavor: '鎢鋼甲。受傷減二成二，壽命三百六十日。修補要鎢鋼一、力十二、飽十五。' },
+    '鎢鋼盔': { s: 21, kind: 'wear', slot: '盔', red: 0.112, iron: true, tung: true, life: 360, flavor: '鎢鋼盔。受傷減一成一，壽命三百六十日。' },
+    '鎢鋼靴': { s: 21, kind: 'wear', slot: '靴', red: 0.08, iron: true, tung: true, life: 360, flavor: '鎢鋼靴。受傷減八分，壽命三百六十日。' },
     '鐵': { s: 21, flavor: '煉好的鐵。可打甲、褲、盔、靴。' },
     '燈帽': { s: 33, kind: 'wear', slot: '帽', light: 2, single: true, fuel: 400, flavor: '麻布燈帽。戴在頭上就有光，兩格，與盔不衝突；裝一根蠟燭燒四百息，燒完選中蠟燭按 V 續上。' },
     '竹筏': { s: 18, kind: 'tool', flavor: '囊中有筏，可行於淺水，捉魚更易。' },
@@ -149,12 +155,24 @@
     '石鎬': { s: 23, kind: 'tool', tool: '鎬', dmg: 15, dur: 40, flavor: '鑿山採石、拆磚，快一倍。' },
     '石鋤': { s: 20, kind: 'tool', tool: '鋤', dmg: 15, dur: 40, flavor: '鋤在手，面向土或草按 E，鋤之成田。' },
     '石劍': { s: 20, kind: 'tool', tool: '劍', dmg: 40, dur: 40, flavor: '一下四十。鹿一劍，蛇蛛蟾三劍，豹狼四劍，虎八劍。' },
-    '石斧': { s: 13, kind: 'tool', tool: '斧', dmg: 15, dur: 40, flavor: '伐木伐竹快一倍。' }
+    '石斧': { s: 13, kind: 'tool', tool: '斧', dmg: 15, dur: 40, flavor: '伐木伐竹快一倍。' },
+    // 鋼具：鐵二木一煤一鍛成，耐久與戰力是石具的 140%
+    '鋼刀': { s: 16, kind: 'tool', tool: '刀', dmg: 42, dur: 56, flavor: '鋼刀。一下四十二，耐久五十六。' },
+    '鋼鎬': { s: 16, kind: 'tool', tool: '鎬', dmg: 21, dur: 56, flavor: '鋼鎬。鑿山採礦，耐久五十六。' },
+    '鋼鋤': { s: 16, kind: 'tool', tool: '鋤', dmg: 21, dur: 56, flavor: '鋼鋤。鋤地成田，耐久五十六。' },
+    '鋼劍': { s: 16, kind: 'tool', tool: '劍', dmg: 56, dur: 56, flavor: '鋼劍。一下五十六，耐久五十六。' },
+    '鋼斧': { s: 16, kind: 'tool', tool: '斧', dmg: 21, dur: 56, flavor: '鋼斧。伐木伐竹，耐久五十六。' },
+    // 鎢鋼具：鎢鋼二木一精煤一鍛成，強度是鋼具的 150%、耐久是鋼具的 200%；重磨要耗力也耗飽
+    '鎢鋼刀': { s: 21, kind: 'tool', tool: '刀', dmg: 63, dur: 112, tung: true, flavor: '鎢鋼刀。一下六十三，耐久一百一十二。重磨耗力八、飽十。' },
+    '鎢鋼鎬': { s: 21, kind: 'tool', tool: '鎬', dmg: 32, dur: 112, tung: true, flavor: '鎢鋼鎬。耐久一百一十二。重磨耗力八、飽十。' },
+    '鎢鋼鋤': { s: 21, kind: 'tool', tool: '鋤', dmg: 32, dur: 112, tung: true, flavor: '鎢鋼鋤。耐久一百一十二。重磨耗力八、飽十。' },
+    '鎢鋼劍': { s: 21, kind: 'tool', tool: '劍', dmg: 84, dur: 112, tung: true, flavor: '鎢鋼劍。一下八十四，耐久一百一十二。重磨耗力八、飽十。' },
+    '鎢鋼斧': { s: 21, kind: 'tool', tool: '斧', dmg: 32, dur: 112, tung: true, flavor: '鎢鋼斧。耐久一百一十二。重磨耗力八、飽十。' },
   };
-  const TOOL_NAMES = { '刀': '石刀', '鎬': '石鎬', '鋤': '石鋤', '劍': '石劍', '斧': '石斧', '鎚': '九閽鳴雷' };
+  const TOOL_NAMES = { '刀': '刀', '鎬': '鎬', '鋤': '鋤', '劍': '劍', '斧': '斧', '鎚': '九閽鳴雷' };   // 石、鋼、鎢鋼都算
   function item(name) { return ITEMS[name] || DB[name] || null; }
   // 灶上：放什麼變什麼（n 一次要幾個，out 得幾個）
-  const COOK = { '魚': { out: '烤魚' }, '肉': { out: '烤肉' }, '蛇肉': { out: '烤蛇' }, '蟾蜍': { out: '烤蟾' }, '海水瓶': { out: '淡水瓶' }, '沙': { n: 3, out: '玻璃瓶', k: 2 }, '鐵礦': { n: 2, out: '鐵', k: 1, extra: { '煤': 1 }, verb: '煉成了' } };
+  const COOK = { '魚': { out: '烤魚' }, '肉': { out: '烤肉' }, '蛇肉': { out: '烤蛇' }, '蟾蜍': { out: '烤蟾' }, '海水瓶': { out: '淡水瓶' }, '沙': { n: 3, out: '玻璃瓶', k: 2 }, '鐵礦': { n: 2, out: '鐵', k: 1, extra: { '煤': 1 }, verb: '煉成了' }, '鎢礦': { n: 1, out: '鎢鋼', k: 1, extra: { '鐵礦': 2, '精煤': 1 }, verb: '煉成了' } };
 
   // 配方（製作耗力；level 要幾重膽氣）
   const RECIPES = [
@@ -168,6 +186,9 @@
     { id: 'stove', out: '灶', n: 1, need: { '石': 6 }, sta: 6, note: '烤食、燒瓶、蒸餾；添木續火' },
     { id: 'grind', out: null, need: { '石': 1, '石子': 1, '木': 1 }, sta: 8, note: '磨礪：選刀、鎬、鋤、劍、斧', choose: ['石刀', '石鎬', '石鋤', '石劍', '石斧'] },
     { id: 'regrind', out: null, need: { '石子': 1 }, sta: 3, note: '重磨手中的工具，耐久復滿', regrind: true },
+    { id: 'forge', out: null, need: { '鐵': 2, '木': 1, '煤': 1 }, sta: 10, note: '鍛鋼具：耐久與戰力是石具的 140%', choose: ['鋼刀', '鋼鎬', '鋼鋤', '鋼劍', '鋼斧'] },
+    { id: 'coke', out: '精煤', n: 1, need: { '煤': 8 }, sta: 4, note: '八煤成一精煤，煉鎢鋼用' },
+    { id: 'forgew', out: null, need: { '鎢鋼': 2, '木': 1, '精煤': 1 }, sta: 16, note: '鍛鎢鋼具：強度是鋼的 150%、耐久 200%', choose: ['鎢鋼刀', '鎢鋼鎬', '鎢鋼鋤', '鎢鋼劍', '鎢鋼斧'] },
     { id: 'lining', out: '內襯', n: 1, need: { '棉': 4, '麻': 2 }, sta: 6, note: '禦寒減半，減傷 2%' },
     { id: 'pants', out: '布褲', n: 1, need: { '麻布': 2, '棉': 2 }, sta: 5, note: '減傷 2%' },
     { id: 'vest', out: '布甲', n: 1, need: { '麻布': 3, '棉': 3 }, sta: 8, note: '減傷 3%' },
@@ -176,6 +197,9 @@
     { id: 'ironvest', out: '鐵甲', n: 1, need: { '鐵': 5, '麻布': 1 }, sta: 14, note: '減傷 14%；鐵三件齊毒不侵' },
     { id: 'helm', out: '鐵盔', n: 1, need: { '鐵': 3 }, sta: 10, note: '減傷 7%' },
     { id: 'ironboots', out: '鐵靴', n: 1, need: { '鐵': 2, '麻布': 1 }, sta: 8, note: '減傷 5%' },
+    { id: 'wvest', out: '鎢鋼甲', n: 1, need: { '鎢鋼': 5, '麻布': 1 }, sta: 20, note: '減傷 22.4%，壽命三百六十日' },
+    { id: 'whelm', out: '鎢鋼盔', n: 1, need: { '鎢鋼': 3 }, sta: 16, note: '減傷 11.2%，壽命三百六十日' },
+    { id: 'wboots', out: '鎢鋼靴', n: 1, need: { '鎢鋼': 2, '麻布': 1 }, sta: 12, note: '減傷 8%，壽命三百六十日' },
     { id: 'pouch', out: '錦囊', n: 1, need: { '麻布': 3, '棉': 2 }, sta: 10, note: '用掉：囊多兩格、具欄多一格，最多四個' },
     { id: 'hemp', out: '麻布', n: 1, need: { '麻': 4, '棉': 2 }, sta: 4, note: '稻草人、船帆、燈帽都要' },
     { id: 'hat', out: '燈帽', n: 1, need: { '麻布': 2, '蠟燭': 1 }, sta: 5, note: '戴著就有光；一根蠟燭燒四百息' },
