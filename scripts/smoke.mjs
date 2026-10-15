@@ -246,8 +246,8 @@ const result = await page.evaluate(async () => {
   ok('drunk fruit knocks you out', p.knock === 60 && !hidden('knock'));
   await sleep(1000);
   ok('knockout runs the world at the same pace as the countdown', p.knock < 59 && Math.abs((60 - p.knock) - (w.time - t0k)) < 0.3, [p.knock, w.time - t0k]);
-  p.knock = 0.1; await until(() => p.knock <= 0, 3000);
-  ok('waking gives +2 food +1 sanity −5 stamina', hidden('knock') && p.food > 51.4 && p.food <= 52.01 && p.san > 50.4 && p.san <= 51.01 && p.sta > 44 && p.sta < 46.6, [p.food, p.san, p.sta]);
+  p.food = 50; p.san = 50; p.sta = 50; p.knock = 0.1; await until(() => p.knock <= 0, 3000);   // 醒來前重設，免得快慢不同的畫格數影響判定
+  ok('waking gives +2 food +1 sanity −5 stamina', hidden('knock') && p.food > 51.7 && p.food <= 52.01 && p.san > 50.8 && p.san <= 51.01 && p.sta > 44.8 && p.sta < 45.6, [p.food, p.san, p.sta]);
   // 櫃
   face(0, -1); w.set(T().x, T().y, '土'); g.addItem('櫃', 1); hold('櫃'); g.pressPlace();
   ok('placed a chest', w.get(T().x, T().y) === '櫃' && w.chests.has(T().x + ',' + T().y));
