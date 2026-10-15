@@ -13,6 +13,8 @@
   // 霧障：每日擲 FOG_ROLLS 次、每次 FOG_P 的真隨機機會起一片霧（每日最多兩片，第二日起）；一片 FOG_MIN–FOG_MAX 格、形狀隨機長；
   // 起在玩家 FOG_NEAR 格外的陸地上；放著不管 FOG_LIFE 後自己散
   const FOG_ROLLS = 2, FOG_P = 0.25, FOG_MIN = 8, FOG_MAX = 12, FOG_NEAR = [8, 28], FOG_LIFE = DAY;
+  const SEA_FOG_MIN = 6, SEA_FOG_MAX = 10, SEA_FOG_LIFE = 90;   // 蜃吐的海霧：六到十格，九十息就散
+  const SHIP_HP = 200;                                          // 大船的命
   const RAIN_MIN = DAY * 0.25, RAIN_MAX = DAY * 1.0, RAIN_GAP_MIN = DAY * 1.0, RAIN_GAP_MAX = DAY * 4.0, RAIN_LAMP_P = 1 / 1500, ROOM_LIMIT = 121;
 
   class World {
@@ -61,6 +63,7 @@
       this.fogDay = Math.floor(this.time / DAY);   // 已經擲過的那一日（第一日不起霧）
       this.fogSeq = 0; this.fogP = FOG_P;
       this.onFog = null;         // 回調：起了一片霧
+      this.ships = new Map();    // "x,y" -> { hp, ward, skull }：停著的大船（命、船頭首骨鎮到幾時、哪一種首骨）
     }
 
     chunk(cx, cy) {
@@ -104,6 +107,8 @@
       if ('網罟罾'.indexOf(old) >= 0 && '網罟罾'.indexOf(ch) < 0 && this.netCells.has(k)) { const rec = this.nets.get(this.netCells.get(k)); if (rec) this.removeNet(rec); }
       if (old === '櫃' && ch !== '櫃') this.chests.delete(k);
       if (ch === '燈') this.lamps.add(k); else if (old === '燈') this.lamps.delete(k);
+      if (old === '舟' && ch !== '舟') this.ships.delete(k);
+      if (ch === '舟' && !this.ships.has(k)) this.ships.set(k, World.newShip());
       if (old === '漁' && ch !== '漁') this.weirs.delete(k);
       if (ch === '漁' && !this.weirs.has(k)) this.weirs.set(k, this.time + 45);
     }
@@ -181,7 +186,7 @@
         if (Math.hypot(cxp - px, cyp - py) <= r + Math.max(pl.w, pl.h) / 2) { pl.seen = true; if (this.onDiscover) this.onDiscover(pl); }
       }
     }
-    revealAll(px, py) { this.markSeen(px, py, 80); }
+    revealAll(px, py) { this.markSeen(px, py, G.SEA_EDGE); }
     seenCount() { let n = 0; for (const b of this.explored.values()) for (const v of b) { let x = v; while (x) { n += x & 1; x >>= 1; } } return n; }
     // 走的人多了，也便成了路
     trample(x, y) {
@@ -212,8 +217,8 @@
     // ---------- 霧障 ----------
     fogAt(x, y) { const id = this.fogCells.get(U.key(x, y)); return id ? this.fogs.get(id) : null; }
     fogLand(x, y) { const d = this.info(x, y); return d.walk > 0 && d.kind !== 'water' && DB[this.raw(x, y)].kind !== 'water'; }
-    addFog(cells, until) {
-      const id = ++this.fogSeq, f = { id, cells: new Set(cells), until };
+    addFog(cells, until, sea) {
+      const id = ++this.fogSeq, f = { id, cells: new Set(cells), until, sea: !!sea };
       this.fogs.set(id, f); for (const k of f.cells) this.fogCells.set(k, id);
       return f;
     }
@@ -243,6 +248,26 @@
       if (this.onFog) this.onFog(f);
       return f;
     }
+    // 蜃吐霧：在蜃與玩家之間的海面上長一片海霧（只蓋水，不蓋船、網、陸地）
+    fogSea(x, y) { return DB[this.get(x, y)].kind === 'water' && DB[this.raw(x, y)].kind === 'water'; }
+    spawnSeaFog(mx, my, px, py) {
+      const R = U.trueRand, dx = Math.sign(px - mx), dy = Math.sign(py - my);
+      let seed = null;
+      for (let i = 0; i < 30 && !seed; i++) {
+        const t = 2 + Math.floor(R() * 4), x = mx + dx * t + Math.round((R() - 0.5) * 4), y = my + dy * t + Math.round((R() - 0.5) * 4);
+        if (this.fogSea(x, y) && !this.fogCells.has(U.key(x, y)) && !(x === px && y === py)) seed = [x, y];
+      }
+      if (!seed) return null;
+      const want = SEA_FOG_MIN + Math.floor(R() * (SEA_FOG_MAX - SEA_FOG_MIN + 1)), cells = [seed], have = new Set([U.key(seed[0], seed[1])]);
+      for (let tries = 0; tries < 200 && cells.length < want; tries++) {
+        const from = cells[Math.floor(R() * cells.length)], d = N4[Math.floor(R() * 4)], nx = from[0] + d[0], ny = from[1] + d[1], k = U.key(nx, ny);
+        if (have.has(k) || this.fogCells.has(k) || !this.fogSea(nx, ny) || (nx === px && ny === py)) continue;
+        have.add(k); cells.push([nx, ny]);
+      }
+      if (cells.length < 3) return null;
+      return this.addFog(have, this.time + SEA_FOG_LIFE, true);
+    }
+    shipAt(x, y) { const k = U.key(x, y); if (this.get(x, y) !== '舟') return null; if (!this.ships.has(k)) this.ships.set(k, World.newShip()); return this.ships.get(k); }
     fogCenter(f) { let sx = 0, sy = 0; for (const k of f.cells) { const [x, y] = U.unkey(k); sx += x; sy += y; } return { x: sx / f.cells.size, y: sy / f.cells.size }; }
 
     // ---------- 天氣：雨 ----------
@@ -385,7 +410,8 @@
       const explored = {}; for (const [k, b] of this.explored) explored[k] = Array.from(b, v => v.toString(16).padStart(2, '0')).join('');
       const seen = this.places.filter(p => p.seen).map(p => p.id);
       return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers, stoves, bags, weirs, explored, seen, scarecrows, chests, nets, rainUntil: Math.round(this.rainUntil), nextRainAt: Math.round(this.nextRainAt),
-        fogs: [...this.fogs.values()].map(f => [Math.round(f.until), [...f.cells].join(';')]), fogPlan: this.fogPlan.map(Math.round), fogDay: this.fogDay };
+        fogs: [...this.fogs.values()].map(f => [Math.round(f.until), [...f.cells].join(';'), f.sea ? 1 : 0]), fogPlan: this.fogPlan.map(Math.round), fogDay: this.fogDay,
+        ships: Object.fromEntries([...this.ships].map(([k, v]) => [k, [Math.round(v.hp), Math.round(v.ward || 0), v.skull || '']])) };
     }
     restore(s) {
       this.time = s.time || 30;
@@ -395,7 +421,9 @@
       this.nextRainAt = s.nextRainAt || (this.time + DAY + U.trueRand() * DAY * 2);
       this.rainAcc = 0;
       this.fogs = new Map(); this.fogCells = new Map(); this.fogSeq = 0;
-      for (const [until, cells] of s.fogs || []) if (until > this.time && cells) this.addFog(cells.split(';'), until);
+      for (const [until, cells, sea] of s.fogs || []) if (until > this.time && cells) this.addFog(cells.split(';'), until, sea);
+      this.ships = new Map(); for (const [k, v] of Object.entries(s.ships || {})) this.ships.set(k, { hp: v[0], ward: v[1] || 0, skull: v[2] || '' });
+      for (const [k, v] of this.diff) if (v === '舟' && !this.ships.has(k)) this.ships.set(k, World.newShip());   // 舊存檔的船：滿命
       this.fogPlan = (s.fogPlan || []).filter(t => typeof t === 'number');
       this.fogDay = typeof s.fogDay === 'number' ? s.fogDay : Math.floor(this.time / DAY);
       this.burn = new Map(Object.entries(s.burn || {}).map(([k, v]) => [k, { t: v[0], lvl: v[1] }]));
@@ -414,6 +442,8 @@
     }
   }
 
+  World.SHIP_HP = SHIP_HP;
+  World.newShip = () => ({ hp: SHIP_HP, ward: 0, skull: '' });
   root.World = World;
   root.World.CH = CH;
   root.World.DAY = DAY;

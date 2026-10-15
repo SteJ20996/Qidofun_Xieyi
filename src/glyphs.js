@@ -88,6 +88,7 @@
     '魄': { s: 15, kind: 'beast', ink: INK.ghost, hp: 1, flavor: '第十三夜起夜行。無形，穿牆，不傷身而蝕心：四格內無光，愜意與力氣俱減。火把、蠟燭、燈帽、燈，六格內即煙滅。白日藏於林中。龜甲卜得吉兆，五日不來。' },
     '鷹': { s: 24, kind: 'beast', ink: INK.beast, hp: 60, atk: 12, flavor: '山間的鷹，半友好：不惹不啄，打牠就反啄。手持魚面向牠按 F 投魚可馴（第一隻 35%、第二隻 25%、第三隻起 10%）；馴了跟你走、替你打獸，餵魚回力。' },
     '龜': { s: 16, kind: 'beast', ink: INK.rock, hp: 50, passive: true, flavor: '水邊的龜，少見，不咬人。殺之得龜甲，灼而卜之。' },
+    '蜃': { s: 13, kind: 'beast', ink: INK.red, hp: 900, atk: 30, ram: 25, sea: true, flavor: '海中的大蜃，吐氣成霧（蜃樓）。命九百，只在海上：撞船一下二十五，咬落水的人一口三十，所過之處吞吐霧障。船頭有獸首骨鎮著就不敢撞。九閽鳴雷打牠減半，燭龍焚溟專克。' },
     '龍': { s: 16, kind: 'beast', light: 3, ink: INK.red, hp: 500, flavor: '洞中之龍。隨你同行，夜能照路，獸與魄不敢近。' },
   };
   const VIS = { '草': [0.6, 0.42], '花': [0.62, 0.8], '棉': [0.75, 0.85], '麻': [0.72, 0.85], '沙': [0.58, 0.5], '礫': [0.62, 0.6], '田': [0.78, 0.6], '土': [0.6, 0.5], '灰': [0.6, 0.5], '雪': [0.7, 0.55],
@@ -107,6 +108,9 @@
   // 囊中之物。工具：tool 類別、dmg 傷害、dur 耐久；light 手持照明半徑、life 可燃秒數；wear 穿戴即生效
   const ITEMS = {
     '石子': { s: 8, kind: 'item', flavor: '磨刀石。磨礪成工具，或重磨舊工具。' },
+    '虎首骨': { s: 27, kind: 'use', ward: 3, flavor: '虎的頭骨。放在船頭（在船上選中按 V，或面向停著的船按 F），三日內蜃不敢撞船；可疊加，最多七日。' },
+    '豹首骨': { s: 29, kind: 'use', ward: 2, flavor: '豹的頭骨。放在船頭，二日內蜃不敢撞船；可疊加，最多七日。' },
+    '狼首骨': { s: 29, kind: 'use', ward: 1, flavor: '狼的頭骨。放在船頭，一日內蜃不敢撞船；可疊加，最多七日。' },
     '扇': { s: 10, kind: 'use', flavor: '草四木一紮成的蒲扇，一搧就散。帶在囊裡：走進霧障時會問你要不要用它吹散；選中按 V，三格內的霧障也吹得散。' },
     '麻布': { s: 22, kind: 'item', flavor: '麻四棉二織成的布。做稻草人、船帆、燈帽。' },
     '木板': { s: 12, kind: 'item', flavor: '木二劈成兩塊板。造船用。' },
@@ -138,6 +142,7 @@
     '大漁網': { s: 17, kind: 'build', tile: '罾', flavor: '三乘三的大網，深海也放得：十息一魚、存二十條。' },
     '錦囊': { s: 16, kind: 'use', flavor: '麻布三棉二織成的錦囊。選中按 V 用掉：囊永久多兩格、具欄多一格。最多用四個。' },
     '龜甲': { s: 16, kind: 'use', flavor: '龜甲。選中按 V 灼而卜之：四分之一的機會得吉兆，五日內魄不來；不吉則甲裂無用。' },
+    '燭龍焚溟': { s: 58, kind: 'tool', tool: '焚', dmg: 120, dur: 199, flavor: '燭龍銜火，焚盡溟海。火屬而克海水，故為神兵。膽氣卅一重方可造、可揮：面向獸按 E，三格內諸獸同受灼燒，海中之物（蜃、龜）一百二十，陸上與天上之物減半。' },
     '九閽鳴雷': { s: 26, kind: 'tool', tool: '鎚', dmg: 120, dur: 199, flavor: '撼地之鎚。膽氣卅一重方可造、可掄：面向獸按 E，三格內諸獸同受一百二十傷。隨身則膽氣二日一減、下限廿五重；低於卅一重掄不動。' },
     '鐵礦': { s: 21, flavor: '鐵礦石。礦二煤一入旺灶，煉成鐵。' },
     '鎢礦': { s: 21, flavor: '鎢礦石，鑿鐵礦脈時三十分之一的機會挖到。鎢礦一、鐵礦二、精煤一入旺灶，煉成鎢鋼。' },
@@ -173,12 +178,12 @@
     '鎢鋼劍': { s: 21, kind: 'tool', tool: '劍', dmg: 84, dur: 112, tung: true, flavor: '鎢鋼劍。一下八十四，耐久一百一十二。重磨耗力八、飽十。' },
     '鎢鋼斧': { s: 21, kind: 'tool', tool: '斧', dmg: 32, dur: 112, tung: true, flavor: '鎢鋼斧。耐久一百一十二。重磨耗力八、飽十。' },
   };
-  const TOOL_NAMES = { '刀': '刀', '鎬': '鎬', '鋤': '鋤', '劍': '劍', '斧': '斧', '鎚': '九閽鳴雷' };   // 石、鋼、鎢鋼都算
+  const TOOL_NAMES = { '刀': '刀', '鎬': '鎬', '鋤': '鋤', '劍': '劍', '斧': '斧', '鎚': '九閽鳴雷', '焚': '燭龍焚溟' };   // 石、鋼、鎢鋼都算
   // 製作欄的大類（左側選）：每條配方照 id 歸類，沒列到的進「材料」
   const CRAFT_CATS = ['全部', '居所', '工具', '衣甲', '燈火', '漁船', '食藥', '材料'];
   const CAT_OF = {
     '居所': ['brick', 'door', 'bed', 'chest', 'stove', 'cauldron', 'scarecrow', 'bridge'],
-    '工具': ['grind', 'regrind', 'forge', 'forgew', 'fan', 'hammer'],
+    '工具': ['grind', 'regrind', 'forge', 'forgew', 'fan', 'hammer', 'seagod'],
     '衣甲': ['lining', 'pants', 'vest', 'cap', 'shoes', 'ironvest', 'helm', 'ironboots', 'wvest', 'whelm', 'wboots'],
     '燈火': ['torch', 'candle', 'lamp', 'hat'],
     '漁船': ['weir', 'net', 'midnet', 'bignet', 'bignet13', 'raft', 'plank', 'oar', 'sail', 'ship'],
@@ -200,6 +205,7 @@
     { id: 'stove', out: '灶', n: 1, need: { '石': 6 }, sta: 6, note: '烤食、燒瓶、蒸餾；添木續火' },
     { id: 'cauldron', out: '鼎', n: 1, need: { '鐵': 3, '石': 4, '鎢鋼': 1, '精煤': 2 }, sta: 12, note: '煉丹用，添柴如灶' },
     { id: 'fan', out: '扇', n: 1, need: { '草': 4, '木': 1 }, sta: 2, note: '一次性，吹散一片霧障' },
+    { id: 'seagod', out: '燭龍焚溟', n: 1, need: { '鎢鋼': 4, '精煤': 6, '火把': 4, '海水瓶': 3 }, sta: 60, level: 31, note: '三格內諸獸同受灼燒：海中之物一百二十，陸上天上減半' },
     { id: 'grind', out: null, need: { '石': 1, '石子': 1, '木': 1 }, sta: 8, note: '磨礪：選刀、鎬、鋤、劍、斧', choose: ['石刀', '石鎬', '石鋤', '石劍', '石斧'] },
     { id: 'regrind', out: null, need: { '石子': 1 }, sta: 3, note: '重磨手中的工具，耐久復滿', regrind: true },
     { id: 'forge', out: null, need: { '鐵': 2, '木': 1, '煤': 1 }, sta: 10, note: '鍛鋼具：耐久與戰力是石具的 140%', choose: ['鋼刀', '鋼鎬', '鋼鋤', '鋼劍', '鋼斧'] },
@@ -237,7 +243,8 @@
   ];
 
   // ---------- 一紙之島 ----------
-  const ISLAND_R = 60;
+  // 島的半徑與海的盡頭：v0.11 起面積加倍，邊長 ×√2（60 → 85；海的盡頭 80 → 113）
+  const ISLAND_R = 85, SEA_EDGE = 113;
   const isletCache = {};
   function islet(seed) {
     if (isletCache[seed]) return isletCache[seed];
@@ -300,8 +307,9 @@
     const far = (x, y) => centers.every(c => U.cheb(x, y, c[0], c[1]) > 5);           // 每叢各佔一處，不疊在一起
     const rocky = (x, y) => far(x, y) && '山石磊'.indexOf(naturalTile(x, y, seed)) >= 0 && fields(x, y, seed).h > 0.5 && !onCauseway(x, y, seed);
     const inland = (x, y) => { const d = DB[naturalTile(x, y, seed)]; return d.kind !== 'water' && d.kind !== 'place' && fields(x, y, seed).h > 0.45 && !onCauseway(x, y, seed); };
-    ['煤', '鐵', '煤', '鐵', '煤', '鐵', '煤', '鐵', '煤', '鐵'].forEach((kind, i) => {
-      const a = (i / 10) * Math.PI * 2 + U.rand2(i, 31, seed) * 0.6, rf = 0.25 + U.rand2(i, 37, seed) * 0.5;
+    const kinds = []; for (let i = 0; i < 20; i++) kinds.push(i % 2 ? '鐵' : '煤');       // 面積加倍，礦叢也加倍：煤鐵各十叢
+    kinds.forEach((kind, i) => {
+      const a = (i / 20) * Math.PI * 2 + U.rand2(i, 31, seed) * 0.3, rf = 0.25 + U.rand2(i, 37, seed) * 0.5;
       const tx = Math.round(Math.cos(a) * rf * ISLAND_R), ty = Math.round(Math.sin(a) * rf * ISLAND_R);
       const found = spiralFind(tx, ty, 45, rocky) || spiralFind(tx, ty, 45, (x, y) => far(x, y) && inland(x, y));   // 沒山的島，礦露在地上
       if (!found) return;
@@ -317,7 +325,7 @@
   function baseTile(x, y, seed) {
     const il = islet(seed);
     const di = Math.hypot(x - il.cx, y - il.cy);
-    if (di <= 4.3) return di < 2.4 ? (U.rand2(x, y, seed + 5) < 0.12 ? '花' : '草') : '沙';
+    if (di <= 6.1) return di < 3.4 ? (U.rand2(x, y, seed + 5) < 0.12 ? '花' : '草') : '沙';
     const ore = orePlan(seed).get(x + ',' + y); if (ore) return ore;
     const nat = naturalTile(x, y, seed);
     const proj = x * il.ux + y * il.uy, perp = Math.abs(x * il.uy - y * il.ux);
@@ -387,7 +395,7 @@
       const [x, y] = q.shift();
       for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
         const nx = x + dx, ny = y + dy, k = nx + ',' + ny;
-        if (seen.has(k) || Math.abs(nx) > 80 || Math.abs(ny) > 80 || !walk(nx, ny)) continue;
+        if (seen.has(k) || Math.abs(nx) > SEA_EDGE || Math.abs(ny) > SEA_EDGE || !walk(nx, ny)) continue;
         seen.add(k); q.push([nx, ny]);
       }
     }
@@ -455,5 +463,5 @@
   }
 
   RECIPES.forEach(r => { r.cat = '材料'; for (const c in CAT_OF) if (CAT_OF[c].indexOf(r.id) >= 0) r.cat = c; });
-  root.G = { INK, DB, ITEMS, TOOL_NAMES, RECIPES, CRAFT_CATS, COOK, item, baseTile, fields, islet, stelePlan, placePlan, PLACES, biomeName, ISLAND_R };
+  root.G = { INK, DB, ITEMS, TOOL_NAMES, RECIPES, CRAFT_CATS, COOK, item, baseTile, fields, islet, stelePlan, placePlan, PLACES, biomeName, ISLAND_R, SEA_EDGE };
 })();

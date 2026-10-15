@@ -148,6 +148,13 @@
           this.drawGlyph('魄', d.ink, px, py + Math.sin(now * 3 + e.bob) * 3 - (1 - fade) * T * 0.6, T * (1.0 + (1 - fade) * 0.5), wob, (e.frozen ? 0.5 : 0.78) * fade);
           continue;
         }
+        if (e.type === '蜃') {       // 蜃：一個大字，身下一圈暗水旋著
+          ctx.save(); ctx.strokeStyle = 'rgba(34,63,90,0.35)'; ctx.lineWidth = 2;
+          for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(px, py, T * (0.7 + i * 0.25), now * (1 + i * 0.3) + i, now * (1 + i * 0.3) + i + 4); ctx.stroke(); }
+          ctx.restore();
+          this.drawGlyph('蜃', d.ink, px, py + Math.sin(now * 1.2 + e.bob) * 3, T * 1.45, Math.sin(now * 0.8 + e.bob) * 0.06, 1);
+          continue;
+        }
         const size = e.type === '虎' ? 0.95 : e.type === '龍' ? 1.1 : e.type === '鹿' ? 0.8 : e.type === '魚' ? 0.6 : 0.55;
         const bobY = e.type === '鳥' ? Math.sin(now * 5 + e.bob) * 3 : e.type === '龍' ? Math.sin(now * 3 + e.bob) * 4 : e.type === '魚' ? Math.sin(now * 2 + e.bob) * 1.5 : 0;
         if (e.type === '龍') lights.push({ x: e.x, y: e.y, r: 3 });
@@ -171,8 +178,16 @@
         ctx.fillStyle = 'rgba(30,20,10,0.16)'; ctx.beginPath(); ctx.ellipse(px, py + T * 0.44, T * 0.32, T * 0.1, 0, 0, 7); ctx.fill();
         ctx.restore();
         if (g.totemOn && g.totemOn()) { ctx.save(); ctx.strokeStyle = 'rgba(180,57,42,.3)'; ctx.lineWidth = 2; ctx.setLineDash([8, 10]); ctx.lineDashOffset = -now * 20; ctx.strokeRect(px - T * 7.5, py - T * 7.5, T * 15, T * 15); ctx.restore(); }   // 七格內（方框，與判定一致）
-        if (p.sailing) this.drawGlyph('舟', G.INK.brown, px, py + T * 0.18, T * 1.5, Math.sin(now * 1.5) * 0.04, 0.95);
-        this.drawGlyph('人', G.INK.black, px, py - (p.sailing ? T * 0.12 : 0), T * 1.18, rot, 1);
+        if (p.sailing) {
+          this.drawGlyph('舟', G.INK.brown, px, py + T * 0.18, T * 1.5, Math.sin(now * 1.5) * 0.04, 0.95);
+          if (g.shipWarded && g.shipWarded()) this.drawGlyph('骨', G.INK.red, px + p.fx * T * 0.55, py + T * 0.05 + p.fy * T * 0.35, T * 0.45, 0, 0.9);   // 船頭的獸首骨
+        }
+        if (p.swimming) {            // 落水：一圈圈水紋，人只露半身
+          ctx.save(); ctx.strokeStyle = 'rgba(47,88,120,0.5)'; ctx.lineWidth = 1.5;
+          for (let i = 0; i < 2; i++) { const r = T * (0.35 + ((now * 0.8 + i * 0.5) % 1) * 0.45); ctx.globalAlpha = 1 - ((now * 0.8 + i * 0.5) % 1); ctx.beginPath(); ctx.ellipse(px, py + T * 0.25, r, r * 0.4, 0, 0, 7); ctx.stroke(); }
+          ctx.restore();
+        }
+        this.drawGlyph('人', G.INK.black, px, py - (p.sailing ? T * 0.12 : 0) + (p.swimming ? T * 0.12 + Math.sin(now * 3) * 2 : 0), T * 1.18, rot, p.swimming ? 0.8 : 1);
         ctx.save(); ctx.fillStyle = G.INK.red; ctx.beginPath(); ctx.arc(px + T * 0.34, py + T * 0.36, T * 0.07, 0, 7); ctx.fill(); ctx.restore();
       }
       // —— 面前的格子
@@ -306,6 +321,7 @@
         if (i < 0 || j < 0 || i >= N || j >= N) continue;
         if (e.type === '虎') { m.fillStyle = '#b4392a'; m.fillRect(i * px - 1, j * px - 1, px + 2, px + 2); }
         else if (e.type === '魄') { m.fillStyle = '#3b3550'; m.fillRect(i * px - 1, j * px - 1, px + 2, px + 2); }
+        else if (e.type === '蜃') { m.fillStyle = '#223f5a'; m.fillRect(i * px - 2, j * px - 2, px + 4, px + 4); }
         else if (e.type === '豹' || e.type === '狼' || e.type === '蛇') { m.fillStyle = '#8a2a1a'; m.fillRect(i * px, j * px, px + 1, px + 1); }
       }
       m.fillStyle = '#1c1a17'; m.beginPath(); m.arc(half * px + px / 2, half * px + px / 2, 3, 0, 7); m.fill();
@@ -319,7 +335,7 @@
 
     // 全島地圖：走過的地方才有墨，地標蓋朱印
     drawBigMap(g, cv) {
-      const w = g.world, p = g.player, R = G.ISLAND_R + 16, N = R * 2, S = cv.width, px = S / N;
+      const w = g.world, p = g.player, R = G.SEA_EDGE, N = R * 2, S = cv.width, px = S / N;
       const m = cv.getContext('2d');
       m.fillStyle = '#efe5cf'; m.fillRect(0, 0, S, S);
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {

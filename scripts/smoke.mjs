@@ -43,9 +43,10 @@ const result = await page.evaluate(async () => {
   const gather = async (ch) => { face(0, 1); w.set(T().x, T().y, ch); g.action = null; g.pressGather(); await until(() => !g.action, 12000); };
 
   try {
+  g.ents.seaP = 0;   // 蜃也是：專門的海上測試自己開
   w.fogP = 0;   // 霧障是真隨機的，測試途中跳出彈窗會把遊戲停住；專門的霧障測試自己開
   // ============ A. 島與採集 ============
-  ok('island edge is deep water', w.get(0, 75) === '淼' && w.get(-80, 0) === '淼');
+  ok('the island is twice the old area: radius 85, sea edge 113, deep water beyond', G.ISLAND_R === 85 && G.SEA_EDGE === 113 && w.get(0, G.ISLAND_R + 20) === '淼' && w.get(-(G.ISLAND_R + 25), 0) === '淼');
   ok('eight landmarks placed', w.places.length === 8, w.places.map(x => x.name).join(''));
   ok('five steles', w.steles.size === 5);
   const sp0 = [p.x, p.y]; await press('KeyD', 600); await sleep(300);
@@ -535,18 +536,20 @@ const result = await page.evaluate(async () => {
   ok('boarded the ship', p.sailing && w.get(p.x, p.y) === '水');
   const deep = w.get(p.x + 1, p.y); w.set(p.x + 1, p.y, '淼');
   ok('sailing passes deep water', g.pass(p.x + 1, p.y)); w.set(p.x + 1, p.y, deep);
-  p.x = p.rx = 0; p.y = p.ry = G.ISLAND_R + 21; await sleep(200);
+  p.x = p.rx = 0; p.y = p.ry = G.SEA_EDGE + 1; await sleep(200);
   ok('reaching the sea edge triggers the voyage ending', p.crossed && !hidden('voyage'));
   document.getElementById('voyage-back').click(); await sleep(50);
   ok('can turn back', g.paused === false && hidden('voyage'));
-  p.x = p.rx = 0; p.y = p.ry = G.ISLAND_R + 10; p.sailing = true; p.crossed = false; g.addItem('木', 1); p.hp = 0; await until(() => p.dead, 3000);
-  const landBag = [...w.bags.keys()].some(k => { const [x, y] = k.split(',').map(Number); const b = w.base(x, y); return w.get(x, y) === '包' && U.dist(x, y, 0, G.ISLAND_R + 10) < 30 && G.DB[b === '灘' ? '沙' : b].walk > 0 && G.DB[b].kind !== 'water'; });
-  const shipLeft = [...w.diff.entries()].some(([k, v]) => v === '舟' && (() => { const [x, y] = k.split(',').map(Number); return U.dist(x, y, 0, G.ISLAND_R + 10) < 30 && w.base(x, y) === '水'; })());
+  let coastY = G.SEA_EDGE; while (coastY > 0 && G.DB[w.base(0, coastY)].kind === 'water') coastY--;   // 沿 +y 找到海岸，在岸外八格死
+  const seaY = coastY + 8;
+  p.x = p.rx = 0; p.y = p.ry = seaY; p.sailing = true; p.ship = { hp: 200, ward: 0, skull: '' }; p.crossed = false; g.addItem('木', 1); p.hp = 0; await until(() => p.dead, 3000);
+  const landBag = [...w.bags.keys()].some(k => { const [x, y] = k.split(',').map(Number); const b = w.base(x, y); return w.get(x, y) === '包' && U.dist(x, y, 0, seaY) < 30 && G.DB[b === '灘' ? '沙' : b].walk > 0 && G.DB[b].kind !== 'water'; });
+  const shipLeft = [...w.diff.entries()].some(([k, v]) => v === '舟' && (() => { const [x, y] = k.split(',').map(Number); return U.dist(x, y, 0, seaY) < 30 && w.base(x, y) === '水'; })());
   ok('dying at sea drops the 荷包 on the nearest land and leaves the ship on shallow water', p.dead && landBag && shipLeft, [landBag, shipLeft]);
   await press('Enter', 20); await until(() => !p.dead, 2000); await sleep(80);
   ok('respawn after a sea death is back on land', !p.dead && !p.sailing && w.info(p.x, p.y).walk > 0, [p.dead, p.sailing, p.x, p.y, w.get(p.x, p.y), JSON.stringify(p.home), JSON.stringify(g.spawn)]);
   // 漲潮困在灘上可以涉水走到別的灘
-  let beach = null; for (let r = 60; r <= 75 && !beach; r++) for (let a = 0; a < 360 && !beach; a += 2) { const x = Math.round(Math.cos(a * Math.PI / 180) * r), y = Math.round(Math.sin(a * Math.PI / 180) * r); if (w.raw(x, y) === '灘' && w.raw(x + 1, y) === '灘') beach = [x, y]; }
+  let beach = null; for (let r = G.ISLAND_R; r <= Math.round(G.ISLAND_R * 1.25) && !beach; r++) for (let a = 0; a < 360 && !beach; a += 2) { const x = Math.round(Math.cos(a * Math.PI / 180) * r), y = Math.round(Math.sin(a * Math.PI / 180) * r); if (w.raw(x, y) === '灘' && w.raw(x + 1, y) === '灘') beach = [x, y]; }
   if (beach) { p.x = p.rx = beach[0]; p.y = p.ry = beach[1]; setDay(0.6); ok('caught by the tide on the causeway you can wade to the next shoal', w.get(beach[0], beach[1]) === '水' && g.pass(beach[0] + 1, beach[1]), beach); p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; }
   else ok('caught by the tide on the causeway you can wade to the next shoal (no causeway found to test)', true);
   if (beach) {   // 漲潮時灘看起來是水，但船與魚梁不能停在灘上，否則退潮會堵住去燈塔的路；橋可以
@@ -567,6 +570,77 @@ const result = await page.evaluate(async () => {
   ok('cut grass is scheduled to regrow in 30 s', w.get(T().x, T().y) === '白' && w.timers.has(tk) && Math.round(w.timers.get(tk).at - w.time) === 30, w.timers.get(tk));
   w.time += 31; w.step(p.x, p.y);
   ok('and it does regrow', w.get(T().x, T().y) === '草');
+
+  // ============ 海：獸首骨、船的命、蜃、落水、燭龍焚溟 ============
+  {
+    p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; p.sailing = false; p.swimming = false; p.ship = null;
+    trim(['木', '石', '石子', '草', '土', '磚']); for (const t of [...p.tools]) if (t.n !== '石劍') p.tools.splice(p.tools.indexOf(t), 1); p.tool = -1;
+    g.skullP = 1; let n0 = g.count('虎首骨'); g.kill(g.ents.add('虎', p.x + 4, p.y, {}));
+    const tk = g.count('虎首骨') - n0;
+    ok('a slain tiger can leave one or two tiger skulls', tk >= 1 && tk <= 2, tk);
+    g.kill(g.ents.add('狼', p.x + 4, p.y, {})); ok('so can a wolf (wolf skulls)', g.count('狼首骨') >= 1);
+    g.skullP = 0; g.kill(g.ents.add('豹', p.x + 4, p.y, {})); ok('and no skull when the odds say no', g.count('豹首骨') === 0);
+    g.skullP = 0.35; g.removeItem('肉', 99);
+    const X = p.x, Y = p.y;
+    for (let dx = -3; dx <= 5; dx++) for (let dy = -2; dy <= 2; dy++) w.set(X + dx, Y + dy, dx >= 1 ? '水' : '草');
+    g.addItem('大船', 1); hold('大船'); face(1, 0); g.pressPlace();
+    const rec = w.shipAt(X + 1, Y);
+    ok('a new ship has 200 hp', w.get(X + 1, Y) === '舟' && rec && rec.hp === 200, JSON.stringify(rec));
+    hold('虎首骨'); g.pressPlace();
+    ok('a tiger skull on the bow wards the ship for three days', rec.skull === '虎首骨' && Math.round((rec.ward - w.time) / DAY) === 3);
+    hold('狼首骨'); g.pressPlace();
+    ok('skulls stack: a wolf skull adds a day (cap seven)', Math.round((rec.ward - w.time) / DAY) === 4 && rec.skull === '狼首骨');
+    rec.hp = 150; g.addItem('木板', 1); hold('木板'); g.pressPlace();
+    ok('a plank mends the ship by 25', rec.hp === 175 && g.count('木板') === 0);
+    g.pressGather(); await sleep(250);
+    ok('boarding carries the ship hp and the bow ward along', p.sailing && p.ship && p.ship.hp === 175 && g.shipWarded() && !w.ships.has((X + 1) + ',' + Y));
+    let m = g.ents.add('蜃', X + 2, Y, { moveT: 0, atk: 0, fogT: 999 }); await sleep(1500);
+    ok('the 蜃 will not ram a ship with a skull on the bow', p.ship.hp === 175 && g.ents.list.includes(m), p.ship.hp);
+    p.ship.ward = 0; m.x = m.rx = X + 2; m.y = m.ry = Y; m.moveT = 0; m.atk = 0;
+    await until(() => p.ship && p.ship.hp < 175, 5000);
+    ok('without a ward the 蜃 rams the ship for 25', p.ship && p.ship.hp === 150, p.ship && p.ship.hp);
+    p.ship.hp = 10; m.x = m.rx = X + 2; m.y = m.ry = Y; m.moveT = 0; m.atk = 0;
+    await until(() => p.swimming, 6000); g.ents.remove(m);
+    ok('when the ship breaks you fall into the sea with sixty breaths to reach land', p.swimming && !p.sailing && !p.ship && p.swimT > 50 && p.swimT <= 60, [p.swimming, p.swimT]);
+    p.swimming = false; const dm = g.dmgMult(), dr = g.ironDrain(); p.swimming = true;
+    ok('swimming: weapons ×0.75, food, ease and stamina drain ×2', Math.abs(g.dmgMult() - dm * 0.75) < 1e-9 && Math.abs(g.ironDrain() - dr * 2) < 1e-9);
+    const st0 = p.sta; g.updateStats(1);
+    ok('swimming: stamina falls instead of recovering', p.sta < st0, [st0, p.sta]);
+    p.moveT = 0; g.tryStep(-1, 0);
+    ok('reaching land ends the swim', !p.swimming && w.info(p.x, p.y).kind !== 'water');
+    const keep = JSON.parse(JSON.stringify({ bag: p.bag, tools: p.tools, cour: p.cour }));
+    p.x = p.rx = X + 2; p.y = p.ry = Y; p.swimming = true; p.swimT = 0.3; await until(() => p.dead, 4000);
+    const dtx = document.getElementById('dead-text').textContent;
+    ok('not reaching land in time drowns you', p.dead && dtx.indexOf('溺死') >= 0, dtx.slice(0, 40));
+    await press('Enter', 20); await until(() => !p.dead, 3000);
+    for (const [k] of [...w.bags]) { const [bx, by] = k.split(',').map(Number); w.set(bx, by, '白'); }
+    p.bag = keep.bag; p.tools = keep.tools; p.tool = -1; p.cour = keep.cour; g.barSig = '';
+    ok('after drowning you wake on land, no longer swimming', !p.swimming && !p.sailing && w.info(p.x, p.y).kind !== 'water');
+    g.ents.seaP = 1; await sleep(1800); const onLand = g.ents.count('蜃');
+    p.x = p.rx = 0; p.y = p.ry = G.SEA_EDGE - 8; p.sailing = true; p.ship = { hp: 200, ward: 0, skull: '' };
+    await until(() => g.ents.count('蜃') > 0, 5000); const rose = g.ents.count('蜃');
+    g.ents.seaP = 0; g.ents.list = g.ents.list.filter(e => e.type !== '蜃');
+    ok('a 蜃 rises only when you are at sea', onLand === 0 && rose === 1, [onLand, rose, g.paused, p.sailing, p.dead, p.x, p.y, w.get(p.x, p.y), g.ents.spawnAcc, g.ents.seaP, [...document.querySelectorAll('.overlay:not(.hidden)')].map(o => o.id).join(',')]);
+    const sf = w.spawnSeaFog(0, G.SEA_EDGE - 4, 0, G.SEA_EDGE - 12);
+    ok('the 蜃 breathes fog onto open water only', sf && sf.sea && [...sf.cells].every(k => { const [x, y] = k.split(',').map(Number); return w.fogSea(x, y); }), sf && sf.cells.size);
+    if (sf) w.removeFog(sf.id);
+    p.sailing = false; p.ship = null; p.x = p.rx = X; p.y = p.ry = Y; await sleep(100);
+    p.cour = g.levelAt(31); for (const [n, c] of [['鎢鋼', 4], ['精煤', 6], ['火把', 4], ['海水瓶', 3]]) g.addItem(n, c); p.sta = 100; g.craft('seagod');
+    ok('燭龍焚溟 is made at level 31 with tungsten steel, refined coal, torches and sea water; 120 damage, 199 durability', !!tool('燭龍焚溟') && tool('燭龍焚溟').dur === 199 && G.ITEMS['燭龍焚溟'].dmg === 120 && g.count('海水瓶') === 0);
+    hold('燭龍焚溟'); face(1, 0);
+    const sm = g.ents.add('蜃', X + 2, Y, { moveT: 99, atk: 9, fogT: 999 }), tg = g.ents.add('虎', X - 2, Y, { moveT: 99, calm: 99 });
+    p.atkT = 0; p.sta = 100; g.pressGather();
+    const full = Math.round(120 * g.dmgMult()), half = Math.round(120 * g.dmgMult() * 0.5);
+    ok('燭龍焚溟 burns the 蜃 for full damage and a tiger for half', sm.hp === 900 - full && tg.hp === 300 - half, [sm.hp, tg.hp, full, half]);
+    g.addItem('九閽鳴雷', 1); hold('九閽鳴雷'); p.atkT = 0; p.sta = 100; const s1 = sm.hp, t1 = tg.hp; g.pressGather();
+    ok('九閽鳴雷 does only half to the 蜃 and full to the tiger', s1 - sm.hp === half && t1 - tg.hp === full, [s1 - sm.hp, t1 - tg.hp]);
+    g.ents.remove(sm); g.ents.remove(tg);
+    for (const n of ['燭龍焚溟', '九閽鳴雷']) { const i = p.tools.findIndex(s => s.n === n); if (i >= 0) p.tools.splice(i, 1); g.removeItem(n, 9); }
+    p.tool = -1; p.cour = 0; p.decayAt = 0;
+    g.save(); const sv2 = JSON.parse(localStorage.getItem('xieyi.save.v5'));
+    ok('ship records and swimming are saved', sv2.world.ships && 'ship' in sv2.player && sv2.player.swimming === false);
+    p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y;
+  }
 
   // ============ 霧障：每日兩擲；走進去問要不要用扇子；不用就五樣各掉一成，不致命 ============
   {
