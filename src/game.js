@@ -2,7 +2,8 @@
 (function () {
   'use strict';
   const U = window.U, G = window.G, DB = G.DB, ITEMS = G.ITEMS;
-  const SAVE_KEY = 'xieyi.save.v5', CARRY_KEY = 'xieyi.carry';
+  // 三格存檔：第一格沿用舊鍵 xieyi.save.v5（舊存檔照讀），第二、三格是 xieyi.save.v5.2、.3；xieyi.slot 記上次玩的是哪一格；xieyi.carry 是渡海帶走的膽氣（值@格）
+  const SAVE_KEY = 'xieyi.save.v5', CARRY_KEY = 'xieyi.carry', SLOT_KEY = 'xieyi.slot', SAVE_SLOTS = 3, SLOT_NAMES = ['', '一', '二', '三'];
   const DAY = 240;
   const SHICHEN = '子丑寅卯辰巳午未申酉戌亥';
   const DIRS = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] };
@@ -32,8 +33,9 @@
   const $ = (id) => document.getElementById(id);
 
   class Game {
-    constructor(seed, save, diff) {
+    constructor(seed, save, diff, slot) {
       this.seed = seed | 0;
+      this.slot = Math.min(SAVE_SLOTS, Math.max(1, (slot | 0) || 1));   // 存在哪一格
       this.diff = DIFF[(save && save.diff) || diff] || DIFF.normal;
       this.world = new World(this.seed);
       this.ents = new Entities(this.world);
@@ -61,7 +63,10 @@
       if (save) this.load(save);
       else {
         this.player.x = this.player.rx = this.spawn.x; this.player.y = this.player.ry = this.spawn.y;
-        try { const c = parseInt(localStorage.getItem(CARRY_KEY) || '0', 10); if (c > 0) { this.player.cour = c; localStorage.removeItem(CARRY_KEY); } } catch (e) { /* ignore */ }
+        try {   // 渡海帶來的膽氣：值@格；沒寫格（舊格式）就誰先開新島誰拿
+          const raw = localStorage.getItem(CARRY_KEY) || '', at = raw.indexOf('@'), forSlot = at >= 0 ? parseInt(raw.slice(at + 1), 10) : 0, c = parseInt(raw, 10);
+          if (c > 0 && (!forSlot || forSlot === this.slot)) { this.player.cour = c; localStorage.removeItem(CARRY_KEY); }
+        } catch (e) { /* ignore */ }
       }
       this.bindInput();
       this.buildBag();
@@ -98,7 +103,7 @@
     hasHammer() { return this.player.tools.some(s => s.n === HAMMER) || this.player.bag.some(s => s.n === HAMMER); }
     decayFloor() { return this.hasHammer() ? HAMMER_FLOOR : DECAY_LEVEL; }
     decayDays() { return this.hasHammer() ? HAMMER_DECAY_DAYS : DECAY_DAYS; }
-    level() { const c = this.player.cour; let l = 0; while (l + 1 < CUM.length && c >= CUM[l + 1]) l++; return l; }
+    level() { return Game.levelOf(this.player.cour); }
     levelAt(l) { return CUM[Math.max(0, Math.min(CUM.length - 1, l))]; }     // 到第 l 重要累積多少膽氣
     levelCost(n) { return levelCost(n); }
     levelFrac() { const l = this.level(); return U.clamp((this.player.cour - CUM[l]) / levelCost(l), 0, 1); }
@@ -1260,7 +1265,7 @@
         h += '<li>' + (st === 0 ? '<span class="dim">＿＿</span>' : '<b>' + pl.name + '</b>' + (st === 2 ? '　' + esc(pl.text) : '　<span class="dim">（見過，未讀）</span>')) + '</li>';
       }
       h += '</ul><h3>生靈</h3><p>' + (p.creatures.length ? p.creatures.join('　') : '<span class="dim">還沒見過</span>') + '</p>';
-      h += '<h3>日子</h3><p>第 ' + this.day() + ' 日 · 膽氣第 ' + this.level() + ' 重（' + Math.floor(p.cour) + '，下一重 ' + this.levelAt(this.level() + 1) + '） · 睡過 ' + this.stats.nights + ' 夜 · 走過 ' + w.seenCount() + ' 格 · 取了 ' + this.stats.gathered + ' 次 · 造了 ' + this.stats.crafted + ' 件 · 斃 ' + this.stats.kills + ' · 被咬 ' + this.stats.bites + ' 口 · 死過 ' + p.deaths + ' 次</p>';
+      h += '<h3>日子</h3><p>第 ' + this.day() + ' 日 · 膽氣第 ' + this.level() + ' 重（' + Math.floor(p.cour) + '，下一重 ' + this.levelAt(this.level() + 1) + '） · 睡過 ' + this.stats.nights + ' 夜 · 走過 ' + w.seenCount() + ' 格 · 取了 ' + this.stats.gathered + ' 次 · 造了 ' + this.stats.crafted + ' 件 · 斃 ' + this.stats.kills + ' · 被咬 ' + this.stats.bites + ' 口 · 死過 ' + p.deaths + ' 次 · 存檔第' + SLOT_NAMES[this.slot] + '格</p>';
       $('journal-body').innerHTML = h;
     }
 
@@ -1268,7 +1273,7 @@
     bindInput() {
       window.addEventListener('keydown', (ev) => {
         if (ev.repeat && !DIRS[ev.code]) return;
-        if (!$('start').classList.contains('hidden')) { if (ev.code === 'Enter') { ev.preventDefault(); $('btn-continue').classList.contains('hidden') ? $('btn-new').click() : $('btn-continue').click(); } return; }
+        if (!$('start').classList.contains('hidden')) return;   // 起始頁的按鍵在 boot() 裡管
         if (this.player.dead) { if (ev.code === 'Enter' || ev.code === 'Space') { ev.preventDefault(); this.respawn(); } return; }
         if (this.seaAsk) {
           if (ev.code === 'KeyY' || ev.code === 'Enter') this.seaGo(); else if (ev.code === 'KeyN' || ev.code === 'Escape') this.closeSea();
@@ -1348,7 +1353,7 @@
       $('fogask-use').addEventListener('click', () => this.fogUseFan());
       $('fogask-no').addEventListener('click', () => this.fogRefuse());
       $('voyage-back').addEventListener('click', () => { $('voyage').classList.add('hidden'); this.paused = false; this.message('回頭。再開出去就走了。'); });
-      $('voyage-new').addEventListener('click', () => { try { localStorage.setItem(CARRY_KEY, String(this.player.cour)); } catch (e) { /* ignore */ } Game.clearSave(); location.reload(); });
+      $('voyage-new').addEventListener('click', () => { try { localStorage.setItem(CARRY_KEY, this.player.cour + '@' + this.slot); } catch (e) { /* ignore */ } Game.clearSave(this.slot); location.reload(); });   // 這一格清掉，重載後還選著它，落筆就寫回這格
     }
     cycle(d) { const p = this.player; if (p.bag.length) p.sel = (p.sel + d + p.bag.length) % p.bag.length; this.buildBag(); }
     togglePause() {
@@ -1523,7 +1528,7 @@
     save() {
       const p = this.player;
       try {
-        localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 5, seed: this.seed, diff: this.diff.key, savedAt: Date.now(), world: this.world.serialize(), ents: this.ents.serialize(),
+        localStorage.setItem(Game.slotKey(this.slot), JSON.stringify({ v: 5, seed: this.seed, diff: this.diff.key, savedAt: Date.now(), brief: this.brief(), world: this.world.serialize(), ents: this.ents.serialize(),
           player: { x: p.x, y: p.y, fx: p.fx, fy: p.fy, hp: p.hp, food: p.food, warm: p.warm, sta: p.sta, staMax: p.staMax, san: p.san, cour: p.cour, bag: p.bag, sel: p.sel, home: p.home, readSteles: p.readSteles,
             places: p.places, creatures: p.creatures, raftTaken: p.raftTaken, dragon: p.dragon, finished: p.finished, deaths: p.deaths, burn: p.burn, lastDay: p.lastDay, poisonT: p.poisonT, poisonPer: p.poisonPer, sailing: p.sailing, tools: p.tools, tool: p.tool, decayAt: p.decayAt, worn: p.worn, hitWin: p.hitWin, totemOff: p.totemOff, pouches: p.pouches, noGhostUntil: p.noGhostUntil, hpMax: p.hpMax, pillsMade: p.pillsMade, pillsEaten: p.pillsEaten, inFog: p.inFog, ship: p.ship, swimming: p.swimming, swimT: p.swimT }, stats: this.stats }));
       } catch (err) { /* 隱私模式等情況下存不了，就算了 */ }
@@ -1554,15 +1559,32 @@
       p.rx = p.x; p.ry = p.y; p.moveT = 0;
       Object.assign(this.stats, s.stats || {});
     }
-    static readSave() { try { const s = JSON.parse(localStorage.getItem(SAVE_KEY)); return s && s.v === 5 ? s : null; } catch (e) { return null; } }
-    static clearSave() { try { localStorage.removeItem(SAVE_KEY); } catch (e) { /* ignore */ } }
+    brief() { const p = this.player; return { day: this.day(), night: this.nightNo(), isNight: this.isNight(), level: this.level(), deaths: p.deaths, nights: this.stats.nights }; }   // 起始頁的存檔格要顯示的摘要
+    static slotKey(n) { return n > 1 ? SAVE_KEY + '.' + n : SAVE_KEY; }
+    static readSave(n) { try { const s = JSON.parse(localStorage.getItem(Game.slotKey(n || 1))); return s && s.v === 5 ? s : null; } catch (e) { return null; } }
+    static clearSave(n) { try { localStorage.removeItem(Game.slotKey(n || 1)); } catch (e) { /* ignore */ } }
+    static levelOf(cour) { let l = 0; while (l + 1 < CUM.length && cour >= CUM[l + 1]) l++; return l; }
+    // 一格存檔的摘要：島號、難度、第幾日第幾夜、膽氣第幾重、死過幾次、睡過幾夜、存檔時刻。舊存檔沒有 brief，就從世界時間與膽氣算
+    static summary(s) {
+      const t = (s.world && s.world.time) || 0, b = s.brief || {}, p = s.player || {}, frac = (t % DAY) / DAY;
+      const day = b.day || Math.floor(t / DAY) + 1, night = b.night !== undefined ? b.night : (frac > 0.5 ? day : day - 1), isNight = b.isNight !== undefined ? b.isNight : (frac > 0.5 || frac < 0.06);
+      const level = b.level !== undefined ? b.level : Game.levelOf(p.cour || 0), when = s.savedAt ? new Date(s.savedAt) : null, pad = (n) => (n < 10 ? '0' : '') + n;
+      return { seed: s.seed, diff: (DIFF[s.diff] || DIFF.normal).name, day, night, isNight, level, deaths: b.deaths !== undefined ? b.deaths : (p.deaths || 0), nights: b.nights !== undefined ? b.nights : ((s.stats || {}).nights || 0), savedAt: s.savedAt || 0,
+        dayText: '第 ' + day + ' 日 · ' + (isNight && night > 0 ? '第 ' + night + ' 夜' : night > 0 ? '過了 ' + night + ' 夜' : '未入夜'),
+        whenText: when ? pad(when.getMonth() + 1) + '/' + pad(when.getDate()) + ' ' + pad(when.getHours()) + ':' + pad(when.getMinutes()) : '' };
+    }
   }
 
   // ---------- 啟動畫面 ----------
   function boot() {
     const q = new URLSearchParams(location.search);
-    const save = Game.readSave();
-    let game = null, diff = DIFF[q.get('diff')] ? q.get('diff') : 'normal';
+    const saves = [null]; for (let n = 1; n <= SAVE_SLOTS; n++) saves[n] = Game.readSave(n);
+    let game = null, diff = DIFF[q.get('diff')] ? q.get('diff') : 'normal', slot = 1, armed = null;
+    {   // 預設選哪一格：網址 ?slot=、上次玩的那格、最近存的那格、第一格
+      const qs = parseInt(q.get('slot'), 10); let last = 0, newest = 0; try { last = parseInt(localStorage.getItem(SLOT_KEY), 10); } catch (e) { /* ignore */ }
+      for (let n = 1; n <= SAVE_SLOTS; n++) if (saves[n] && (!newest || (saves[n].savedAt || 0) > (saves[newest].savedAt || 0))) newest = n;
+      slot = qs >= 1 && qs <= SAVE_SLOTS ? qs : last >= 1 && last <= SAVE_SLOTS ? last : newest || 1;
+    }
     const DESC = { easy: '第二十一夜起有魄；受傷九成、攻擊加一成。', normal: '第十三夜起有魄。', hard: '第九夜起有魄；受傷加一成、攻擊九成，夜裡狼虎豹蛇一倍半。' };
     const pickDiff = (k) => { diff = k; document.querySelectorAll('.diffrow button').forEach(b => b.classList.toggle('on', b.dataset.diff === k)); $('diff-desc').textContent = DESC[k]; };
     document.querySelectorAll('.diffrow button').forEach(b => b.addEventListener('click', () => pickDiff(b.dataset.diff)));
@@ -1570,7 +1592,8 @@
     const start = (seed, useSave) => {
       if (game) return;
       SFX.init();
-      game = new Game(seed, useSave ? save : null, diff);
+      game = new Game(seed, useSave ? saves[slot] : null, diff, slot);
+      try { localStorage.setItem(SLOT_KEY, String(slot)); } catch (e) { /* ignore */ }
       window.XIEYI = { game, Game, DAY, DIFF };
       $('start').classList.add('hidden');
       game.paused = false;
@@ -1579,14 +1602,35 @@
       window.addEventListener('beforeunload', () => game.save());
       document.addEventListener('visibilitychange', () => { if (document.hidden) game.save(); });
     };
+    // 三格存檔：每格寫島號、難度、第幾日第幾夜、膽氣第幾重、死過幾次、睡過幾夜、存檔時刻。點格子選它；「繼續」讀那格；「落筆」寫進選著的格，格裡有存檔要再按一次才覆蓋；「刪」也要按兩次
+    const disarm = () => { if (!armed) return; armed.el.textContent = armed.text; armed.el.classList.remove('arm'); clearTimeout(armed.t); armed = null; };
+    const arm = (el, text) => { disarm(); armed = { el, text: el.textContent, t: setTimeout(disarm, 3000) }; el.textContent = text; el.classList.add('arm'); };
+    const pick = (n) => { slot = n; disarm(); document.querySelectorAll('.save-card').forEach(c => c.classList.toggle('on', +c.dataset.slot === n)); $('new-hint').textContent = saves[n] ? '第' + SLOT_NAMES[n] + '格有存檔，落筆會覆蓋它。' : '落筆寫在第' + SLOT_NAMES[n] + '格。'; };
+    const renderSaves = () => {
+      const box = $('saves'); box.innerHTML = '';
+      for (let n = 1; n <= SAVE_SLOTS; n++) {
+        const s = saves[n], card = document.createElement('div');
+        card.className = 'save-card' + (s ? '' : ' empty'); card.dataset.slot = n;
+        if (s) {
+          const m = Game.summary(s);
+          card.innerHTML = '<div class="save-no">' + SLOT_NAMES[n] + '</div><div class="save-body"><b>島 #' + m.seed + '</b> · ' + m.diff + '<br>' + m.dayText + ' · 膽氣第 ' + m.level + ' 重<br><span class="dim small">' + (m.deaths ? '死過 ' + m.deaths + ' 次 · ' : '') + '睡過 ' + m.nights + ' 夜' + (m.whenText ? ' · 存於 ' + m.whenText : '') + '</span></div><div class="save-btns"><button class="save-go">繼續</button><button class="save-del ghost">刪</button></div>';
+          card.querySelector('.save-go').addEventListener('click', (ev) => { ev.stopPropagation(); pick(n); start(s.seed, true); });
+          card.querySelector('.save-del').addEventListener('click', (ev) => { ev.stopPropagation(); const b = ev.currentTarget; if (armed && armed.el === b) { disarm(); Game.clearSave(n); saves[n] = null; renderSaves(); pick(n); } else arm(b, '真的刪？'); });
+        } else card.innerHTML = '<div class="save-no">' + SLOT_NAMES[n] + '</div><div class="save-body"><b>空格</b><br>選這一格，落筆開新島。</div>';
+        card.addEventListener('click', () => pick(n));
+        box.appendChild(card);
+      }
+      pick(slot);
+    };
+    renderSaves();
     const seedInput = $('seed');
     seedInput.value = q.get('seed') || String(Math.floor(Math.random() * 1e6));
-    if (save) { $('btn-continue').classList.remove('hidden'); $('save-info').textContent = '上次的島 #' + save.seed + '，第 ' + (Math.floor((save.world.time || 0) / DAY) + 1) + ' 日 · ' + (DIFF[save.diff] || DIFF.normal).name; }
-    $('btn-continue').addEventListener('click', () => start(save.seed, true));
-    $('btn-new').addEventListener('click', () => { Game.clearSave(); let s = parseInt(seedInput.value, 10); if (isNaN(s)) s = Array.from(seedInput.value).reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7); start(s, false); });
+    const newGame = () => { Game.clearSave(slot); saves[slot] = null; let s = parseInt(seedInput.value, 10); if (isNaN(s)) s = Array.from(seedInput.value).reduce((a, c) => (a * 31 + c.charCodeAt(0)) | 0, 7); start(s, false); };
+    $('btn-new').addEventListener('click', () => { if (game) return; const b = $('btn-new'); if (saves[slot] && !(armed && armed.el === b)) { arm(b, '覆蓋第' + SLOT_NAMES[slot] + '格？'); return; } disarm(); newGame(); });
+    window.addEventListener('keydown', (ev) => { if (game || ev.code !== 'Enter') return; ev.preventDefault(); if (saves[slot]) start(saves[slot].seed, true); else $('btn-new').click(); });   // 回車：選著的格有存檔就繼續，空的就落筆
     $('btn-help').addEventListener('click', () => $('help').classList.toggle('hidden'));
     $('help-close').addEventListener('click', () => $('help').classList.add('hidden'));
-    if (q.get('autostart')) { Game.clearSave(); start(parseInt(q.get('seed') || '42', 10), false); }
+    if (q.get('autostart')) { Game.clearSave(slot); saves[slot] = null; start(parseInt(q.get('seed') || '42', 10), false); }
   }
   window.addEventListener('DOMContentLoaded', boot);
 })();

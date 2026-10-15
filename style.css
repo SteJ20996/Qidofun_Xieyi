@@ -96,6 +96,17 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 .slot .ch.word.long { font-size: 11px; letter-spacing: -1px; }
 .rowlabel.sub { width: auto; font-size: 13px; color: var(--ink-2); padding: 0 2px; align-self: center; }
 .diffrow button.on { outline: 2px solid var(--red); }
+/* 起始頁的三格存檔 */
+.saves { display: flex; gap: 10px; margin: 14px 0 6px; flex-wrap: wrap; }
+.save-card { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid rgba(28,26,23,.35); background: rgba(255,248,234,.6); cursor: pointer; transition: transform .1s; }
+.save-card:hover { transform: translateY(-2px); }
+.save-card.on { outline: 2px solid var(--red); border-color: var(--red); }
+.save-card .save-no { font: 24px/1 var(--font); color: var(--red-2); }
+.save-card .save-body { font-size: 14px; line-height: 1.6; min-height: 4.6em; }
+.save-card.empty .save-body { color: var(--dim); }
+.save-card .save-btns { display: flex; gap: 8px; margin-top: auto; }
+.panel .save-card .save-btns button { font-size: 16px; padding: 4px 14px; }
+.panel button.arm { background: var(--red); border-color: var(--red); color: var(--paper); }
 #diff-desc { margin-left: 6px; }
 .slot.bag .cost { font-size: 10px; }
 .slot .dur { position: absolute; left: 4px; bottom: 3px; height: 3px; background: var(--red); border-radius: 2px; }

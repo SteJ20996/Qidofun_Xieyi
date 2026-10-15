@@ -595,7 +595,7 @@ const result = await page.evaluate(async () => {
     ok('a tiger skull on the bow wards the ship for three days', rec.skulls.length === 1 && rec.skulls[0][0] === '虎首骨' && g.wardDaysOf(rec) === 3);
     hold('狼首骨'); g.pressPlace();
     ok('a second skull wards on its own clock: two skulls, the ship stays warded until the tiger skull weathers (3 days)', rec.skulls.length === 2 && g.wardDaysOf(rec) === 3 && Math.round((rec.skulls[1][1] - w.time) / DAY) === 1);
-    for (let i = 0; i < 4; i++) g.addItem('狼首骨', 1);
+    g.removeItem('狼首骨', 99); g.addItem('狼首骨', 4);   // 殺狼時三成掉兩個，囊裡先歸成剛好四個
     hold('狼首骨'); g.pressPlace(); g.pressPlace(); g.pressPlace(); const n5 = rec.skulls.length; g.pressPlace();
     ok('a 方舟 holds five skulls, a sixth is refused', n5 === 5 && rec.skulls.length === 5 && g.count('狼首骨') === 1, [n5, rec.skulls.length, g.msgText]);
     g.removeItem('狼首骨', 9);
@@ -774,6 +774,19 @@ const result = await page.evaluate(async () => {
     w.rainLampP = 1 / 1500; w.rainUntil = 0; }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
+  // —— 三格存檔：第一格沿用舊鍵；每格帶摘要
+  ok('three save slots: slot 1 keeps the old key, slots 2 and 3 get suffixes, autostart plays slot 1', XIEYI.Game.slotKey(1) === 'xieyi.save.v5' && XIEYI.Game.slotKey(2) === 'xieyi.save.v5.2' && XIEYI.Game.slotKey(3) === 'xieyi.save.v5.3' && g.slot === 1);
+  ok('the save carries a brief: day, night, level, deaths, slept nights', !!sv.brief && sv.brief.day === g.day() && sv.brief.night === g.nightNo() && sv.brief.level === g.level() && typeof sv.brief.deaths === 'number' && typeof sv.brief.nights === 'number', sv.brief);
+  { const m = XIEYI.Game.summary(sv);
+    ok('summary of a save names island, difficulty, day, night, level and time', m.seed === g.seed && m.diff === g.diff.name && m.day === g.day() && m.level === g.level() && /^第 \d+ 日 · /.test(m.dayText) && /\d\d\/\d\d \d\d:\d\d/.test(m.whenText), m);
+    const old = JSON.parse(JSON.stringify(sv)); delete old.brief; const mo = XIEYI.Game.summary(old);
+    ok('an old save without a brief still gets day, night and level from time and courage', mo.day === m.day && mo.night === m.night && mo.level === m.level && mo.deaths === p.deaths);
+    const t0 = w.time; w.time = 0; ok('day 1 before dusk reads 未入夜, dusk reads 第 1 夜, next morning reads 過了 1 夜', (() => { const at = (tt) => { w.time = tt; return XIEYI.Game.summary({ world: { time: tt }, player: {}, savedAt: 1 }).dayText; }; return at(0) === '第 1 日 · 未入夜' && at(DAY * 0.6) === '第 1 日 · 第 1 夜' && at(DAY * 1.2) === '第 2 日 · 過了 1 夜'; })()); w.time = t0;
+    g.slot = 2; g.save(); const s2 = XIEYI.Game.readSave(2); g.slot = 1;
+    ok('saving while in slot 2 writes slot 2 only and leaves slot 1 as it was', !!s2 && s2.seed === g.seed && XIEYI.Game.readSave(1).savedAt === sv.savedAt && XIEYI.Game.readSave(3) === null);
+    XIEYI.Game.clearSave(2); ok('clearing slot 2 empties only slot 2', XIEYI.Game.readSave(2) === null && !!XIEYI.Game.readSave(1));
+    g.toggleJournal(); const jslot = document.getElementById('journal-body').textContent.indexOf('存檔第一格') >= 0; g.toggleJournal();
+    ok('the journal says which slot this game is saved in', jslot); }
 
   } catch (e) { checks.push('CRASH ' + e.message + ' @ ' + String(e.stack || '').split('\n').slice(1, 3).join(' | ')); }
 
@@ -782,6 +795,50 @@ const result = await page.evaluate(async () => {
   r.checks = checks; r.failed = checks.filter(c => c.startsWith('FAIL')).length;
   return r;
 });
+// ============ 起始頁：三格存檔（要重開頁面，所以在 evaluate 外面跑） ============
+const checks2 = [];
+const ok2 = (name, cond, info) => checks2.push((cond ? 'PASS ' : 'FAIL ') + name + (info !== undefined ? ' ' + JSON.stringify(info) : ''));
+const started = () => page.waitForFunction(() => window.XIEYI && !window.XIEYI.game.paused, null, { timeout: 15000 });
+try {
+  const base = url.replace(/\?.*$/, '');
+  await page.evaluate(() => { const g = XIEYI.game; g.slot = 1; g.save(); const s = JSON.parse(localStorage.getItem('xieyi.save.v5')), s3 = JSON.parse(JSON.stringify(s)); s3.seed = 99; s3.savedAt = s.savedAt - 60000; s3.diff = 'hard'; s3.brief.level = 5; localStorage.setItem('xieyi.save.v5.3', JSON.stringify(s3)); localStorage.removeItem('xieyi.save.v5.2'); localStorage.removeItem('xieyi.slot'); });
+  await page.goto(base, { waitUntil: 'load' });
+  const cards = await page.$$eval('.save-card', (cs) => cs.map(c => ({ slot: c.dataset.slot, on: c.classList.contains('on'), empty: c.classList.contains('empty'), text: c.textContent })));
+  ok2('start page shows three save cards', cards.length === 3 && cards.map(c => c.slot).join('') === '123');
+  ok2('the newest save (slot 1) is selected by default', cards[0].on && !cards[1].on && !cards[2].on);
+  ok2('an occupied card tells island, difficulty, day, night, courage, slept nights and time', /島 #7/.test(cards[0].text) && /一般/.test(cards[0].text) && /第 \d+ 日/.test(cards[0].text) && /夜/.test(cards[0].text) && /膽氣第 \d+ 重/.test(cards[0].text) && /睡過 \d+ 夜/.test(cards[0].text) && /存於 \d\d\/\d\d/.test(cards[0].text), cards[0].text);
+  ok2('slot 3 shows its own island, difficulty and courage', /島 #99/.test(cards[2].text) && /困難/.test(cards[2].text) && /膽氣第 5 重/.test(cards[2].text), cards[2].text);
+  ok2('slot 2 is empty and says so', cards[1].empty && /空格/.test(cards[1].text) && !/繼續/.test(cards[1].text));
+  await page.click('.save-card[data-slot="3"] .save-no');
+  ok2('clicking a card selects it and the hint warns that 落筆 would overwrite', await page.$eval('.save-card.on', c => c.dataset.slot) === '3' && /覆蓋/.test(await page.$eval('#new-hint', e => e.textContent)));
+  await page.keyboard.press('Enter'); await started();
+  const r1 = await page.evaluate(() => ({ slot: XIEYI.game.slot, seed: XIEYI.game.seed, diff: XIEYI.game.diff.key, last: localStorage.getItem('xieyi.slot') }));
+  ok2('Enter continues the selected slot: slot 3, island 99, hard', r1.slot === 3 && r1.seed === 99 && r1.diff === 'hard' && r1.last === '3', r1);
+  await page.goto(base, { waitUntil: 'load' });
+  ok2('the last played slot is selected after reload', await page.$eval('.save-card.on', c => c.dataset.slot) === '3');
+  await page.click('.save-card[data-slot="2"] .save-no'); await page.fill('#seed', '123'); await page.click('#btn-new'); await started();
+  const r2 = await page.evaluate(() => { XIEYI.game.save(); return { slot: XIEYI.game.slot, seed: XIEYI.game.seed, s2: JSON.parse(localStorage.getItem('xieyi.save.v5.2')).seed, s1: JSON.parse(localStorage.getItem('xieyi.save.v5')).seed, s3: JSON.parse(localStorage.getItem('xieyi.save.v5.3')).seed }; });
+  ok2('落筆 on an empty slot starts island 123 in slot 2 and leaves slots 1 and 3 alone', r2.slot === 2 && r2.seed === 123 && r2.s2 === 123 && r2.s1 === 7 && r2.s3 === 99, r2);
+  await page.goto(base, { waitUntil: 'load' });
+  await page.click('.save-card[data-slot="1"] .save-no'); await page.click('#btn-new'); await page.waitForTimeout(150);
+  const armed = await page.evaluate(() => ({ started: !!window.XIEYI, text: document.getElementById('btn-new').textContent }));
+  ok2('落筆 on an occupied slot asks first instead of overwriting', !armed.started && /覆蓋第一格/.test(armed.text), armed);
+  await page.click('.save-card[data-slot="3"] .save-del'); await page.waitForTimeout(100);
+  ok2('arming 刪 drops the overwrite question and asks 真的刪？', await page.$eval('#btn-new', b => b.textContent) === '落筆' && /真的刪/.test(await page.$eval('.save-card[data-slot="3"] .save-del', b => b.textContent)));
+  await page.click('.save-card[data-slot="3"] .save-del'); await page.waitForTimeout(100);
+  const after = await page.evaluate(() => ({ gone: !localStorage.getItem('xieyi.save.v5.3'), empty: document.querySelector('.save-card[data-slot="3"]').classList.contains('empty'), n: document.querySelectorAll('.save-card').length, still1: !!localStorage.getItem('xieyi.save.v5'), still2: !!localStorage.getItem('xieyi.save.v5.2') }));
+  ok2('second 刪 clears slot 3 only and the card turns empty', after.gone && after.empty && after.n === 3 && after.still1 && after.still2, after);
+  await page.click('.save-card[data-slot="1"] .save-no'); await page.fill('#seed', '55'); await page.click('#btn-new'); await page.waitForTimeout(100); await page.click('#btn-new'); await started();
+  const r3 = await page.evaluate(() => { XIEYI.game.save(); return { slot: XIEYI.game.slot, seed: XIEYI.game.seed, s1: JSON.parse(localStorage.getItem('xieyi.save.v5')).seed, cour: XIEYI.game.player.cour }; });
+  ok2('second 落筆 overwrites slot 1 with island 55', r3.slot === 1 && r3.seed === 55 && r3.s1 === 55, r3);
+  await page.evaluate(() => { localStorage.setItem('xieyi.carry', '500@2'); });
+  await page.goto(base + '?autostart=1&seed=8&slot=1', { waitUntil: 'load' }); await started();
+  const c1 = await page.evaluate(() => ({ slot: XIEYI.game.slot, cour: XIEYI.game.player.cour, carry: localStorage.getItem('xieyi.carry') }));
+  await page.goto(base + '?autostart=1&seed=9&slot=2', { waitUntil: 'load' }); await started();
+  const c2 = await page.evaluate(() => ({ slot: XIEYI.game.slot, cour: XIEYI.game.player.cour, carry: localStorage.getItem('xieyi.carry') }));
+  ok2('courage carried over the sea waits for its own slot: slot 1 gets none, slot 2 gets 500 and the note is spent', c1.slot === 1 && c1.cour === 0 && c1.carry === '500@2' && c2.slot === 2 && c2.cour === 500 && c2.carry === null, { c1, c2 });
+} catch (e) { checks2.push('CRASH start page: ' + e.message); }
+result.checks.push(...checks2); result.failed = result.checks.filter(c => c.startsWith('FAIL') || c.startsWith('CRASH')).length;
 console.log(result.checks.join('\n'));
 console.log('fps', result.fps, 'failed', result.failed, 'of', result.checks.length);
 await page.screenshot({ path: out + '/02-end.png' });
