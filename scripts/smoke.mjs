@@ -73,7 +73,7 @@ const result = await page.evaluate(async () => {
   g.craft('door'); g.craft('bed'); g.craft('stove'); g.craft('torch');
   g.removeItem('竹', 99); g.removeItem('棉', 99);   // 騰出格子
   g.craft('lamp');
-  ok('door/bed/stove/torch/lamp crafted', g.count('門') === 1 && g.count('床') === 1 && g.count('灶') === 1 && g.count('火把') === 1 && g.count('燈') === 1, bag());
+  ok('door/bed/stove/torch(×4 from 石子1 草3 木2)/lamp crafted', g.count('門') === 1 && g.count('床') === 1 && g.count('灶') === 1 && g.count('火把') === 3 && g.count('燈') === 1, bag());
   g.removeItem('土', 99); g.removeItem('草', 99); g.removeItem('燈', 99); g.removeItem('火把', 99);   // 騰出格子，工具不疊
   g.craft('grind', '石劍'); g.craft('grind', '石鎬'); g.craft('grind', '石斧'); g.craft('grind', '石鋤');
   const sword = tool('石劍');
@@ -168,6 +168,10 @@ const result = await page.evaluate(async () => {
   ok('when the candle burns out the hat goes dark', hat.fuel === 0 && g.lightRadius() === 0);
   g.addItem('蠟燭', 1); hold('蠟燭'); g.useItem();
   ok('a candle refills the hat', hat.fuel === 400 && g.count('蠟燭') === 0 && g.lightRadius() === 2);
+  hold('木'); hat.fuel = 300; w.set(p.x + 2, p.y + 2, '燈'); await sleep(400);
+  ok('with another light within three tiles the hat candle does not burn', hat.fuel === 300, hat.fuel);
+  w.set(p.x + 2, p.y + 2, '白'); await sleep(300);
+  ok('away from other lights it burns again', hat.fuel < 300, hat.fuel);
   g.takeOff('帽'); g.removeItem('燈帽', 1); hold('木');
   // 白天：林裡凍住，林外煙滅
   w.time = DAY * 13 + DAY * 0.25;
@@ -334,6 +338,40 @@ const result = await page.evaluate(async () => {
   ok('below level 31 it cannot be swung', Math.abs(h1.hp - 30) < 1e-6);
   for (const e of [h1, h3]) g.ents.remove(e);
   p.tools = p.tools.filter(s => s.n !== '九閽鳴雷'); p.tool = -1; hold('石劍'); p.cour = 0; p.decayAt = 0; g.barSig = '';
+  // 鷹：半友好；魚可馴，第一隻 35%、第二隻 25%、第三隻起 10%；馴了替你打獸、餵魚回力；右邊顯示
+  g.ents.list = g.ents.list.filter(e => e.type !== '鷹' && e.type !== '虎');
+  ok('taming odds fall with each eagle already following', g.tameChance() === 0.35 && (() => { const a = g.ents.add('鷹', p.x + 9, p.y + 9, { tame: true, moveT: 99 }); const c1 = g.tameChance(); const b = g.ents.add('鷹', p.x + 9, p.y + 8, { tame: true, moveT: 99 }); const c2 = g.tameChance(); const c = g.ents.add('鷹', p.x + 8, p.y + 9, { tame: true, moveT: 99 }); const c3 = g.tameChance(); for (const e of [a, b, c]) g.ents.remove(e); return c1 === 0.25 && c2 === 0.10 && c3 === 0.10; })());
+  face(1, 0); w.set(T().x, T().y, '草'); const eg = g.ents.add('鷹', T().x, T().y, { moveT: 99 });
+  hold('石劍'); p.atkT = 0; g.pressGather();
+  ok('a wild eagle gets angry when attacked (60 hp − 40)', eg.angry && eg.hp === 20, eg.hp);
+  eg.hp = 60; eg.moveT = 0; eg.atk = 0; p.hp = 100; p.hurtT = 0; await until(() => p.hp < 100, 3000);
+  ok('an angry eagle pecks for 12', Math.round(p.hp) === 88, p.hp); eg.moveT = 99; eg.x = T().x; eg.y = T().y;
+  g.addItem('魚', 3); hold('魚'); const rnd3 = Math.random; Math.random = () => 0.5; g.pressPlace();
+  ok('a failed fish calms it but does not tame', !eg.tame && !eg.angry && g.count('魚') === 2);
+  Math.random = () => 0.1; g.pressPlace(); Math.random = rnd3;
+  ok('a lucky fish tames it', eg.tame && g.count('魚') === 1 && g.tameCount() === 1);
+  eg.sta = 30; g.pressPlace();
+  ok('feeding a tamed eagle restores 40 stamina', eg.sta === 70 && g.count('魚') === 0, eg.sta);
+  await sleep(80);
+  ok('companion panel shows the eagle with two vertical bars', document.querySelectorAll('#companions .comp').length === 1 && document.querySelectorAll('#companions .vbars i').length === 2);
+  eg.x = p.x + 3; eg.y = p.y + 3; eg.moveT = 0; eg.atk = 0; w.set(p.x + 5, p.y, '草'); const prey = g.ents.add('虎', p.x + 5, p.y, { moveT: 99, calm: 99, atk: 0 });
+  await until(() => prey.hp < 150, 6000);
+  ok('a tamed eagle attacks a hostile beast near you and spends stamina', prey.hp < 150 && eg.sta < 70 && prey.foe === eg, [prey.hp, eg.sta]);
+  prey.moveT = 0; prey.atk = 0; const eh = eg.hp; await until(() => eg.hp < eh, 4000);
+  ok('the beast fights back at the eagle', eg.hp < eh, [eh, eg.hp]);
+  g.ents.remove(prey); eg.sta = 100;
+  ok('tamed eagles are saved with the world', JSON.stringify(g.ents.serialize()).indexOf('鷹') >= 0);
+  g.ents.remove(eg); g.addCourage(0);
+  // 龜：少見不咬人，命五十；龜甲卜之，吉則五日無魄
+  face(1, 0); w.set(T().x, T().y, '草'); const tu = g.ents.add('龜', T().x, T().y, { moveT: 99 }); hold('石劍'); p.atkT = 0; g.pressGather();
+  ok('a turtle takes two sword blows (50 hp)', tu.hp === 10 && g.ents.list.includes(tu), tu.hp);
+  p.atkT = 0; g.pressGather();
+  ok('a slain turtle leaves a 龜甲', !g.ents.list.includes(tu) && g.count('龜甲') === 1);
+  hold('龜甲'); Math.random = () => 0.9; g.useItem();
+  ok('a bad omen wastes the shell', g.count('龜甲') === 0 && g.peaceDays() === 0);
+  g.addItem('龜甲', 1); hold('龜甲'); Math.random = () => 0.1; g.useItem(); Math.random = rnd3;
+  ok('a good omen: five days without ghosts', g.peaceDays() === 5 && (() => { const t0 = w.time; w.time = Math.floor((p.noGhostUntil - DAY) / DAY) * DAY + DAY * 0.7; const inside = !g.ghostNight(); w.time = Math.floor(p.noGhostUntil / DAY) * DAY + DAY * 1.7; const after = g.ghostNight(); w.time = t0; return inside && after; })(), [g.peaceDays()]);
+  p.noGhostUntil = 0;
   // 煤與鐵：山裡有礦；礦二煤一入旺灶煉鐵；煤是好柴
   let coal = 0, iron = 0; for (let x = -60; x <= 60; x++) for (let y = -60; y <= 60; y++) { const b = w.base(x, y); if (b === '煤') coal++; else if (b === '鐵') iron++; }
   ok('coal seams and iron veins spawn in the mountains', coal >= 5 && iron >= 3, [coal, iron]);

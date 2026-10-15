@@ -60,6 +60,12 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 #totemswitch.on .track { background: var(--red); }
 #totemswitch.on .knob { left: 20px; }
 #totemswitch.on .state { color: var(--red-2); }
+#companions { position: absolute; right: calc(18px + env(safe-area-inset-right, 0px)); top: calc(340px + env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.comp { display: flex; gap: 6px; align-items: flex-end; background: rgba(239,229,207,.78); padding: 4px 7px; border-radius: 4px; border: 1px solid rgba(28,26,23,.3); }
+.comp .ch { font: 26px/1 var(--font); color: var(--ink); }
+.comp .vbars { display: flex; gap: 3px; height: 44px; align-items: flex-end; }
+.comp .vbars i { display: block; width: 7px; border-radius: 3px; background: linear-gradient(180deg, #d0533f, #8f2c20); }
+.comp .vbars i.sta { background: linear-gradient(180deg, #5a8a6a, #2f5a40); }
 #courdecay { font: 13px var(--font); color: var(--red-2); background: rgba(239,229,207,.75); padding: 1px 8px; border-radius: 3px; }
 #courdecay.hidden { display: none; }
 .hudbtns { display: flex; gap: 6px; }

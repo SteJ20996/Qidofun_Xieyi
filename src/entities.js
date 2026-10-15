@@ -16,11 +16,22 @@
       this.ghostAcc = 0;
     }
     at(x, y) { for (const e of this.list) if (e.x === x && e.y === y) return e; return null; }
-    beastAt(x, y) { for (const e of this.list) if (e.x === x && e.y === y && DB[e.type].kind === 'beast' && e.type !== '魄') return e; return null; }
+    beastAt(x, y) { for (const e of this.list) if (e.x === x && e.y === y && DB[e.type].kind === 'beast' && e.type !== '魄' && e.type !== '龍' && !(e.type === '鷹' && e.tame)) return e; return null; }   // 龍與馴了的鷹不擋路
+    tamed() { return this.list.filter(e => e.type === '鷹' && e.tame); }
+    hostileNear(p, r) {      // 玩家 r 格內最近的敵對獸（鷹替你打的對象）
+      let best = null, bd = Infinity;
+      for (const o of this.list) {
+        const hostile = '虎豹狼蛇'.indexOf(o.type) >= 0 || (o.angry && (o.type === '蛛' || o.type === '蟾' || (o.type === '鷹' && !o.tame)));
+        if (!hostile || o.hp <= 0) continue;
+        const d = U.cheb(o.x, o.y, p.x, p.y); if (d <= r && d < bd) { bd = d; best = o; }
+      }
+      return best;
+    }
     count(type) { let n = 0; for (const e of this.list) if (e.type === type) n++; return n; }
     add(type, x, y, extra) {
       const e = Object.assign({ type, x, y, rx: x, ry: y, moveT: Math.random(), calm: 0, atk: 0, angry: false, hp: DB[type].hp || 1, bob: Math.random() * 6 }, extra || {});
       if (type === '蟾' && e.venom === undefined) e.venom = Math.random() < 0.5;
+      if (type === '鷹' && e.sta === undefined) e.sta = 100;
       this.list.push(e);
       return e;
     }
@@ -39,7 +50,8 @@
       if (type === '豹') return ch === '森' || ch === '林';
       if (type === '狼') return night && '草田沙棉麻'.indexOf(ch) >= 0;
       if (type === '蛇') return ch === '草' && this.nearWood(x, y);          // 草木之交
-      if (type === '蟾') return d.walk > 0 && d.kind !== 'object' && this.nearWater(x, y);
+      if (type === '蟾' || type === '龜') return d.walk > 0 && d.kind !== 'object' && this.nearWater(x, y);
+      if (type === '鷹') return d.kind !== 'water' && d.kind !== 'fire' && this.world.nearChar(x, y, '山', 2);
       if (type === '魄') return d.kind !== 'water' && d.kind !== 'fire' && !this.world.lightNear(x, y, 6);
       return d.walk > 0;
     }
@@ -47,7 +59,7 @@
     canStand(type, x, y, night) {
       const ch = this.world.get(x, y), d = DB[ch];
       if (type === '魄') return d.kind !== 'fire';
-      if (type === '鳥' || type === '龍') return d.kind !== 'fire';
+      if (type === '鳥' || type === '龍' || type === '鷹') return d.kind !== 'fire';
       if (type === '魚') return d.kind === 'water';
       if (d.walk <= 0 || d.shelter || d.gate) return false;
       if (SCARED.indexOf(type) >= 0 && this.world.scared(x, y)) return false;
@@ -126,10 +138,14 @@
         this.spawnAcc = 0;
         const bm = night && g.beastMult ? g.beastMult() : 1;   // 困難：夜裡狼虎豹蛇一倍半
         const caps = { '鳥': night ? 4 : 10, '鹿': 6, '魚': 8, '虎': night ? Math.ceil(3 * bm) : 2, '豹': night ? Math.ceil(2 * bm) : 1, '狼': night ? Math.ceil(3 * bm) : 0, '蛇': Math.ceil(2 * bm), '蟾': 3 };
+        caps['鷹'] = 2; caps['龜'] = 1;
         for (const type in caps) {
-          if (this.count(type) >= caps[type]) continue;
+          const have = type === '鷹' ? this.list.filter(e => e.type === '鷹' && !e.tame).length : this.count(type);
+          if (have >= caps[type]) continue;
           if (type === '蛇' && Math.random() > 0.25) continue;        // 蛇出沒機率偏低
           if (type === '狼' && Math.random() > 0.5) continue;
+          if (type === '鷹' && Math.random() > 0.4) continue;
+          if (type === '龜' && Math.random() > 0.1) continue;         // 龜少見
           this.spawnNear(type, p, 14, 30, night);
         }
       }
@@ -146,7 +162,11 @@
         e.rx += (e.x - e.rx) * k; e.ry += (e.y - e.ry) * k;
         const d = U.cheb(e.x, e.y, p.x, p.y);
         if (d <= 9) g.saw(e.type);
-        if (e.type !== '龍' && d > 48) { this.list.splice(i, 1); continue; }
+        if (e.type !== '龍' && !e.tame && d > 48) { this.list.splice(i, 1); continue; }
+        if (e.type === '鷹') {
+          if (e.tame) { e.sta = Math.min(100, e.sta + dt); e.hp = Math.min(DB['鷹'].hp, e.hp + 0.3 * dt); }   // 體力每息回一點，傷慢慢好
+          if (e.angryT > 0) { e.angryT -= dt; if (e.angryT <= 0) e.angry = false; }
+        }
         if (e.type === '魚' && DB[w.get(e.x, e.y)].kind !== 'water') { this.list.splice(i, 1); continue; }
         if (e.type === '狼' && g.daylight() > 0.5) { this.list.splice(i, 1); continue; }                 // 狼天亮散去
         if (e.fade !== undefined && e.fade < 1) { e.fade -= dt * 1.2; if (e.fade <= 0) this.list.splice(i, 1); continue; }   // 正在煙滅
@@ -166,6 +186,16 @@
         if (e.moveT > 0) continue;
 
         const sheltered = !!DB[w.get(p.x, p.y)].shelter;
+        // 被鷹咬過的獸會反擊鷹：貼著就啄回去，否則照常
+        if (e.foe) {
+          if (!this.list.includes(e.foe) || e.foe.hp <= 0 || U.cheb(e.x, e.y, e.foe.x, e.foe.y) > 6) e.foe = null;
+          else if (U.cheb(e.x, e.y, e.foe.x, e.foe.y) <= 1 && e.atk <= 0) {
+            const dmg = DB[e.type].atk || (DB[e.type].bite || 2) * 4;
+            e.foe.hp = Math.round((e.foe.hp - dmg) * 100) / 100; e.atk = 1.2; e.moveT = 0.5;
+            if (e.foe.hp <= 0) { g.companionDied(e.foe, e); e.foe = null; }
+            continue;
+          }
+        }
         if (e.type === '龍') {
           if (d > 4) { e.moveT = 0.22; this.stepTo(e, p.x, p.y, false, night); }
           else { e.moveT = 0.5 + Math.random() * 1.0; if (Math.random() < 0.5) this.wander(e, night, null); }
@@ -207,6 +237,23 @@
           if (d <= 1 && !sheltered) { this.bite(e, g); e.moveT = 0.5; }
           else if (d <= 5 && !sheltered) { e.moveT = 0.4; this.stepTo(e, p.x, p.y, false, night); }
           else { e.moveT = 1 + Math.random() * 2; if (Math.random() < 0.4) this.wander(e, night, '草木'); }
+        } else if (e.type === '鷹') {
+          if (e.tame) {
+            const tgt = e.sta >= 6 ? this.hostileNear(p, 6) : null;
+            if (tgt) {
+              if (U.cheb(e.x, e.y, tgt.x, tgt.y) <= 1) {
+                if (e.atk <= 0) { tgt.hp = Math.round((tgt.hp - 20) * 100) / 100; tgt.angry = true; tgt.foe = e; e.sta -= 6; e.atk = 1.5; g.eagleHit(e, tgt); if (tgt.hp <= 0) g.kill(tgt); }
+                e.moveT = 0.4;
+              } else { e.moveT = 0.2; this.stepTo(e, tgt.x, tgt.y, false, night); }
+            } else if (d > 3) { e.moveT = 0.2; this.stepTo(e, p.x, p.y, false, night); }
+            else { e.moveT = 0.6 + Math.random(); if (Math.random() < 0.5) this.wander(e, night, null); }
+          } else if (e.angry) {
+            if (d <= 1) { this.maul(e, g); e.moveT = 0.6; }
+            else if (d <= 8) { e.moveT = 0.25; this.stepTo(e, p.x, p.y, false, night); }
+            else { e.angry = false; e.moveT = 1; }
+          } else { e.moveT = 0.8 + Math.random() * 1.5; if (Math.random() < 0.5) this.wander(e, night, null); }
+        } else if (e.type === '龜') {
+          e.moveT = 2 + Math.random() * 3; if (Math.random() < 0.5) this.wander(e, night, '草沙土');
         } else if (e.type === '蛛' || e.type === '蟾') {
           const hostile = e.angry && (e.type === '蛛' || e.venom);     // 蜘蛛與毒蟾被惹了才咬
           if (hostile && d <= 1) { this.bite(e, g); e.moveT = 0.5; }
@@ -218,8 +265,8 @@
       }
     }
 
-    serialize() { return this.list.filter(e => e.type === '龍').map(e => ({ t: e.type, x: e.x, y: e.y })); }
-    restore(arr) { for (const s of arr || []) this.add(s.t, s.x, s.y); }
+    serialize() { return this.list.filter(e => e.type === '龍' || (e.type === '鷹' && e.tame)).map(e => ({ t: e.type, x: e.x, y: e.y, hp: e.hp, sta: e.sta, tame: e.tame })); }
+    restore(arr) { for (const s of arr || []) this.add(s.t, s.x, s.y, s.tame ? { hp: s.hp, sta: s.sta, tame: true } : {}); }
   }
 
   root.Entities = Entities;
