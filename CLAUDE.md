@@ -1,6 +1,6 @@
 # 寫意 · 專案約定
 
-由漢字構成的生存與探索沙盒：收集、製作、砌牆；蛇蛛蟾豹狼；第十三夜起怕光穿牆的魄；命飽暖力愜六條數值加膽氣；膽氣八重造船渡海。純瀏覽器單頁，零依賴，全繁體。
+由漢字構成的生存與探索沙盒：收集、製作、砌牆；蛇蛛蟾豹狼；第十三夜起怕光穿牆的魄；命飽暖力愜六條數值加膽氣；膽氣八重造船渡海，十重五件衣甲穿齊即山海衣；山有煤鐵，鐵可打甲；死落荷包。純瀏覽器單頁，零依賴，全繁體。
 
 ## 語言
 - 遊戲文案、程式註解、README、回覆一律繁體中文（台灣用語）。
@@ -16,4 +16,4 @@
 ## 位置
 - 分支 `claude/xieyi-open-world`，PR #1。
 - 規則表：`src/glyphs.js`（`DB` 字庫與取物、`ITEMS` 物品與工具、`RECIPES` 配方、`PLACES` 地標、`STELES` 碑文）。
-- 數值：`src/game.js` 頂部常數（`GHOST_NIGHT`=13、`FERMENT_NIGHTS`=15、`SLOTS`=16、`TOOL_SLOTS`=6、`SHIP_LEVEL`=8、`TOTEM_LEVEL`=10、`DECAY_LEVEL`=31、`LEVEL_UNIT`=20 與 `levelCost(n)`=20×(1+0.1n)²）與 `updateStats`。
+- 數值：`src/game.js` 頂部常數（`GHOST_NIGHT`=13、`FERMENT_NIGHTS`=15、`SLOTS`=16、`TOOL_SLOTS`=6、`SHIP_LEVEL`=8、`TOTEM_LEVEL`=10、`DECAY_LEVEL`=31、`LEVEL_UNIT`=20 與 `levelCost(n)`=20×(1+0.1n)²、`ARMOR_LIFE`=180 日、`HIT_MULT`）與 `updateStats`。

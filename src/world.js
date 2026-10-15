@@ -79,7 +79,7 @@
       if (DB[ch].flam <= 0) this.burn.delete(k);
       if (old === '灶' && ch !== '灶') this.stoves.delete(k);
       if (ch === '灶' && !this.stoves.has(k)) this.stoves.set(k, 0);
-      if (old === '囊' && ch !== '囊') this.bags.delete(k);
+      if (old === '包' && ch !== '包') this.bags.delete(k);
       if (old === '偶' && ch !== '偶') this.scarecrows.delete(k);
       if (old === '櫃' && ch !== '櫃') this.chests.delete(k);
       if (old === '漁' && ch !== '漁') this.weirs.delete(k);

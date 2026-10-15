@@ -179,6 +179,7 @@ const result = await page.evaluate(async () => {
   ok('fifteenth consecutive bite kills', p.dead, [p.hp, p.biteN]);
   g.ents.remove(snake2); await press('Enter', 20); await sleep(80);
   ok('respawn resets courage to zero', !p.dead && p.cour === 0);
+  ok('belongings drop as one 荷包', w.bags.size >= 1 && [...w.bags.keys()].every(k => { const [x, y] = k.split(',').map(Number); return w.get(x, y) === '包'; }) && [...w.bags.values()].some(v => v.some(s => s.n === '石劍')), w.bags.size);
   // 蜘蛛不惹不咬；除草十分之一出蜘蛛
   w.set(T().x, T().y, '草'); g.ents.list = g.ents.list.filter(e => e.type !== '蛛');
   const spider = g.ents.add('蛛', p.x + 1, p.y + 1, { moveT: 0, atk: 0 }); p.poisonT = 0; await sleep(700);
@@ -227,17 +228,55 @@ const result = await page.evaluate(async () => {
   ok('ship recipe locked below level 8', (() => { g.addItem('木板', 12); g.addItem('船槳', 2); g.addItem('船帆', 1); p.sta = 100; g.craft('ship'); return g.count('大船') === 0; })());
   p.cour = 300; g.craft('ship');
   ok('ship craftable at level 8', g.count('大船') === 1 && g.level() === 8, [g.count('大船'), g.level()]);
-  p.cour = g.levelAt(9); ok('no damage ladder below level 10', g.dmgMult() === 1 && g.takenMult() === 1 && !g.totemOn());
-  p.cour = g.levelAt(10); ok('level 10: damage ×1.25, damage taken ×0.8', g.dmgMult() === 1.25 && Math.abs(g.takenMult() - 0.8) < 1e-9);
-  p.cour = g.levelAt(17); ok('level 17: ×1.5625 and ×0.64', Math.abs(g.dmgMult() - 1.5625) < 1e-9 && Math.abs(g.takenMult() - 0.64) < 1e-9);
-  p.cour = g.levelAt(10); g.addItem('衣', 1); g.addItem('麻布', 2); g.addItem('石子', 4); p.sta = 100; g.craft('totem');
-  ok('totem garb craftable at level 10', g.has('圖騰衣') && g.totemOn(), bag());
-  p.hp = 100; g.hit({ type: '虎', x: p.x + 1, y: p.y }, 20);
-  ok('near the totem beasts hit 5/3 harder, player takes ×0.8', Math.abs(p.hp - (100 - 20 * 5 / 3 * 0.8)) < 0.1, p.hp);
+  // 衣甲與山海衣：五件穿齊、十重膽氣才有獸紋；脫下一件就是普通衣甲
+  p.cour = g.levelAt(10); trim(['木', '石', '石子', '草', '土', '磚', '大船']);
+  g.addItem('內襯', 1); g.addItem('布褲', 1); g.addItem('布甲', 1); g.addItem('布帽', 1); g.addItem('布靴', 1);
+  for (const n of ['內襯', '布褲', '布甲', '布帽']) { hold(n); g.pressPlace(); }
+  ok('four cloth pieces worn: 8.5% less damage, no 山海衣 yet', Math.abs(g.armorRed() - 0.085) < 1e-9 && !g.totemOn() && g.wornList().length === 4 && g.dmgMult() === 1, g.armorRed());
+  hold('布靴'); g.useItem();
+  ok('fifth piece at level 10 wakes the 山海衣: attack ×1.15, taken ×1 (×0.9 from cloth)', g.totemOn() && Math.abs(g.armorRed() - 0.10) < 1e-9 && Math.abs(g.dmgMult() - 1.15) < 1e-9 && Math.abs(g.takenMult() - 0.9) < 1e-9, [g.dmgMult(), g.takenMult()]);
+  p.cour = g.levelAt(17); ok('level 17: attack ×1.15², taken ÷1.15', Math.abs(g.dmgMult() - 1.15 * 1.15) < 1e-9 && Math.abs(g.takenMult() - 0.9 / 1.15) < 1e-9);
+  p.cour = g.levelAt(24); ok('level 24: attack ×1.15³, taken ÷1.15²', Math.abs(g.dmgMult() - Math.pow(1.15, 3)) < 1e-9 && Math.abs(g.takenMult() - 0.9 / 1.15 / 1.15) < 1e-9);
+  p.cour = g.levelAt(10); p.hp = 100; p.hitWin = { start: -99, n: 0 }; g.hit({ type: '虎', x: p.x + 1, y: p.y }, 20);
+  ok('near the 山海衣 beasts hit 5/3 harder; cloth still takes a tenth off', Math.abs(p.hp - (100 - 20 * 5 / 3 * 0.9)) < 0.1, p.hp);
   w.set(p.x + 3, p.y, '草'); const tt = g.ents.add('虎', p.x + 3, p.y, { moveT: 0, calm: 0, atk: 0 }); g.ents.update(0.01, g);
-  ok('near the totem hostile beasts move at half speed', Math.abs(tt.moveT - 0.6) < 1e-6, tt.moveT); g.ents.remove(tt);
-  g.removeItem('圖騰衣', 1); p.hp = 100; g.hit({ type: '虎', x: p.x + 1, y: p.y }, 20);
-  ok('without the garb only the ladder applies', Math.abs(p.hp - 84) < 0.1, p.hp); p.hurtT = 0;
+  ok('near the 山海衣 hostile beasts move at half speed', Math.abs(tt.moveT - 0.6) < 1e-6, tt.moveT); g.ents.remove(tt);
+  g.takeOff('盔');
+  ok('taking one piece off turns it back into plain clothes', !g.totemOn() && g.dmgMult() === 1 && Math.abs(g.takenMult() - 0.915) < 1e-9 && g.has('布帽'), g.takenMult());
+  hold('布帽'); g.pressPlace();
+  // 衣甲損耗：一百八十日；十五息內挨打加速且累加；五下碎
+  const vest = p.worn['甲']; ok('armor lasts 180 days', Math.round(vest.dur / DAY) === 180 && vest.wm === 1, vest.dur / DAY);
+  const d0 = vest.dur, tw0 = w.time; await sleep(400);
+  ok('armor wears evenly while worn', vest.dur < d0 && Math.abs((d0 - vest.dur) - (w.time - tw0)) < 0.05, [d0 - vest.dur, w.time - tw0]);
+  p.hitWin = { start: -99, n: 0 }; p.hp = 100;
+  g.hit({ type: '狼', x: p.x + 1, y: p.y }, 1); g.hit({ type: '狼', x: p.x + 1, y: p.y }, 1);
+  const d1 = vest.dur, tw1 = w.time; await sleep(400);
+  ok('two hits within 15 s: armor wears ×1.12', p.hitWin.n === 2 && Math.abs((d1 - vest.dur) - 1.12 * (w.time - tw1)) < 0.05, [d1 - vest.dur, w.time - tw1]);
+  w.time += 16; await sleep(80);
+  ok('after 15 s the window closes and the speed-up sticks', p.hitWin.n === 0 && Math.abs(vest.wm - 1.12) < 1e-9, vest.wm);
+  for (let i = 0; i < 5; i++) g.hit({ type: '狼', x: p.x + 1, y: p.y }, 1);
+  ok('five hits within 15 s shatter 甲, 襯 and 褲 but not 盔 and 靴', !p.worn['甲'] && !p.worn['襯'] && !p.worn['褲'] && p.worn['盔'] && p.worn['靴'] && !g.totemOn() && Math.abs(p.worn['盔'].wm - 1.12 * 1.5) < 1e-9, g.wornList().map(s => s.n + '@' + s.wm));
+  p.hp = 100; p.hurtT = 0; g.takeOff('盔'); g.takeOff('靴'); trim(['木', '石', '石子', '草', '土', '磚', '大船']);
+  // 鐵甲：減傷三成、毒不侵、慢四分之一、攻擊加半成、飢愜力掉得快八分
+  g.addItem('內襯', 1); g.addItem('鐵甲', 1); g.addItem('鐵褲', 1); g.addItem('鐵盔', 1); g.addItem('鐵靴', 1);
+  for (const n of ['內襯', '鐵甲', '鐵褲', '鐵盔', '鐵靴']) { hold(n); g.pressPlace(); }
+  p.cour = 0;
+  ok('full iron: 30% less damage, poison immune, 25% slower, +5% attack, +8% drain', Math.abs(g.armorRed() - 0.30) < 1e-9 && g.ironFull() && Math.abs(g.ironSpeed() - 0.75) < 1e-9 && Math.abs(g.dmgMult() - 1.05) < 1e-9 && Math.abs(g.ironDrain() - 1.08) < 1e-9 && Math.abs(g.takenMult() - 0.7) < 1e-9, [g.armorRed(), g.dmgMult(), g.takenMult()]);
+  p.poisonT = 0; p.poisonPer = 0; g.bite({ type: '蛇', x: p.x + 1, y: p.y }, 3);
+  ok('iron-clad, a snake bite does not poison', p.poisonT === 0 && p.poisonPer === 0);
+  for (const k of ['襯', '甲', '褲', '盔', '靴']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚', '大船']); p.hitWin = { start: -99, n: 0 };
+  // 煤與鐵：山裡有礦；礦二煤一入旺灶煉鐵；煤是好柴
+  let coal = 0, iron = 0; for (let x = -60; x <= 60; x++) for (let y = -60; y <= 60; y++) { const b = w.base(x, y); if (b === '煤') coal++; else if (b === '鐵') iron++; }
+  ok('coal seams and iron veins spawn in the mountains', coal >= 5 && iron >= 3, [coal, iron]);
+  g.addItem('石鎬', 1); face(0, 1); w.set(T().x, T().y, '鐵'); hold('石鎬'); g.action = null; g.pressGather(); await until(() => !g.action, 12000);
+  ok('mining an iron vein with a pickaxe gives 鐵礦×2 and leaves 石', g.count('鐵礦') === 2 && w.get(T().x, T().y) === '石', bag());
+  w.set(T().x, T().y, '灶'); w.addFuel(T().x, T().y, 100); hold('鐵礦'); g.pressPlace();
+  ok('ore without coal does not smelt', g.count('鐵') === 0 && g.count('鐵礦') === 2);
+  g.addItem('煤', 2); hold('鐵礦'); g.pressPlace();
+  ok('two ore and one coal on a lit stove smelt one 鐵', g.count('鐵') === 1 && g.count('鐵礦') === 0 && g.count('煤') === 1, bag());
+  hold('煤'); const f0 = w.stoveFuel(T().x, T().y); g.pressPlace();
+  ok('coal is strong fuel (+120)', Math.abs(w.stoveFuel(T().x, T().y) - f0 - 120) < 1 && g.count('煤') === 0, w.stoveFuel(T().x, T().y) - f0);
+  w.set(T().x, T().y, '土'); hold('石劍'); p.hurtT = 0;
   p.cour = g.levelAt(33) + 5; p.decayAt = 0; await sleep(150);
   ok('above level 31 a three-day decay timer starts', g.level() === 33 && p.decayAt > w.time && !hidden('courdecay'), [g.level(), p.decayAt - w.time]);
   w.time = p.decayAt + 0.5; await sleep(150);
