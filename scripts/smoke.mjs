@@ -45,6 +45,7 @@ const result = await page.evaluate(async () => {
   try {
   g.ents.seaP = 0;   // 蜃也是：專門的海上測試自己開
   w.fogP = 0;   // 霧障是真隨機的，測試途中跳出彈窗會把遊戲停住；專門的霧障測試自己開
+  g.warnEnabled = false; w.fogStep = 1e9;   // 數值提醒的彈窗與霧障的挪動也先關掉，各自的測試再開
   // ============ A. 島與採集 ============
   ok('the island is twice the old area: radius 85, sea edge 113, deep water beyond', G.ISLAND_R === 85 && G.SEA_EDGE === 113 && w.get(0, G.ISLAND_R + 20) === '淼' && w.get(-(G.ISLAND_R + 25), 0) === '淼');
   ok('eight landmarks placed', w.places.length === 8, w.places.map(x => x.name).join(''));
@@ -108,10 +109,14 @@ const result = await page.evaluate(async () => {
   face(0, 1); w.set(T().x, T().y, '沙'); hold('灶'); g.pressPlace();
   const stove = T();
   ok('placed 灶 is cold', w.get(stove.x, stove.y) === '灶' && !w.stoveLit(stove.x, stove.y));
-  hold('木'); g.pressPlace();
-  ok('wood fuels the stove', w.stoveLit(stove.x, stove.y), w.stoveFuel(stove.x, stove.y));
-  g.addItem('魚', 1); hold('魚'); g.pressPlace();
-  ok('魚 on lit 灶 becomes 烤魚', g.count('烤魚') === 1 && g.count('魚') === 0, bag());
+  hold('木'); const wood0 = g.count('木'); g.pressPlace();
+  ok('F facing a stove opens the stove panel and consumes nothing', !hidden('stove') && g.stoveAt === stove.x + ',' + stove.y && g.count('木') === wood0 && document.getElementById('stove-fire').textContent.indexOf('冷') >= 0);
+  document.querySelector('#stove-fuel button[data-fuel="木"]').click();
+  ok('wood fuels the stove from the panel', w.stoveLit(stove.x, stove.y) && g.count('木') === wood0 - 1 && document.getElementById('stove-fire').textContent.indexOf('火旺') >= 0, w.stoveFuel(stove.x, stove.y));
+  g.addItem('魚', 1); g.buildStove(); document.querySelector('#stove-cook button[data-cook="魚"]').click();
+  ok('魚 cooked in the stove panel becomes 烤魚', g.count('烤魚') === 1 && g.count('魚') === 0, bag());
+  await press('KeyE', 30);
+  ok('E closes the stove panel', hidden('stove') && !g.stoveAt);
   p.food = 50; hold('烤魚'); g.useItem();
   ok('eating 烤魚 +40', Math.round(p.food) === 90 && g.count('烤魚') === 0, p.food);
   w.set(stove.x, stove.y, '土'); hold('石鋤'); g.action = null; g.pressGather();
@@ -410,8 +415,9 @@ const result = await page.evaluate(async () => {
   // 龜：少見不咬人，命五十；龜甲卜之，吉則五日無魄
   face(1, 0); w.set(T().x, T().y, '草'); const tu = g.ents.add('龜', T().x, T().y, { moveT: 99 }); hold('石劍'); p.atkT = 0; g.pressGather();
   ok('a turtle takes two sword blows (50 hp)', tu.hp === 10 && g.ents.list.includes(tu), tu.hp);
-  p.atkT = 0; g.pressGather();
+  p.san = 80; p.atkT = 0; g.pressGather();
   ok('a slain turtle leaves a 龜甲', !g.ents.list.includes(tu) && g.count('龜甲') === 1);
+  ok('killing a turtle is ill-omened: 愜意 −30', Math.abs(p.san - 50) < 1, p.san);
   hold('龜甲'); Math.random = () => 0.9; g.useItem();
   ok('a bad omen wastes the shell', g.count('龜甲') === 0 && g.peaceDays() === 0);
   g.addItem('龜甲', 1); hold('龜甲'); Math.random = () => 0.1; g.useItem(); Math.random = rnd3;
@@ -450,12 +456,15 @@ const result = await page.evaluate(async () => {
   ok('coal seams and iron veins spawn in the mountains', coal >= 5 && iron >= 3, [coal, iron]);
   g.addItem('石鎬', 1); face(0, 1); w.set(T().x, T().y, '鐵'); hold('石鎬'); g.action = null; g.pressGather(); await until(() => !g.action, 12000);
   ok('mining an iron vein with a pickaxe gives 鐵礦×2 and leaves 石', g.count('鐵礦') === 2 && w.get(T().x, T().y) === '石', bag());
-  w.set(T().x, T().y, '灶'); w.addFuel(T().x, T().y, 100); hold('鐵礦'); g.pressPlace();
-  ok('ore without coal does not smelt', g.count('鐵') === 0 && g.count('鐵礦') === 2);
-  g.addItem('煤', 2); hold('鐵礦'); g.pressPlace();
+  w.set(T().x, T().y, '灶'); w.addFuel(T().x, T().y, 100); g.pressPlace(); g.stoveCook('鐵礦');
+  ok('ore without coal does not smelt', !hidden('stove') && g.count('鐵') === 0 && g.count('鐵礦') === 2);
+  g.addItem('煤', 2); g.buildStove();
+  ok('the panel lists 鐵礦 with its extra coal and the 煉 verb', (document.querySelector('#stove-cook button[data-cook="鐵礦"]') || {}).textContent.indexOf('煉') >= 0 && !document.querySelector('#stove-cook button[data-cook="鐵礦"]').disabled);
+  g.stoveCook('鐵礦');
   ok('two ore and one coal on a lit stove smelt one 鐵', g.count('鐵') === 1 && g.count('鐵礦') === 0 && g.count('煤') === 1, bag());
-  hold('煤'); const f0 = w.stoveFuel(T().x, T().y); g.pressPlace();
+  const f0 = w.stoveFuel(T().x, T().y); g.stoveFuel('煤');
   ok('coal is strong fuel (+120)', Math.abs(w.stoveFuel(T().x, T().y) - f0 - 120) < 1 && g.count('煤') === 0, w.stoveFuel(T().x, T().y) - f0);
+  g.closeStove();
   w.set(T().x, T().y, '土'); hold('石劍'); p.hurtT = 0;
   // 鋼具與鎢鋼具：鐵二木一煤一鍛鋼具（140%）；鐵礦脈 1/30 出鎢礦；八煤成精煤；鎢礦一鐵礦二精煤一煉鎢鋼；鎢鋼具 150%／耐久 200%
   trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); g.addItem('鐵', 2); g.addItem('木', 1); g.addItem('煤', 1); p.sta = 100; g.craft('forge', '鋼劍');
@@ -465,12 +474,13 @@ const result = await page.evaluate(async () => {
   ok('a lucky swing on an iron vein yields 鎢礦', g.count('鎢礦') >= 1 && g.count('鐵礦') >= 2, bag());
   g.addItem('煤', 8); p.sta = 100; g.craft('coke');
   ok('eight coal make one refined coal', g.count('精煤') === 1 && g.count('煤') === 0);
-  w.set(T().x, T().y, '灶'); w.addFuel(T().x, T().y, 100); g.removeItem('鎢礦', 9); g.removeItem('鐵礦', 9); g.addItem('鎢礦', 1); g.addItem('鐵礦', 2); hold('鎢礦'); g.pressPlace();
+  w.set(T().x, T().y, '灶'); w.addFuel(T().x, T().y, 100); g.removeItem('鎢礦', 9); g.removeItem('鐵礦', 9); g.addItem('鎢礦', 1); g.addItem('鐵礦', 2); g.pressPlace(); g.stoveCook('鎢礦'); g.closeStove();
   ok('tungsten ore + two iron ore + refined coal smelt one 鎢鋼', g.count('鎢鋼') === 1 && g.count('鎢礦') === 0 && g.count('鐵礦') === 0 && g.count('精煤') === 0, bag());
   g.addItem('鎢鋼', 1); g.addItem('木', 1); g.addItem('精煤', 1); p.sta = 100; p.food = 80; g.craft('forgew', '鎢鋼劍');
   ok('a tungsten-steel sword: 84 damage, 112 durability', !!tool('鎢鋼劍') && tool('鎢鋼劍').dur === 112 && G.ITEMS['鎢鋼劍'].dmg === 84, bag());
   tool('鎢鋼劍').dur = 5; hold('鎢鋼劍'); g.addItem('石子', 1); p.sta = 50; p.food = 50; g.craft('regrind');
   ok('regrinding tungsten steel costs 8 stamina and 10 food', tool('鎢鋼劍').dur === 112 && p.sta === 42 && Math.round(p.food) === 40, [p.sta, p.food]);
+  w.set(T().x, T().y, '土');   // 面向灶按 F 是開灶，穿衣甲要先轉開
   g.addItem('鎢鋼甲', 1); hold('鎢鋼甲'); g.pressPlace(); const wv = p.worn['甲'];
   ok('tungsten armour: 22% (160% of iron, rounded) and 360 days', !!wv && Math.abs(G.ITEMS['鎢鋼甲'].red - 0.22) < 1e-9 && Math.round(wv.dur / DAY) === 360, wv && wv.dur / DAY);
   wv.wm = 3; wv.dur = 1000; g.addItem('鎢鋼', 1); p.sta = 50; p.food = 50; g.repairWorn('甲');
@@ -499,11 +509,11 @@ const result = await page.evaluate(async () => {
   p.sta = 90; p.food = 90; p.san = 90; p.hp = 50; p.hurtT = 0; p.cour = 0; await until(() => p.hp > 50.3, 3000);
   ok('hp regenerates when food, sanity and stamina are above 80', p.hp > 50.3, p.hp);
   // 瓶與酒
-  g.addItem('沙', 3); face(0, 1); w.set(T().x, T().y, '灶'); w.addFuel(T().x, T().y, 300); hold('沙'); g.pressPlace();
+  g.addItem('沙', 3); face(0, 1); w.set(T().x, T().y, '灶'); w.addFuel(T().x, T().y, 300); g.pressPlace(); g.stoveCook('沙'); g.closeStove();
   ok('three sand on a lit stove make two bottles', g.count('玻璃瓶') === 2 && g.count('沙') === 0, bag());
   face(1, 0); w.set(T().x, T().y, '水'); hold('玻璃瓶'); g.pressGather();
   ok('empty bottle takes seawater', g.count('海水瓶') === 1 && g.count('玻璃瓶') === 1);
-  face(0, 1); hold('海水瓶'); g.pressPlace();
+  face(0, 1); g.pressPlace(); g.stoveCook('海水瓶'); g.closeStove();
   ok('seawater distils on the stove', g.count('淡水瓶') === 1 && g.count('海水瓶') === 0);
   hold('玻璃瓶'); const quan = w.places.find(x => x.id === 'quan'); goNextTo(quan.x, quan.y); g.pressGather();
   ok('empty bottle at the spring takes fresh water', g.count('淡水瓶') === 2 && g.count('玻璃瓶') === 0);
@@ -772,6 +782,66 @@ const result = await page.evaluate(async () => {
     const sw = w.serialize();
     ok('true random helper and weather save fields exist', typeof U.trueRand() === 'number' && U.trueRand() < 1 && typeof sw.rainUntil === 'number' && typeof sw.nextRainAt === 'number');
     w.rainLampP = 1 / 1500; w.rainUntil = 0; }
+  // ============ v0.14：神兵成類、小屋、霧障會動、數值燈與提醒 ============
+  ok('god weapons have their own craft category 神兵', G.CRAFT_CATS.indexOf('神兵') > 0 && G.RECIPES.find(r => r.id === 'hammer').cat === '神兵' && G.RECIPES.find(r => r.id === 'seagod').cat === '神兵' && !G.RECIPES.some(r => r.cat === '工具' && (r.id === 'hammer' || r.id === 'seagod')));
+  // —— 小屋：牆與門圍起不超過 45 格，裡面不生生靈、生靈不進
+  { const cx = p.x + 20, cy = p.y + 20;
+    for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++) w.set(cx + dx, cy + dy, '土');
+    for (let d = -2; d <= 2; d++) { w.set(cx + d, cy - 2, '磚'); w.set(cx + d, cy + 2, '磚'); w.set(cx - 2, cy + d, '磚'); w.set(cx + 2, cy + d, '磚'); }
+    w.set(cx, cy + 2, '門');
+    ok('a 3×3 room walled with bricks and a door is a small room (9 cells); the door and outside are not', w.sheltered(cx, cy) && w.sheltered(cx + 1, cy - 1) && !w.sheltered(cx, cy + 3) && !w.sheltered(cx, cy + 2));
+    ok('nothing spawns inside a small room and no creature can step in: beasts, eagles, the dragon, even a 魄', !g.ents.habitat('魄', cx, cy, true) && !g.ents.habitat('鹿', cx, cy, false) && !g.ents.canStand('狼', cx, cy, true) && !g.ents.canStand('鷹', cx, cy, true) && !g.ents.canStand('龍', cx, cy, true) && !g.ents.canStand('魄', cx, cy, true) && g.ents.canStand('魄', cx, cy + 3, true));
+    const gh = g.ents.add('魄', cx, cy + 3, { moveT: 99 }); let inside = false; for (let i = 0; i < 12; i++) { g.ents.stepTo(gh, cx, cy, false, true); if (w.sheltered(gh.x, gh.y)) inside = true; } g.ents.remove(gh);
+    ok('a 魄 chasing the player never gets into the small room', !inside, [gh.x - cx, gh.y - cy]);
+    w.set(cx + 2, cy, '土');
+    ok('knock out a wall and the room opens: not sheltered any more (the cache is cleared on every change)', !w.sheltered(cx, cy));
+    w.set(cx + 2, cy, '磚');
+    const box = (x0, y0, iw, ih) => { for (let dx = -1; dx <= iw; dx++) for (let dy = -1; dy <= ih; dy++) w.set(x0 + dx, y0 + dy, (dx < 0 || dy < 0 || dx === iw || dy === ih) ? '磚' : '土'); };
+    box(cx + 10, cy - 10, 5, 9); box(cx + 20, cy - 12, 2, 23);
+    ok('45 enclosed cells still count as a small room, 46 do not', w.sheltered(cx + 12, cy - 6) && !w.sheltered(cx + 20, cy));
+    ok('tamed companions and the dragon are placed outside the room', (() => { const at = g.freeNear(cx, cy, true); return !w.sheltered(at.x, at.y); })());
+    for (let dx = -1; dx <= 5; dx++) for (let dy = -1; dy <= 9; dy++) w.set(cx + 10 + dx, cy - 10 + dy, '草'); for (let dx = -1; dx <= 2; dx++) for (let dy = -1; dy <= 23; dy++) w.set(cx + 20 + dx, cy - 12 + dy, '草');
+    for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++) w.set(cx + dx, cy + dy, '草'); }
+  // —— 霧障會動：慢慢挪，躲著光；沒光就亂飄
+  { const X = p.x, Y = p.y; for (const id of [...w.fogs.keys()]) w.removeFog(id);
+    for (let dx = 0; dx <= 14; dx++) for (let dy = -2; dy <= 2; dy++) w.set(X + dx, Y + dy, '草');
+    unarm(); p.worn['帽'] = null; g.removeItem('火把', 99); g.removeItem('蠟燭', 99); p.sel = 0;   // 手裡頭上都沒光
+    ok('a fresh world moves fog every six seconds', new window.World(3).fogStep === 6 && !g.hasLight());
+    const fog = w.addFog([(X + 6) + ',' + Y, (X + 7) + ',' + Y, (X + 7) + ',' + (Y + 1)], w.time + DAY);
+    const cellsOf = () => [...fog.cells].map(k => k.split(',').map(Number));
+    w.set(X + 3, Y, '燈');
+    const moved1 = w.moveFog(fog, X, Y); const c1 = cellsOf();
+    ok('a lamp within ten tiles pushes the fog away: every cell shifts one step east', moved1 && c1.length === 3 && c1.every(([x]) => x >= X + 7) && !!w.fogAt(X + 8, Y) && !w.fogAt(X + 6, Y), c1);
+    w.set(X + 3, Y, '草'); p.x = p.rx = X + 12; p.y = p.ry = Y; g.addItem('火把', 1); hold('火把');
+    const moved2 = g.hasLight() && w.moveFog(fog, p.x, p.y); const c2 = cellsOf();
+    ok('a torch in the player\'s hand counts as light: the fog backs away west', moved2 && c2.every(([x]) => x <= X + 7) && !!w.fogAt(X + 7, Y), c2);
+    unarm(); g.removeItem('火把', 9); p.sel = 0; p.x = p.rx = X; p.y = p.ry = Y;
+    const before = JSON.stringify(cellsOf()); const moved3 = w.moveFog(fog, X, Y); const c3 = cellsOf();
+    ok('with no light around the fog still drifts one step and stays on land', moved3 && c3.length === 3 && c3.every(([x, y]) => w.fogLand(x, y)) && JSON.stringify(c3) !== before, c3);
+    fog.moveAt = w.time; w.fogStep = 1000; const c4 = JSON.stringify(cellsOf()); w.step(p.x, p.y);
+    ok('the world tick moves fogs on the fog clock and winds it up again', JSON.stringify(cellsOf()) !== c4 && fog.moveAt > w.time + 900 && [...fog.cells].every(k => w.fogCells.get(k) === fog.id), fog.moveAt - w.time);
+    const w2 = new window.World(w.seed); w2.restore(w.serialize()); const f2 = [...w2.fogs.values()][0];
+    ok('a restored fog gets a fresh move clock', !!f2 && f2.moveAt > w2.time, f2 && f2.moveAt - w2.time);
+    w.fogStep = 1e9; w.removeFog(fog.id); }
+  // —— 數值燈與提醒：不到五成亮燈，不到四分之一彈窗；困難只亮燈
+  { const bar = (k) => document.getElementById(k + 'fill').parentNode, title = () => document.getElementById('warn-title').textContent;
+    g.warnEnabled = true; p.warnLow = {}; p.hp = p.hpMax; p.food = 100; p.warm = 100; p.sta = p.staMax; p.san = 100; g.hudSig = ''; g.updateHUD(); await sleep(80);
+    ok('all five full: no lamp lit, no popup', !bar('hp').classList.contains('warn') && !bar('san').classList.contains('warn') && hidden('warn'));
+    p.hp = p.hpMax * 0.4; g.hudSig = ''; g.updateHUD(); await sleep(120);
+    ok('命 at 40%: the lamp above the bar lights (warn), not red, no popup yet', bar('hp').classList.contains('warn') && !bar('hp').classList.contains('low') && hidden('warn'));
+    p.hp = p.hpMax * 0.2; g.hudSig = ''; g.updateHUD(); await until(() => !hidden('warn'), 2000);
+    ok('命 at 20%: red lamp and a popup that pauses the game and names 命', bar('hp').classList.contains('low') && !hidden('warn') && g.paused && g.warnOpen && title().indexOf('命') >= 0, title());
+    await press('Enter', 20); await sleep(80);
+    ok('Enter closes the popup and the game runs on', hidden('warn') && !g.paused && !g.warnOpen);
+    p.hp = p.hpMax * 0.15; await sleep(200);
+    ok('still low: no second popup until 命 climbs back above half', hidden('warn'));
+    p.hp = p.hpMax * 0.6; await sleep(150); p.hp = p.hpMax * 0.1; await until(() => !hidden('warn'), 2000);
+    ok('after recovering above half, dropping again warns again', !hidden('warn')); g.closeWarn();
+    p.hp = p.hpMax; p.food = 20; p.san = 20; p.warnLow = {}; await until(() => !hidden('warn'), 2000);
+    ok('two stats at once: one popup naming both', title().indexOf('飽') >= 0 && title().indexOf('愜意') >= 0, title()); g.closeWarn();
+    p.food = 100; p.san = 100; p.warnLow = {}; const d0 = g.diff; g.diff = XIEYI.DIFF.hard; p.warm = 10; g.hudSig = ''; g.updateHUD(); await sleep(250);
+    ok('hard mode: the lamp lights but there is no popup', bar('warm').classList.contains('low') && hidden('warn') && !g.paused && XIEYI.DIFF.hard.warn === false && XIEYI.DIFF.normal.warn === true);
+    g.diff = d0; p.warm = 100; p.warnLow = {}; g.warnEnabled = false; g.hudSig = ''; g.updateHUD(); }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
   // —— 三格存檔：第一格沿用舊鍵；每格帶摘要
