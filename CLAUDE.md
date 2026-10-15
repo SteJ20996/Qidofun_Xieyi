@@ -16,7 +16,9 @@
 
    **遊戲入口（點開即玩）：** https://claude.ai/artifact/AaW9h52xsssPP5beWgBErX
 
+5. 提交、推到分支 `claude/xieyi-open-world`，然後**直接合進 `main`**（開 PR、合併，不用等人審）。GitHub 首頁顯示的是 `main`，沒合進去首頁就看不到。
+
 ## 位置
-- 分支 `claude/xieyi-open-world`；PR #1 已在 v0.10 合併進 `main`（GitHub 首頁顯示的是 `main`）。之後的更新要再合進 `main`，首頁才看得到。
+- 分支 `claude/xieyi-open-world`；每次更新都合進 `main`（PR #1 在 v0.10、PR #2 在 v0.12.1 合併）。
 - 規則表：`src/glyphs.js`（`DB` 字庫與取物、`ITEMS` 物品與工具、`RECIPES` 配方、`PLACES` 地標、`STELES` 碑文）。
 - 數值：`src/game.js` 頂部常數（`GHOST_NIGHT`=13、`FERMENT_NIGHTS`=15、`SLOTS`=16、`TOOL_SLOTS`=6、`SHIP_LEVEL`=8、`TOTEM_LEVEL`=10、`DECAY_LEVEL`=31、`LEVEL_UNIT`=20 與 `levelCost(n)`=round(20×(1+0.1n)²)、`ARMOR_LIFE`=180 日、`HIT_MULT`、`WEAR_CAP`=6、`REPAIR_WM`=1.5、`HAT_FUEL`=400、`BASE_SLOTS`=16／`BASE_TOOLS`=6／`MAX_POUCHES`=4、`DIFF` 難度表、`HAMMER_*`）與 `updateStats`；天氣在 `src/world.js` 頂部（`RAIN_MIN`=¼日、`RAIN_MAX`=1 日、`RAIN_GAP_MIN`=1 日、`RAIN_GAP_MAX`=4 日、`RAIN_LAMP_P`=1/1500 每盞每息、`ROOM_LIMIT`=121 格內圍得住才算屋裡，`covered()`／`rainLamps()`；霧障 `FOG_ROLLS`=2、`FOG_P`=0.25、`FOG_MIN`–`FOG_MAX`=8–12 格、`FOG_NEAR`=8–28 格、`FOG_LIFE`=1 日，`spawnFog()`）；霧障的代價與扇子在 `src/game.js`（`FOG_TOLL`=0.1、`FAN_REACH`=3、`checkFog()`／`fogToll()`）。島的大小在 `src/glyphs.js`（`ISLAND_R`=85、`SEA_EDGE`=113）。船在 `src/glyphs.js` 的 `SHIPS`（孤帆 1×2 命 120 兩格、方舟 2×3 命 420 五格，`off` 是船身相對人的格子）；海在 `src/game.js`（`SHIP_REPAIR_FRAC`=0.25、`SWIM_TIME`=60、`SWIM_DRAIN`=2、`SWIM_DMG`=0.75、`GOD_SELF`=0.1、`SEA_WARN_LEVEL`=31、`SEA_PENALTY`=5、`SKULL_P`=0.35、`SKULL_TWO`=0.3、`SEA_FOLK`）與 `src/world.js`（海霧 6–10 格九十息；停著的船 `ships`／`shipCells`／`addShip`／`removeShip`）；蜃的出現機率是 `ents.seaP`=1/160（每一點五息，只在行船或落水時），煙霧測試開頭同樣設 0。煙霧測試開頭把 `world.fogP` 設 0，免得真隨機的霧在別的測試途中跳出彈窗。生靈的命在 `src/glyphs.js` 的 `DB`（鹿 30、龜 50、鷹 60、蛇蛛蟾 90、豹狼 160、虎 300、龍 500、蜃 900；敵對獸撲咬 1.6 秒、毒咬 2.67 秒一次，在 `src/entities.js` 的 `maul`／`bite`），工具傷害在 `ITEMS`（石刀 30、石劍 40、鎬鋤斧 15；鋼具 ×1.4、耐久 56；鎢鋼具再 ×1.5、耐久 112；九閽鳴雷與燭龍焚溟 120、耐久 199）。

@@ -39,7 +39,7 @@
 
    **遊戲入口（點開即玩）：** https://claude.ai/artifact/AaW9h52xsssPP5beWgBErX
 
-5. 提交並推到分支 `claude/xieyi-open-world`（PR #1）。
+5. 提交、推到分支 `claude/xieyi-open-world`，然後**直接合進 `main`**（開 PR、合併，不用等人審；PR #1 在 v0.10、PR #2 在 v0.12.1 合併）。GitHub 首頁顯示的是 `main`。
 
 ### 1.4 位置
 - 規則表：`src/glyphs.js`（`DB` 字庫與取物、`ITEMS` 物品與工具、`RECIPES` 配方、`COOK` 灶、`PLACES` 地標、`STELES` 碑文、`naturalTile`／`baseTile` 地形）。
