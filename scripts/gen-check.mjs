@@ -6,11 +6,12 @@ import fs from 'node:fs';
 for (const f of ['util', 'glyphs', 'world']) vm.runInThisContext(fs.readFileSync(new URL('../src/' + f + '.js', import.meta.url), 'utf8'), { filename: f + '.js' });
 const G = globalThis.G, World = globalThis.World, DB = G.DB, DAY = World.DAY;
 const N = +process.argv[2] || 40, S0 = +process.argv[3] || 1;
-const NEED = { '木林森': 30, '草': 60, '石山磊': 20, '礫': 8, '棉': 6, '麻': 3, '果': 4 }, ORE = { '煤': 16, '鐵': 16 };
+// v0.11 起島的面積加倍：可達範圍與礦的下限跟著加倍
+const NEED = { '木林森': 30, '草': 60, '石山磊': 20, '礫': 8, '棉': 6, '麻': 3, '果': 4 }, ORE = { '煤': 32, '鐵': 32 }, REACH = 3000;
 let bad = 0;
 
 function reach(w, sp, dig) {      // 從出生點能走到的格子（用遊戲自己的 walkable，所以潮汐算在內）；dig 時山石礦也算能過（有鎬）
-  const seen = new Set([sp.x + ',' + sp.y]), q = [[sp.x, sp.y]], R = 95;
+  const seen = new Set([sp.x + ',' + sp.y]), q = [[sp.x, sp.y]], R = G.SEA_EDGE;
   while (q.length) {
     const [x, y] = q.shift();
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -30,7 +31,7 @@ for (let seed = S0; seed < S0 + N; seed++) {
   if (w.places.length !== 8) probs.push('地標只有 ' + w.places.length + ' 處');
   w.time = DAY * 0.25; const low = reach(w, sp);
   w.time = DAY * 0.60; const high = reach(w, sp);
-  if (low.size < 1500) probs.push('退潮可達範圍只有 ' + low.size + ' 格');
+  if (low.size < REACH) probs.push('退潮可達範圍只有 ' + low.size + ' 格');
   // 可達範圍裡的資源（看底稿加差異層，灘以退潮算）
   const cnt = {}; for (const k of low) { const [x, y] = k.split(',').map(Number); for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) { const c = w.raw(x + dx, y + dy); for (const g in NEED) if (g.indexOf(c) >= 0) cnt[g] = (cnt[g] || 0) + 1; } }
   for (const g in NEED) if ((cnt[g] || 0) < NEED[g]) probs.push('可達的「' + g + '」只有 ' + (cnt[g] || 0) + '（要 ' + NEED[g] + '）');

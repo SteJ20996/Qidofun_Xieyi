@@ -69,6 +69,14 @@
       this.atlas.set(key, c);
       return c;
     }
+    drawShip(cx, cy, rec, now, warded) {
+      const T = this.tile, k = G.SHIPS[rec.kind] || G.SHIPS['孤帆'], size = T * Math.max(k.w, k.h) * 0.9, hurt = rec.hp / k.hp;
+      const ctx = this.ctx;
+      ctx.save(); ctx.fillStyle = 'rgba(47,88,120,0.18)'; ctx.beginPath(); ctx.ellipse(cx, cy + size * 0.32, size * 0.5, size * 0.14, 0, 0, 7); ctx.fill(); ctx.restore();
+      this.drawGlyph('舟', hurt < 0.34 ? G.INK.red : G.INK.brown, cx, cy + Math.sin(now * 1.5) * 2, size, Math.sin(now * 1.5) * 0.04, 0.95);
+      if (warded) this.drawGlyph('骨', G.INK.red, cx, cy - size * 0.42, T * 0.42, 0, 0.9);
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    }
     drawGlyph(ch, color, px, py, size, rot, alpha) {
       const ctx = this.ctx, s = this.dpr, c = rot ? Math.cos(rot) : 1, sn = rot ? Math.sin(rot) : 0;
       ctx.setTransform(s * c, s * sn, -s * sn, s * c, px * s, py * s);
@@ -112,7 +120,7 @@
         const lit = ch === '灶' && world.stoveLit(x, y);
         const lr = ch === '燈' && world.isBig(x, y) ? 9 : d.light;   // 島外那盞燈塔照得最遠
         if (lr > 0 || burning || lit) lights.push({ x, y, r: Math.max(lr, burning ? 2.5 : 0, lit ? 3 : 0) });
-        if (ch === '白' || world.isBig(x, y)) continue;      // 大字地標整體另畫
+        if (ch === '白' || world.isBig(x, y) || (ch === '舟' && world.shipCells.has(U.key(x, y)))) continue;      // 大字地標、停著的船整體另畫
         const r = U.hash2(x, y, 99);
         let rot = ((r & 255) / 255 - 0.5) * 0.16, scale = (0.84 + ((r >>> 8) & 255) / 255 * 0.16) * d.vis[0];
         let dx = ((r >>> 16) & 255) / 255 * 4 - 2, dy = ((r >>> 24) & 255) / 255 * 4 - 2, alpha = d.vis[1];
@@ -137,6 +145,12 @@
         if (pl.ch === '燈') { ctx.save(); ctx.fillStyle = 'rgba(224,160,32,' + (0.10 + 0.08 * Math.sin(now * 2)) + ')'; ctx.beginPath(); ctx.arc(cx2, cy2, size * 0.9, 0, 7); ctx.fill(); ctx.restore(); }
         this.drawGlyph(pl.ch, DB[pl.ch].ink, cx2, cy2, size, rot, pl.ch === '寺' ? 0.85 : 1);
       }
+      // —— 停著的船：一個「舟」字佔整個船身，船頭有首骨就寫個小「骨」
+      for (const rec of world.ships.values()) {
+        const c = world.shipCenter(rec);
+        if (c.x + 2 < x0 || c.x - 2 > x1 || c.y + 2 < y0 || c.y - 2 > y1) continue;
+        this.drawShip(ox + c.x * T, oy + c.y * T, rec, now, g.shipSkulls(rec).length > 0);
+      }
       // —— 實體
       for (const e of g.ents.list) {
         if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) continue;
@@ -146,6 +160,13 @@
           const wob = Math.sin(now * 6 + e.bob) * 0.12, fade = e.fade !== undefined ? e.fade : 1;
           ctx.save(); ctx.fillStyle = 'rgba(59,53,80,' + (0.16 * fade) + ')'; ctx.beginPath(); ctx.arc(px, py, T * (0.62 + (1 - fade) * 0.8), 0, 7); ctx.fill(); ctx.restore();
           this.drawGlyph('魄', d.ink, px, py + Math.sin(now * 3 + e.bob) * 3 - (1 - fade) * T * 0.6, T * (1.0 + (1 - fade) * 0.5), wob, (e.frozen ? 0.5 : 0.78) * fade);
+          continue;
+        }
+        if (e.type === '蜃') {       // 蜃：一個大字，身下一圈暗水旋著
+          ctx.save(); ctx.strokeStyle = 'rgba(34,63,90,0.35)'; ctx.lineWidth = 2;
+          for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(px, py, T * (0.7 + i * 0.25), now * (1 + i * 0.3) + i, now * (1 + i * 0.3) + i + 4); ctx.stroke(); }
+          ctx.restore();
+          this.drawGlyph('蜃', d.ink, px, py + Math.sin(now * 1.2 + e.bob) * 3, T * 1.45, Math.sin(now * 0.8 + e.bob) * 0.06, 1);
           continue;
         }
         const size = e.type === '虎' ? 0.95 : e.type === '龍' ? 1.1 : e.type === '鹿' ? 0.8 : e.type === '魚' ? 0.6 : 0.55;
@@ -171,8 +192,16 @@
         ctx.fillStyle = 'rgba(30,20,10,0.16)'; ctx.beginPath(); ctx.ellipse(px, py + T * 0.44, T * 0.32, T * 0.1, 0, 0, 7); ctx.fill();
         ctx.restore();
         if (g.totemOn && g.totemOn()) { ctx.save(); ctx.strokeStyle = 'rgba(180,57,42,.3)'; ctx.lineWidth = 2; ctx.setLineDash([8, 10]); ctx.lineDashOffset = -now * 20; ctx.strokeRect(px - T * 7.5, py - T * 7.5, T * 15, T * 15); ctx.restore(); }   // 七格內（方框，與判定一致）
-        if (p.sailing) this.drawGlyph('舟', G.INK.brown, px, py + T * 0.18, T * 1.5, Math.sin(now * 1.5) * 0.04, 0.95);
-        this.drawGlyph('人', G.INK.black, px, py - (p.sailing ? T * 0.12 : 0), T * 1.18, rot, 1);
+        if (p.sailing && p.ship) {   // 船身跟著人：孤帆一乘二、方舟二乘三，人站在船身裡
+          const off = (G.SHIPS[p.ship.kind] || G.SHIPS['孤帆']).off; let sx = 0, sy = 0; for (const [dx, dy] of off) { sx += dx; sy += dy; }
+          this.drawShip(ox + (p.rx + sx / off.length) * T + T / 2, oy + (p.ry + sy / off.length) * T + T / 2, p.ship, now, g.shipWarded());
+        }
+        if (p.swimming) {            // 落水：一圈圈水紋，人只露半身
+          ctx.save(); ctx.strokeStyle = 'rgba(47,88,120,0.5)'; ctx.lineWidth = 1.5;
+          for (let i = 0; i < 2; i++) { const r = T * (0.35 + ((now * 0.8 + i * 0.5) % 1) * 0.45); ctx.globalAlpha = 1 - ((now * 0.8 + i * 0.5) % 1); ctx.beginPath(); ctx.ellipse(px, py + T * 0.25, r, r * 0.4, 0, 0, 7); ctx.stroke(); }
+          ctx.restore();
+        }
+        this.drawGlyph('人', G.INK.black, px, py - (p.sailing ? T * 0.12 : 0) + (p.swimming ? T * 0.12 + Math.sin(now * 3) * 2 : 0), T * 1.18, rot, p.swimming ? 0.8 : 1);
         ctx.save(); ctx.fillStyle = G.INK.red; ctx.beginPath(); ctx.arc(px + T * 0.34, py + T * 0.36, T * 0.07, 0, 7); ctx.fill(); ctx.restore();
       }
       // —— 面前的格子
@@ -306,6 +335,7 @@
         if (i < 0 || j < 0 || i >= N || j >= N) continue;
         if (e.type === '虎') { m.fillStyle = '#b4392a'; m.fillRect(i * px - 1, j * px - 1, px + 2, px + 2); }
         else if (e.type === '魄') { m.fillStyle = '#3b3550'; m.fillRect(i * px - 1, j * px - 1, px + 2, px + 2); }
+        else if (e.type === '蜃') { m.fillStyle = '#223f5a'; m.fillRect(i * px - 2, j * px - 2, px + 4, px + 4); }
         else if (e.type === '豹' || e.type === '狼' || e.type === '蛇') { m.fillStyle = '#8a2a1a'; m.fillRect(i * px, j * px, px + 1, px + 1); }
       }
       m.fillStyle = '#1c1a17'; m.beginPath(); m.arc(half * px + px / 2, half * px + px / 2, 3, 0, 7); m.fill();
@@ -319,7 +349,7 @@
 
     // 全島地圖：走過的地方才有墨，地標蓋朱印
     drawBigMap(g, cv) {
-      const w = g.world, p = g.player, R = G.ISLAND_R + 16, N = R * 2, S = cv.width, px = S / N;
+      const w = g.world, p = g.player, R = G.SEA_EDGE, N = R * 2, S = cv.width, px = S / N;
       const m = cv.getContext('2d');
       m.fillStyle = '#efe5cf'; m.fillRect(0, 0, S, S);
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {

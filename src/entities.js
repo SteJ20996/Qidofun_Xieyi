@@ -15,6 +15,7 @@
       this.list = [];
       this.spawnAcc = 0;
       this.ghostAcc = 0;
+      this.seaP = 1 / 160;       // 行船時每一點五息有這麼點機會浮上一頭蜃（平均約二百四十息一頭）
     }
     at(x, y) { for (const e of this.list) if (e.x === x && e.y === y) return e; return null; }
     beastAt(x, y) { for (const e of this.list) if (e.x === x && e.y === y && DB[e.type].kind === 'beast' && e.type !== '魄' && e.type !== '龍' && !(e.type === '鷹' && e.tame)) return e; return null; }   // 龍與馴了的鷹不擋路
@@ -46,6 +47,7 @@
       if (SCARED.indexOf(type) >= 0 && this.world.scared(x, y)) return false;
       if (type === '鳥') return d.kind === 'plant' || d.kind === 'ground';
       if (type === '魚') return d.kind === 'water';
+      if (type === '蜃') return ch === '淼';                                // 蜃只從深海浮上來
       if (type === '鹿') return '林木草竹棉麻果'.indexOf(ch) >= 0;
       if (type === '虎') return ch === '森' || (night && ch === '林');
       if (type === '豹') return ch === '森' || ch === '林';
@@ -61,7 +63,7 @@
       const ch = this.world.get(x, y), d = DB[ch];
       if (type === '魄') return d.kind !== 'fire';
       if (type === '鳥' || type === '龍' || type === '鷹') return d.kind !== 'fire';
-      if (type === '魚') return d.kind === 'water';
+      if (type === '魚' || type === '蜃') return d.kind === 'water';
       if (d.walk <= 0 || d.shelter || d.gate) return false;
       if (SCARED.indexOf(type) >= 0 && this.world.scared(x, y)) return false;
       if ((type === '虎' || type === '豹') && !night) return d.kind === 'plant';   // 白天不出林
@@ -149,6 +151,11 @@
           if (type === '龜' && Math.random() > 0.1) continue;         // 龜少見
           this.spawnNear(type, p, 14, 30, night);
         }
+        // 蜃：只在玩家行船或落水時，從十到十六格外的深海浮上來；機率低，一次只一隻
+        if ((p.sailing || p.swimming) && this.count('蜃') === 0 && Math.random() < this.seaP) {
+          const m = this.spawnNear('蜃', p, 10, 16, night, { moveT: 1.5, fogT: 4 });
+          if (m && g.seaMonsterRose) g.seaMonsterRose(m);
+        }
       }
       // —— 魄：第十三夜起夜行
       this.ghostAcc += dt;
@@ -181,6 +188,10 @@
           }
           e.frozen = false;
         }
+        if (e.type === '蜃') {          // 吞吐霧障：每隔一陣往玩家那邊吐一片海霧
+          e.fogT = (e.fogT === undefined ? 6 : e.fogT) - dt;
+          if (e.fogT <= 0) { e.fogT = 16 + Math.random() * 10; if (d <= 16 && (p.sailing || p.swimming)) w.spawnSeaFog(e.x, e.y, p.x, p.y); }
+        }
         if (e.atk > 0) e.atk -= dt;
         if (e.calm > 0) e.calm -= dt;
         e.moveT -= dt;
@@ -196,6 +207,17 @@
             if (e.foe.hp <= 0) { g.companionDied(e.foe, e); e.foe = null; }
             continue;
           }
+        }
+        if (e.type === '蜃') {
+          const atSea = p.sailing || p.swimming, warded = p.sailing && g.shipWarded();
+          const dShip = p.sailing ? Math.min(...g.shipCells().map(([x, y]) => U.cheb(e.x, e.y, x, y))) : d;   // 到船身最近一格
+          if (atSea && warded && dShip <= 3) { e.moveT = 0.5; this.stepTo(e, p.x, p.y, true, night); if (!e.warned) { e.warned = true; g.message('船頭的' + g.shipSkullName() + '鎮著，蜃不敢近。'); } }
+          else if (atSea && !warded && dShip <= 1) {
+            if (e.atk <= 0) { e.atk = 2.5; if (p.sailing) g.ramShip(e); else g.hit(e, DB['蜃'].atk); }
+            e.moveT = 0.6;
+          } else if (atSea && d <= 14) { e.moveT = 0.4; this.stepTo(e, p.x, p.y, false, night); }
+          else { e.moveT = 1 + Math.random() * 1.5; this.wander(e, night, null); }
+          continue;
         }
         if (e.type === '龍') {
           if (d > 4) { e.moveT = 0.22; this.stepTo(e, p.x, p.y, false, night); }
@@ -266,8 +288,8 @@
       }
     }
 
-    serialize() { return this.list.filter(e => e.type === '龍' || (e.type === '鷹' && e.tame)).map(e => ({ t: e.type, x: e.x, y: e.y, hp: e.hp, sta: e.sta, tame: e.tame })); }
-    restore(arr) { for (const s of arr || []) this.add(s.t, s.x, s.y, s.tame ? { hp: s.hp, sta: s.sta, tame: true } : {}); }
+    serialize() { return this.list.filter(e => e.type === '龍' || e.type === '蜃' || (e.type === '鷹' && e.tame)).map(e => ({ t: e.type, x: e.x, y: e.y, hp: e.hp, sta: e.sta, tame: e.tame })); }
+    restore(arr) { for (const s of arr || []) { if (s.t === '蜃') continue; this.add(s.t, s.x, s.y, s.tame ? { hp: s.hp, sta: s.sta, tame: true } : {}); } }   // 蜃不跟著讀檔回來：沒解決的蜃由遊戲端扣膽氣
   }
 
   root.Entities = Entities;

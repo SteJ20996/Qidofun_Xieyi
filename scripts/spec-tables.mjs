@@ -25,6 +25,8 @@ const dbRows = Object.entries(DB).map(([ch, d]) => {
   if (d.hp) o.push('命 ' + d.hp);
   if (d.atk) o.push('撲咬 ' + d.atk);
   if (d.bite) o.push('毒咬 ' + d.bite + '/秒');
+  if (d.ram) o.push('撞船 ' + d.ram);
+  if (d.sea) o.push('海中之物');
   if (d.passive) o.push('不惹不咬');
   if (d.place) o.push('可放置');
   return row([ch, d.s, d.kind, num(d.walk ?? 1), d.yield ? list(d.yield) : '', d.time ?? '', d.need ? '需' + d.need : d.fast ? '用' + d.fast + '快一倍' : '', d.yield ? (d.to || '白') : '', d.regrow ?? '', o.join('；'), d.flavor]);
@@ -49,6 +51,7 @@ const itemRows = Object.entries(ITEMS).map(([n, it]) => {
   if (it.life) a.push(it.kind === 'wear' ? '壽命 ' + it.life + ' 日' : '手持夜裡燒 ' + it.life + ' 息');
   if (it.fuel) a.push('蠟燭 ' + it.fuel + ' 息');
   if (it.single) a.push('不疊');
+  if (it.ward) a.push('鎮船 ' + it.ward + ' 日');
   return row([n, it.s, a.join('；'), it.flavor]);
 });
 const itemTable = ['| 物品 | 畫 | 屬性 | 說明 |', '|---|---|---|---|', ...itemRows];

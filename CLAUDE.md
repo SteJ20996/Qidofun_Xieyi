@@ -2,7 +2,7 @@
 
 標題《山海有形》，起始頁第一行「字裡行間 · 一紙之島」，標語「寫木為舟 · 寫水成淵」。舊名「寫意」只留在內部識別名（存檔鍵 `xieyi.*`、`dist/xieyi.html`、`window.XIEYI`、分支名），不要改，改了舊存檔讀不到。
 
-由漢字構成的生存與探索沙盒：收集、製作、砌牆；蛇蛛蟾豹狼、半友好可馴的鷹、少見的龜；第十三夜起怕光穿牆的魄；雨天雨夜會澆壞屋外的燈（屋裡不怕）；第二日起每日兩擲各 25% 起霧障，帶扇子可吹散，硬闖五樣數值各掉一成（不致命）；命飽暖力愜六條數值加膽氣；膽氣八重造船渡海，十重五件衣甲穿齊即山海衣，卅一重可鑄九閽鳴雷；山有煤鐵，鐵可打甲、鍛鋼具；鐵礦脈三十分之一出鎢礦，精煤煉鎢鋼，鎢鋼具與甲更強；錦囊擴囊；棉麻草織漁網，四小成中、四中或十三小成大；三種難度；死落荷包（膽氣減六成、耐久對折）；鼎煉丹加命上限；野果不分堆、每顆各記日數、先吃陳的。純瀏覽器單頁，零依賴，全繁體。
+由漢字構成的生存與探索沙盒：收集、製作、砌牆；蛇蛛蟾豹狼、半友好可馴的鷹、少見的龜；第十三夜起怕光穿牆的魄；雨天雨夜會澆壞屋外的燈（屋裡不怕）；第二日起每日兩擲各 25% 起霧障，帶扇子可吹散，硬闖五樣數值各掉一成（不致命）；島半徑 85、海到 113（v0.11 面積加倍）；殺虎豹狼偶得首骨，放船頭鎮船（孤帆兩個、方舟五個，各鎮各的、到期風化）；船分孤帆（一乘二、命 120）與方舟（二乘三、命 420、鎢鋼二、船快六成），修船回四分之一、第 n 次要 n 塊木板；海上的蜃會撞船、吐海霧，船毀了六十息內游上岸否則溺死；不滿卅一重出海先問（敬勇者之無畏，建議帶神兵）；沒解決的蜃讀檔散掉、膽氣減五重；命飽暖力愜六條數值加膽氣；膽氣八重造船渡海，十重五件衣甲穿齊即山海衣，卅一重可鑄九閽鳴雷（陸上）與燭龍焚溟（海上，海中之物全傷、陸上天上減半）；山有煤鐵，鐵可打甲、鍛鋼具；鐵礦脈三十分之一出鎢礦，精煤煉鎢鋼，鎢鋼具與甲更強；錦囊擴囊；棉麻草織漁網，四小成中、四中或十三小成大；三種難度；死落荷包（膽氣減六成、耐久對折）；鼎煉丹加命上限；野果不分堆、每顆各記日數、先吃陳的。純瀏覽器單頁，零依賴，全繁體。
 
 ## 語言
 - 遊戲文案、程式註解、README、回覆一律繁體中文（台灣用語）。
@@ -16,7 +16,9 @@
 
    **遊戲入口（點開即玩）：** https://claude.ai/artifact/AaW9h52xsssPP5beWgBErX
 
+5. 提交、推到分支 `claude/xieyi-open-world`，然後**直接合進 `main`**（開 PR、合併，不用等人審）。GitHub 首頁顯示的是 `main`，沒合進去首頁就看不到。
+
 ## 位置
-- 分支 `claude/xieyi-open-world`；PR #1 已在 v0.10 合併進 `main`（GitHub 首頁顯示的是 `main`）。之後的更新要再合進 `main`，首頁才看得到。
+- 分支 `claude/xieyi-open-world`；每次更新都合進 `main`（PR #1 在 v0.10、PR #2 在 v0.12.1 合併）。
 - 規則表：`src/glyphs.js`（`DB` 字庫與取物、`ITEMS` 物品與工具、`RECIPES` 配方、`PLACES` 地標、`STELES` 碑文）。
-- 數值：`src/game.js` 頂部常數（`GHOST_NIGHT`=13、`FERMENT_NIGHTS`=15、`SLOTS`=16、`TOOL_SLOTS`=6、`SHIP_LEVEL`=8、`TOTEM_LEVEL`=10、`DECAY_LEVEL`=31、`LEVEL_UNIT`=20 與 `levelCost(n)`=round(20×(1+0.1n)²)、`ARMOR_LIFE`=180 日、`HIT_MULT`、`WEAR_CAP`=6、`REPAIR_WM`=1.5、`HAT_FUEL`=400、`BASE_SLOTS`=16／`BASE_TOOLS`=6／`MAX_POUCHES`=4、`DIFF` 難度表、`HAMMER_*`）與 `updateStats`；天氣在 `src/world.js` 頂部（`RAIN_MIN`=¼日、`RAIN_MAX`=1 日、`RAIN_GAP_MIN`=1 日、`RAIN_GAP_MAX`=4 日、`RAIN_LAMP_P`=1/1500 每盞每息、`ROOM_LIMIT`=121 格內圍得住才算屋裡，`covered()`／`rainLamps()`；霧障 `FOG_ROLLS`=2、`FOG_P`=0.25、`FOG_MIN`–`FOG_MAX`=8–12 格、`FOG_NEAR`=8–28 格、`FOG_LIFE`=1 日，`spawnFog()`）；霧障的代價與扇子在 `src/game.js`（`FOG_TOLL`=0.1、`FAN_REACH`=3、`checkFog()`／`fogToll()`）。煙霧測試開頭把 `world.fogP` 設 0，免得真隨機的霧在別的測試途中跳出彈窗。生靈的命在 `src/glyphs.js` 的 `DB`（鹿 30、龜 50、鷹 60、蛇蛛蟾 90、豹狼 160、虎 300、龍 500；敵對獸撲咬 1.6 秒、毒咬 2.67 秒一次，在 `src/entities.js` 的 `maul`／`bite`），工具傷害在 `ITEMS`（石刀 30、石劍 40、鎬鋤斧 15；鋼具 ×1.4、耐久 56；鎢鋼具再 ×1.5、耐久 112；九閽鳴雷 120）。
+- 數值：`src/game.js` 頂部常數（`GHOST_NIGHT`=13、`FERMENT_NIGHTS`=15、`SLOTS`=16、`TOOL_SLOTS`=6、`SHIP_LEVEL`=8、`TOTEM_LEVEL`=10、`DECAY_LEVEL`=31、`LEVEL_UNIT`=20 與 `levelCost(n)`=round(20×(1+0.1n)²)、`ARMOR_LIFE`=180 日、`HIT_MULT`、`WEAR_CAP`=6、`REPAIR_WM`=1.5、`HAT_FUEL`=400、`BASE_SLOTS`=16／`BASE_TOOLS`=6／`MAX_POUCHES`=4、`DIFF` 難度表、`HAMMER_*`）與 `updateStats`；天氣在 `src/world.js` 頂部（`RAIN_MIN`=¼日、`RAIN_MAX`=1 日、`RAIN_GAP_MIN`=1 日、`RAIN_GAP_MAX`=4 日、`RAIN_LAMP_P`=1/1500 每盞每息、`ROOM_LIMIT`=121 格內圍得住才算屋裡，`covered()`／`rainLamps()`；霧障 `FOG_ROLLS`=2、`FOG_P`=0.25、`FOG_MIN`–`FOG_MAX`=8–12 格、`FOG_NEAR`=8–28 格、`FOG_LIFE`=1 日，`spawnFog()`）；霧障的代價與扇子在 `src/game.js`（`FOG_TOLL`=0.1、`FAN_REACH`=3、`checkFog()`／`fogToll()`）。島的大小在 `src/glyphs.js`（`ISLAND_R`=85、`SEA_EDGE`=113）。船在 `src/glyphs.js` 的 `SHIPS`（孤帆 1×2 命 120 兩格、方舟 2×3 命 420 五格，`off` 是船身相對人的格子）；海在 `src/game.js`（`SHIP_REPAIR_FRAC`=0.25、`SWIM_TIME`=60、`SWIM_DRAIN`=2、`SWIM_DMG`=0.75、`GOD_SELF`=0.1、`SEA_WARN_LEVEL`=31、`SEA_PENALTY`=5、`SKULL_P`=0.35、`SKULL_TWO`=0.3、`SEA_FOLK`）與 `src/world.js`（海霧 6–10 格九十息；停著的船 `ships`／`shipCells`／`addShip`／`removeShip`）；蜃的出現機率是 `ents.seaP`=1/160（每一點五息，只在行船或落水時），煙霧測試開頭同樣設 0。煙霧測試開頭把 `world.fogP` 設 0，免得真隨機的霧在別的測試途中跳出彈窗。生靈的命在 `src/glyphs.js` 的 `DB`（鹿 30、龜 50、鷹 60、蛇蛛蟾 90、豹狼 160、虎 300、龍 500、蜃 900；敵對獸撲咬 1.6 秒、毒咬 2.67 秒一次，在 `src/entities.js` 的 `maul`／`bite`），工具傷害在 `ITEMS`（石刀 30、石劍 40、鎬鋤斧 15；鋼具 ×1.4、耐久 56；鎢鋼具再 ×1.5、耐久 112；九閽鳴雷與燭龍焚溟 120、耐久 199）。
