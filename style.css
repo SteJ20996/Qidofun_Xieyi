@@ -41,6 +41,11 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 .bar.sta > div { background: linear-gradient(180deg, #5a8a6a, #2f5a40); }
 .bar.san > div { background: linear-gradient(180deg, #6a7ab0, #3a4a80); }
 .bar.low { animation: low-pulse 1s ease-in-out infinite; }
+/* 數值條上方的燈：不到五成亮黃，不到四分之一轉紅閃 */
+.bar .lamp { position: absolute; left: 50%; top: -15px; width: 9px; height: 9px; margin-left: -5.5px; border-radius: 50%; border: 1px solid rgba(28,26,23,.45); background: rgba(239,229,207,.6); transition: background .2s, box-shadow .2s; }
+.bar.warn .lamp { background: #e0a23c; border-color: #a8721a; box-shadow: 0 0 6px 2px rgba(224,162,60,.75); }
+.bar.low .lamp { background: var(--red); border-color: var(--red-2); box-shadow: 0 0 7px 3px rgba(180,57,42,.75); animation: lamp-blink .8s steps(2, start) infinite; }
+@keyframes lamp-blink { 50% { opacity: .35; } }
 @keyframes low-pulse { 50% { box-shadow: 0 0 0 3px rgba(180,57,42,.45); } }
 
 #topright { position: absolute; right: calc(18px + env(safe-area-inset-right, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
@@ -201,6 +206,13 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 .panel .grid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .panel .grid .slot { cursor: pointer; }
 .panel.fogpanel { max-width: 560px; }
+.panel.stovepanel { max-width: 640px; }
+.panel.stovepanel #stove-fire { font-size: 16px; }
+.stoverow { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.stoverow button { font: 18px var(--font); padding: 6px 14px; text-align: left; }
+.stoverow button small { font: 12px var(--ui); opacity: .75; margin-left: 4px; }
+.stoverow button:disabled { opacity: .45; cursor: default; transform: none; }
+.stoverow button:disabled:hover { background: var(--ink); border-color: var(--ink); }
 .panel.fogpanel h2 { margin: 0 0 8px; }
 .panel.fogpanel p { line-height: 1.8; }
 .overlay.soft { background: rgba(20,16,30,.45); backdrop-filter: blur(2px); pointer-events: none; }

@@ -16,6 +16,10 @@
   const SEA_FOG_MIN = 6, SEA_FOG_MAX = 10, SEA_FOG_LIFE = 90;   // 蜃吐的海霧：六到十格，九十息就散
   const SHIPS = G.SHIPS;                                        // 船的兩種（孤帆、方舟）：大小、命、船頭首骨格數
   const RAIN_MIN = DAY * 0.25, RAIN_MAX = DAY * 1.0, RAIN_GAP_MIN = DAY * 1.0, RAIN_GAP_MAX = DAY * 4.0, RAIN_LAMP_P = 1 / 1500, ROOM_LIMIT = 121;
+  // 小屋：牆與門圍起不超過 SAFE_ROOM 格的空間，裡面不生生靈、除玩家外的生靈（連魄、鷹、龍）也進不去
+  const SAFE_ROOM = 45;
+  // 霧障會動：每 FOG_STEP 息挪一格，速度慢；FOG_LIGHT_R 格內有光（燈、火、旺灶、玩家手裡的光）就往反方向躲，沒光就慢慢亂飄
+  const FOG_STEP = 6, FOG_LIGHT_R = 10;
 
   class World {
     constructor(seed) {
@@ -61,7 +65,9 @@
       this.fogCells = new Map(); // "x,y" -> id
       this.fogPlan = [];         // 今天還沒起的霧（世界時間）
       this.fogDay = Math.floor(this.time / DAY);   // 已經擲過的那一日（第一日不起霧）
-      this.fogSeq = 0; this.fogP = FOG_P;
+      this.fogSeq = 0; this.fogP = FOG_P; this.fogStep = FOG_STEP;
+      this.playerLit = () => false;   // 回調：玩家手裡（或帽上）有沒有光，霧障躲光用
+      this.roomCache = new Map();     // "x,y" -> 是不是小屋裡；每步與每次改格清掉
       this.onFog = null;         // 回調：起了一片霧
       this.ships = new Map();    // 錨點 "x,y" -> { kind, hp, skulls: [[首骨, 鎮到幾時]…], repairs, cells }：停著的船
       this.shipCells = new Map(); // 船身每一格 -> 錨點
@@ -99,6 +105,7 @@
     info(x, y) { return DB[this.get(x, y)]; }
     set(x, y, ch) {
       const k = U.key(x, y), old = this.get(x, y);
+      if (this.roomCache.size) this.roomCache.clear();
       if (ch === this.base(x, y)) this.diff.delete(k); else this.diff.set(k, ch);
       if (DB[ch].flam <= 0) this.burn.delete(k);
       if ((old === '灶' || old === '鼎') && ch !== '灶' && ch !== '鼎') this.stoves.delete(k);
@@ -218,7 +225,7 @@
     fogAt(x, y) { const id = this.fogCells.get(U.key(x, y)); return id ? this.fogs.get(id) : null; }
     fogLand(x, y) { const d = this.info(x, y); return d.walk > 0 && d.kind !== 'water' && DB[this.raw(x, y)].kind !== 'water'; }
     addFog(cells, until, sea) {
-      const id = ++this.fogSeq, f = { id, cells: new Set(cells), until, sea: !!sea };
+      const id = ++this.fogSeq, f = { id, cells: new Set(cells), until, sea: !!sea, moveAt: this.time + this.fogStep, dir: null };
       this.fogs.set(id, f); for (const k of f.cells) this.fogCells.set(k, id);
       return f;
     }
@@ -290,6 +297,48 @@
     }
     shipCenter(rec) { let sx = 0, sy = 0; for (const [x, y] of rec.cells) { sx += x; sy += y; } return { x: sx / rec.cells.length + 0.5, y: sy / rec.cells.length + 0.5 }; }
     fogCenter(f) { let sx = 0, sy = 0; for (const k of f.cells) { const [x, y] = U.unkey(k); sx += x; sy += y; } return { x: sx / f.cells.size, y: sy / f.cells.size }; }
+    // 最近的光：地上的燈、火場、旺灶，r 格內找最近的一處
+    nearestLight(x, y, r) {
+      let best = null;
+      for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) {
+        const d = this.info(x + i, y + j);
+        if (!(d.light > 0 || this.isBurning(x + i, y + j) || this.stoveLit(x + i, y + j))) continue;
+        const dist = Math.hypot(i, j); if (!best || dist < best.d) best = { x: x + i, y: y + j, d: dist };
+      }
+      return best;
+    }
+    // 霧障挪一格：FOG_LIGHT_R 格內有光就往反方向躲（燈火、旺灶、手裡有光的玩家，取最近的）；沒光就順著原方向慢慢飄，偶爾轉向。
+    // 整片一起挪，陸上的霧只走陸地、海霧只走水面；挪不動就原地不動。可以飄到玩家身上（沒帶光的玩家會被霧追上）
+    moveFog(f, px, py) {
+      const c = this.fogCenter(f), R = U.trueRand;
+      let src = this.nearestLight(Math.round(c.x), Math.round(c.y), FOG_LIGHT_R);
+      if (this.playerLit()) { const d = Math.hypot(px - c.x, py - c.y); if (d <= FOG_LIGHT_R && (!src || d < src.d)) src = { x: px, y: py, d }; }
+      let order;
+      if (src) {
+        const ax = c.x - src.x, ay = c.y - src.y;   // 背光的方向
+        order = N4.slice().sort((a, b) => (b[0] * ax + b[1] * ay) - (a[0] * ax + a[1] * ay));
+        f.dir = order[0];
+      } else {
+        if (!f.dir || R() < 0.2) f.dir = N4[Math.floor(R() * 4)];
+        order = [f.dir].concat(N4.filter(d => d !== f.dir).sort(() => R() - 0.5));
+      }
+      const ok = f.sea ? (x, y) => this.fogSea(x, y) : (x, y) => this.fogLand(x, y);
+      for (const [dx, dy] of order) {
+        const next = [];
+        let fits = true;
+        for (const k of f.cells) {
+          const [x, y] = U.unkey(k), nx = x + dx, ny = y + dy, nk = U.key(nx, ny), other = this.fogCells.get(nk);
+          if (!ok(nx, ny) || (other && other !== f.id)) { fits = false; break; }
+          next.push(nk);
+        }
+        if (!fits) continue;
+        for (const k of f.cells) if (this.fogCells.get(k) === f.id) this.fogCells.delete(k);
+        f.cells = new Set(next); for (const k of f.cells) this.fogCells.set(k, f.id);
+        f.dir = [dx, dy];
+        return true;
+      }
+      return false;
+    }
 
     // ---------- 天氣：雨 ----------
     raining() { return this.time < this.rainUntil; }
@@ -305,6 +354,24 @@
         for (const [dx, dy] of N4) push(cx + dx, cy + dy);
       }
       return true;
+    }
+    // 小屋：從這格順著能走的格子漫延（門算牆），SAFE_ROOM 格內圍得住就是小屋裡。牆上、門上、水裡都不算
+    sheltered(x, y) {
+      const k0 = U.key(x, y), hit = this.roomCache.get(k0);
+      if (hit !== undefined) return hit;
+      let res = false;
+      if (this.passable(x, y)) {
+        const seen = new Set([k0]), q = [[x, y]];
+        res = true;
+        while (q.length) {
+          if (seen.size > SAFE_ROOM) { res = false; break; }
+          const [cx, cy] = q.shift();
+          for (const [dx, dy] of N4) { const nx = cx + dx, ny = cy + dy, k = U.key(nx, ny); if (!seen.has(k) && this.passable(nx, ny)) { seen.add(k); q.push([nx, ny]); } }
+        }
+        if (res) for (const k of seen) this.roomCache.set(k, true);   // 同一間屋裡的格子一起記下
+      }
+      this.roomCache.set(k0, res);
+      return res;
     }
     // 每息一次：屋外的燈各擲一次真隨機，中了就澆壞、消失
     rainLamps() {
@@ -345,6 +412,8 @@
         for (let i = 0; i < FOG_ROLLS; i++) if (U.trueRand() < this.fogP) this.fogPlan.push(today * DAY + U.trueRand() * DAY);
       }
       for (const [id, f] of this.fogs) if (this.time >= f.until) this.removeFog(id);
+      for (const f of this.fogs.values()) if (this.time >= f.moveAt) { f.moveAt = this.time + this.fogStep; this.moveFog(f, px, py); }   // 霧障慢慢挪，躲著光
+      this.roomCache.clear();
       // —— 灶裡的柴
       for (const [k, f] of this.stoves) { if (f > 0) this.stoves.set(k, Math.max(0, f - STEP)); }
       // —— 火勢蔓延

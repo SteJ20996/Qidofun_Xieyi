@@ -50,7 +50,7 @@
     '炎': { s: 8, walk: 0, kind: 'fire', light: 3.5, ink: INK.red, flavor: '二火為炎。' },
     '焱': { s: 12, walk: 0, kind: 'fire', light: 4.5, ink: INK.red, flavor: '三火為焱，萬物焦土。' },
     // —— 造物（從囊中放到地上）
-    '灶': { s: 7, walk: 0, kind: 'object', ink: INK.red, yield: { '灶': 1 }, time: 1.0, place: true, flavor: '六石為灶。選中木或煤按 F 添柴；火旺時，魚、肉、蛇肉、蟾蜍按 F 烤熟，沙三燒成兩瓶，海水瓶蒸餾成淡水，鐵礦二加煤一煉成鐵。' },
+    '灶': { s: 7, walk: 0, kind: 'object', ink: INK.red, yield: { '灶': 1 }, time: 1.0, place: true, flavor: '六石為灶。面向灶按 F 開灶：添柴、烤魚肉、燒瓶、蒸餾、煉鐵煉鎢鋼，都在灶裡做。' },
     '鼎': { s: 13, walk: 0, kind: 'object', ink: INK.red, yield: { '鼎': 1 }, time: 1.5, place: true, flavor: '煉丹的鼎。添柴旺火，選中蟾蜍肉或毒蟾肉按 F 煉丹：前三顆無毒肉 8%、有毒肉 12%，第四顆起 1%、2%，真隨機。' },
     '磚': { s: 16, walk: 0, kind: 'object', ink: INK.brick, yield: { '磚': 1 }, time: 4.0, fast: '鎬', place: true, flavor: '二土一草成磚。獸不得過；魄能穿。鎬拆之快。' },
     '床': { s: 7, walk: 0, kind: 'object', ink: INK.brown, yield: { '床': 1 }, time: 1.0, place: true, flavor: '六團棉、兩塊木。夜裡面向它按 R，一覺到天明。' },
@@ -85,9 +85,9 @@
     '蛇': { s: 11, kind: 'beast', ink: INK.beast, hp: 90, bite: 3, flavor: '草木之交的毒蛇。約三息一口，一口五秒毒；連咬不斷（兩口相隔不過六息）滿十五口必死。' },
     '蛛': { s: 12, kind: 'beast', ink: INK.beast, hp: 90, bite: 3, passive: true, flavor: '除草時驚出的蜘蛛。不惹不咬；咬起來與蛇同。' },
     '蟾': { s: 19, kind: 'beast', ink: INK.beast, hp: 90, bite: 2, passive: true, flavor: '水邊的蟾蜍。紅的有毒會反咬；生吃皆中毒，烤了吃令人愜意。' },
-    '魄': { s: 15, kind: 'beast', ink: INK.ghost, hp: 1, flavor: '第十三夜起夜行。無形，穿牆，不傷身而蝕心：四格內無光，愜意與力氣俱減。火把、蠟燭、燈帽、燈，六格內即煙滅。白日藏於林中。龜甲卜得吉兆，五日不來。' },
+    '魄': { s: 15, kind: 'beast', ink: INK.ghost, hp: 1, flavor: '第十三夜起夜行。無形，穿牆（四十五格內的小屋除外），不傷身而蝕心：四格內無光，愜意與力氣俱減。火把、蠟燭、燈帽、燈，六格內即煙滅。白日藏於林中。龜甲卜得吉兆，五日不來。' },
     '鷹': { s: 24, kind: 'beast', ink: INK.beast, hp: 60, atk: 12, flavor: '山間的鷹，半友好：不惹不啄，打牠就反啄。手持魚面向牠按 F 投魚可馴（第一隻 35%、第二隻 25%、第三隻起 10%）；馴了跟你走、替你打獸，餵魚回力。' },
-    '龜': { s: 16, kind: 'beast', ink: INK.rock, hp: 50, passive: true, flavor: '水邊的龜，少見，不咬人。殺之得龜甲，灼而卜之。' },
+    '龜': { s: 16, kind: 'beast', ink: INK.rock, hp: 50, passive: true, flavor: '水邊的龜，少見，不咬人。靈物也，殺之不祥、愜意減三十；得龜甲，灼而卜之。' },
     '蜃': { s: 13, kind: 'beast', ink: INK.red, hp: 900, atk: 30, ram: 25, sea: true, flavor: '海中的大蜃，吐氣成霧（蜃樓）。命九百，只在海上：撞船一下二十五，咬落水的人一口三十，所過之處吞吐霧障。船頭有獸首骨鎮著就不敢撞。九閽鳴雷打牠減半，燭龍焚溟專克。' },
     '龍': { s: 16, kind: 'beast', light: 3, ink: INK.red, hp: 500, flavor: '洞中之龍。隨你同行，夜能照路，獸與魄不敢近。' },
   };
@@ -186,10 +186,11 @@
     '方舟': { w: 2, h: 3, hp: 420, slots: 5, speed: 0.6, off: [[0, 0], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]] },   // 船快是孤帆的六成   // 第一格是人站的那格（左邊中間）
   };
   // 製作欄的大類（左側選）：每條配方照 id 歸類，沒列到的進「材料」
-  const CRAFT_CATS = ['全部', '居所', '工具', '衣甲', '燈火', '漁船', '食藥', '材料'];
+  const CRAFT_CATS = ['全部', '居所', '工具', '神兵', '衣甲', '燈火', '漁船', '食藥', '材料'];
   const CAT_OF = {
     '居所': ['brick', 'door', 'bed', 'chest', 'stove', 'cauldron', 'scarecrow', 'bridge'],
-    '工具': ['grind', 'regrind', 'forge', 'forgew', 'fan', 'hammer', 'seagod'],
+    '工具': ['grind', 'regrind', 'forge', 'forgew', 'fan'],
+    '神兵': ['hammer', 'seagod'],
     '衣甲': ['lining', 'pants', 'vest', 'cap', 'shoes', 'ironvest', 'helm', 'ironboots', 'wvest', 'whelm', 'wboots'],
     '燈火': ['torch', 'candle', 'lamp', 'hat'],
     '漁船': ['weir', 'net', 'midnet', 'bignet', 'bignet13', 'raft', 'plank', 'oar', 'sail', 'ship', 'ark'],
