@@ -57,7 +57,7 @@
     '燈': { s: 16, walk: 0, kind: 'object', light: 5, ink: INK.gold, yield: { '燈': 1 }, time: 1.0, place: true, flavor: '石與火把成燈，長明不滅。魄六格內即煙滅。' },
     '橋': { s: 16, walk: 1.0, kind: 'object', flam: 0.3, ink: INK.brown, yield: { '橋': 1 }, time: 1.0, place: true, onWater: true, flavor: '架在水上的橋。' },
     '漁': { s: 14, walk: 0, kind: 'object', ink: INK.water, yield: { '漁': 1 }, time: 1.0, place: true, onWater: true, flavor: '魚梁。放在水上，隔一陣子就有魚。' },
-    '偶': { s: 11, walk: 0, kind: 'object', ink: INK.brown, yield: { '偶': 1 }, time: 1.0, place: true, flavor: '稻草人。三十天內獸不近身：前半十格，後半七格。再放一個可以續到四十天。' },
+    '偶': { s: 11, walk: 0, kind: 'object', ink: INK.brown, yield: { '偶': 1 }, time: 1.0, place: true, flavor: '稻草人。三十天內獸不近身：前半十格，後半七格。再放一個可以續到四十天；面向按 E 拆下，重放重計。' },
     '櫃': { s: 18, walk: 0, kind: 'object', ink: INK.brown, yield: { '櫃': 1 }, time: 1.0, place: true, flavor: '四角用石、四邊用木的櫃子。面向它按 E 開，二十四格。' },
     '舟': { s: 6, walk: 0, kind: 'object', ink: INK.brown, place: true, onWater: true, flavor: '大船。面向它按 E 上船；上了船，深水亦可渡。' },
     '碑': { s: 13, walk: 0, kind: 'object', ink: INK.black, flavor: '古碑，刻著活下去的法子。讀之，力氣漸長。' },
@@ -78,7 +78,7 @@
     '虎': { s: 8, kind: 'beast', ink: INK.beast, hp: 3, atk: 20, flavor: '森中虎，夜行，畏火與光。劍兩下，刀三下。' },
     '豹': { s: 10, kind: 'beast', ink: INK.beast, hp: 4, atk: 10, flavor: '林中豹，快，畏火與光。一撲十滴血。' },
     '狼': { s: 10, kind: 'beast', ink: INK.beast, hp: 4, atk: 10, flavor: '夜裡成群的狼，不怕火，磚與門擋得住。一口十滴血。' },
-    '蛇': { s: 11, kind: 'beast', ink: INK.beast, hp: 3, bite: 3, flavor: '草木之交的毒蛇。每兩秒一口，一口五秒毒；六秒內連咬十五口必死。' },
+    '蛇': { s: 11, kind: 'beast', ink: INK.beast, hp: 3, bite: 3, flavor: '草木之交的毒蛇。每兩秒一口，一口五秒毒；連咬不斷（兩口相隔不過六息）滿十五口必死。' },
     '蛛': { s: 12, kind: 'beast', ink: INK.beast, hp: 3, bite: 3, passive: true, flavor: '除草時驚出的蜘蛛。不惹不咬；咬起來與蛇同。' },
     '蟾': { s: 19, kind: 'beast', ink: INK.beast, hp: 3, bite: 2, passive: true, flavor: '水邊的蟾蜍。紅的有毒會反咬；生吃皆中毒，烤了吃令人愜意。' },
     '魄': { s: 15, kind: 'beast', ink: INK.ghost, hp: 1, flavor: '第十三夜起夜行。無形，穿牆，不傷身而蝕心：四格內無光，愜意與力氣俱減。火把、蠟燭、燈帽、燈，六格內即煙滅。白日藏於林中。' },
@@ -137,7 +137,7 @@
     '果酒': { s: 18, kind: 'food', food: { eat: 12, san: 20, bottle: true }, flavor: '果酒。飽 +12，愜意 +20。' },
     '石刀': { s: 7, kind: 'tool', tool: '刀', dmg: 1, dur: 40, flavor: '獵鹿一刀，打虎三刀。' },
     '石鎬': { s: 23, kind: 'tool', tool: '鎬', dmg: 1, dur: 40, flavor: '鑿山採石、拆磚，快一倍。' },
-    '石鋤': { s: 20, kind: 'tool', tool: '鋤', dmg: 1, dur: 40, flavor: '面向土按 F，鋤之成田。' },
+    '石鋤': { s: 20, kind: 'tool', tool: '鋤', dmg: 1, dur: 40, flavor: '鋤在手，面向土或草按 E，鋤之成田。' },
     '石劍': { s: 20, kind: 'tool', tool: '劍', dmg: 2, dur: 40, flavor: '傷害二。虎兩劍，蛇蛛蟾兩劍。' },
     '石斧': { s: 13, kind: 'tool', tool: '斧', dmg: 1, dur: 40, flavor: '伐木伐竹快一倍。' }
   };
@@ -233,15 +233,42 @@
     }
     return d < 0.62 ? '森' : '林';
   }
+  // 每座島保證八叢礦（煤鐵各四），放在山石上，避開通往燈塔的灘道；naturalTile 裡另有零星的
+  function onCauseway(x, y, seed) {   // 通往燈塔的灘道（含兩側一格餘裕）：礦、碑、地標都不能壓在上面
+    const il = islet(seed), proj = x * il.ux + y * il.uy, perp = Math.abs(x * il.uy - y * il.ux);
+    return perp <= 2.5 && proj > 0 && proj < il.len;
+  }
+  const oreCache = {};
+  function orePlan(seed) {
+    if (oreCache[seed]) return oreCache[seed];
+    const m = new Map(), centers = [];
+    const far = (x, y) => centers.every(c => U.cheb(x, y, c[0], c[1]) > 5);           // 每叢各佔一處，不疊在一起
+    const rocky = (x, y) => far(x, y) && '山石磊'.indexOf(naturalTile(x, y, seed)) >= 0 && fields(x, y, seed).h > 0.5 && !onCauseway(x, y, seed);
+    const inland = (x, y) => { const d = DB[naturalTile(x, y, seed)]; return d.kind !== 'water' && d.kind !== 'place' && fields(x, y, seed).h > 0.45 && !onCauseway(x, y, seed); };
+    ['煤', '鐵', '煤', '鐵', '煤', '鐵', '煤', '鐵', '煤', '鐵'].forEach((kind, i) => {
+      const a = (i / 10) * Math.PI * 2 + U.rand2(i, 31, seed) * 0.6, rf = 0.25 + U.rand2(i, 37, seed) * 0.5;
+      const tx = Math.round(Math.cos(a) * rf * ISLAND_R), ty = Math.round(Math.sin(a) * rf * ISLAND_R);
+      const found = spiralFind(tx, ty, 45, rocky) || spiralFind(tx, ty, 45, (x, y) => far(x, y) && inland(x, y));   // 沒山的島，礦露在地上
+      if (!found) return;
+      centers.push(found);
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const nx = found[0] + dx, ny = found[1] + dy, ring2 = Math.max(Math.abs(dx), Math.abs(dy)) === 2;
+        if (ring2 && U.rand2(nx, ny, seed + 41) > 0.4) continue;
+        if (inland(nx, ny) && !m.has(nx + ',' + ny)) m.set(nx + ',' + ny, kind);
+      }
+    });
+    return (oreCache[seed] = m);
+  }
   function baseTile(x, y, seed) {
     const il = islet(seed);
     const di = Math.hypot(x - il.cx, y - il.cy);
     if (di <= 4.3) return di < 2.4 ? (U.rand2(x, y, seed + 5) < 0.12 ? '花' : '草') : '沙';
+    const ore = orePlan(seed).get(x + ',' + y); if (ore) return ore;
     const nat = naturalTile(x, y, seed);
     const proj = x * il.ux + y * il.uy, perp = Math.abs(x * il.uy - y * il.ux);
     if (perp <= 1.3 && proj > 2 && proj < il.len - 3.5) {
       if (DB[nat].kind === 'water') return '灘';
-      if (nat === '山') return '石';
+      if (DB[nat].kind === 'rock' && DB[nat].walk <= 0) return '石';
     }
     return nat;
   }
@@ -250,7 +277,7 @@
   const STELES = [
     { r: 0.26, hint: '六團棉、兩塊木，是一張床。夜裡面向它按 R，一覺到天明，愜意 +20；附近有魄則睡不著。' },
     { r: 0.42, hint: '二土一草成磚，木三成門，石四木四成櫃。砌一圈留一扇門，獸不得入。麻布二石子二木三草四，是一個稻草人，三十天內獸不近身。' },
-    { r: 0.56, hint: '石子磨石加一根木，可成刀、鎬、鋤、劍、斧。山裡有煤有鐵，礦二煤一入旺灶可煉鐵，鐵可打甲。蛇與蛛咬人有毒，六秒內連咬十五口必死；藥可解毒。豹與狼一撲十滴血。' },
+    { r: 0.56, hint: '石子磨石加一根木，可成刀、鎬、鋤、劍、斧。山裡有煤有鐵，礦二煤一入旺灶可煉鐵，鐵可打甲。蛇與蛛咬人有毒，連咬不斷（兩口相隔不過六息）滿十五口必死；藥可解毒。豹與狼一撲十滴血。' },
     { r: 0.70, hint: '第十三夜起，魄夜行，穿牆而過，不傷身而蝕心。手持火把或蠟燭、頭戴燈帽、地上有燈，六格內魄即煙滅。白日藏於林中。' },
     { r: 0.83, hint: '野果久藏則醉，醉可昏睡一刻。沙三入旺灶成瓶，瓶取泉水，醉果二合淡水成酒，飲之愜意。膽氣八重，可造大船渡海。' }
   ];
@@ -269,7 +296,7 @@
     STELES.forEach((s, i) => {
       const a = (i / STELES.length) * Math.PI * 2 + U.rand2(i, 7, seed) * 1.1;
       const tx = Math.round(Math.cos(a) * s.r * ISLAND_R), ty = Math.round(Math.sin(a) * s.r * ISLAND_R);
-      const found = spiralFind(tx, ty, 40, (x, y) => { const d = DB[baseTile(x, y, seed)]; return d.walk > 0 && d.kind !== 'water'; });
+      const found = spiralFind(tx, ty, 40, (x, y) => { const d = DB[baseTile(x, y, seed)]; return d.walk > 0 && d.kind !== 'water' && !onCauseway(x, y, seed); });
       if (found) out.push({ x: found[0], y: found[1], hint: s.hint });
     });
     return out;
@@ -295,7 +322,28 @@
     { id: 'deng', ch: '燈', name: '燈', w: 1, h: 2, islet: true, effect: 'end',
       text: '燈最遠。潮退了才走得到。我把名字寫在這裡，可先生說名字不能寫在紙上，會被風吹走。那就寫在你心裡吧。你來了，就算讀完了這張紙。' }
   ];
-  function footprintOk(x0, y0, w, h, seed, want, taken) {
+  const mainCache = {};
+  function mainland(seed) {           // 從島心走得到的底稿格（退潮：灘算沙），用來保證地標走得到
+    if (mainCache[seed]) return mainCache[seed];
+    const walk = (x, y) => { const t = baseTile(x, y, seed), d = DB[t === '灘' ? '沙' : t]; return d.walk > 0 && d.kind !== 'water'; };
+    const start = spiralFind(0, 0, 30, (x, y) => '草田土沙'.indexOf(baseTile(x, y, seed)) >= 0) || [0, 0];
+    const seen = new Set([start[0] + ',' + start[1]]), q = [start];
+    while (q.length) {
+      const [x, y] = q.shift();
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy, k = nx + ',' + ny;
+        if (seen.has(k) || Math.abs(nx) > 80 || Math.abs(ny) > 80 || !walk(nx, ny)) continue;
+        seen.add(k); q.push([nx, ny]);
+      }
+    }
+    return (mainCache[seed] = seen);
+  }
+  function touchesMain(x0, y0, w, h, main) {
+    for (let j = -1; j <= h; j++) for (let i = -1; i <= w; i++) if ((j === -1 || j === h || i === -1 || i === w) && main.has((x0 + i) + ',' + (y0 + j))) return true;
+    return false;
+  }
+  function footprintOk(x0, y0, w, h, seed, want, taken, main) {
+    if (main && !touchesMain(x0, y0, w, h, main)) return false;
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
       const x = x0 + i, y = y0 + j;
       if (taken.has(x + ',' + y)) return false;
@@ -313,20 +361,26 @@
     return true;
   }
   function placePlan(seed, taken) {
-    const out = [], il = islet(seed);
+    const out = [], il = islet(seed), main = mainland(seed);
+    for (let pj = 0; pj <= il.len; pj++) for (let pp = -2; pp <= 2; pp++) taken.add(Math.round(pj * il.ux + pp * il.uy) + ',' + Math.round(pj * il.uy - pp * il.ux));   // 灘道留空
     PLACES.forEach((pl, i) => {
       const w = pl.template ? pl.template[0].length : pl.w, h = pl.template ? pl.template.length : pl.h;
       let found = null;
       if (pl.islet) found = [il.cx, il.cy - 1];
       else {
         const a0 = U.rand2(i, 13, seed) * Math.PI * 2;
-        outer: for (let step = 0; step < 24 && !found; step++) {
-          const a = a0 + step * 0.61803 * Math.PI * 2;
-          for (let rf = pl.r[0]; rf <= pl.r[1]; rf += 0.06) {
-            const tx = Math.round(Math.cos(a) * rf * ISLAND_R), ty = Math.round(Math.sin(a) * rf * ISLAND_R);
-            const hit = spiralFind(tx, ty, 7, (x, y) => footprintOk(x, y, w, h, seed, pl.want, taken));
-            if (hit) { found = hit; break outer; }
+        // 先照原本的地形與半徑找；找不到就放寬：不挑地形 → 放寬半徑 → 最後不管走不走得到也要放
+        const tries = [[pl.want, pl.r, main], [null, pl.r, main], [null, [0.2, 0.95], main], [null, [0.2, 0.95], null]];
+        for (const [want, band, mn] of tries) {
+          outer: for (let step = 0; step < 24 && !found; step++) {
+            const a = a0 + step * 0.61803 * Math.PI * 2;
+            for (let rf = band[0]; rf <= band[1]; rf += 0.06) {
+              const tx = Math.round(Math.cos(a) * rf * ISLAND_R), ty = Math.round(Math.sin(a) * rf * ISLAND_R);
+              const hit = spiralFind(tx, ty, 7, (x, y) => footprintOk(x, y, w, h, seed, want, taken, mn));
+              if (hit) { found = hit; break outer; }
+            }
           }
+          if (found) break;
         }
       }
       if (!found) return;

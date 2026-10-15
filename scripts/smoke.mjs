@@ -134,6 +134,8 @@ const result = await page.evaluate(async () => {
   ok('cannot sleep with a ghost nearby', w.time === t1, g.msgText); g.ents.remove(ghost);
   setDay(0.6); p.san = 50; g.sleep(); await sleep(30);
   ok('sleeping restores 20 sanity', Math.round(p.san) === 70, p.san);
+  setDay(0.04); const tN = w.time; g.sleep();
+  ok('no napping after sunrise', w.time === tN, g.msgText);
   setDay(0.3); g.removeItem('果', 99); g.removeItem('肉', 99); g.removeItem('磚', 99); g.addItem('果', 5); p.bag.find(s => s.n === '果').d = g.day() - 15;
   w.time += DAY; await until(() => g.count('醉果') === 5, 3000);
   ok('fruit older than 15 nights ferments', g.count('醉果') === 5 && g.count('果') === 0, bag());
@@ -254,9 +256,17 @@ const result = await page.evaluate(async () => {
   ok('two hits within 15 s: armor wears ×1.12', p.hitWin.n === 2 && Math.abs((d1 - vest.dur) - 1.12 * (w.time - tw1)) < 0.05, [d1 - vest.dur, w.time - tw1]);
   w.time += 16; await sleep(80);
   ok('after 15 s the window closes and the speed-up sticks', p.hitWin.n === 0 && Math.abs(vest.wm - 1.12) < 1e-9, vest.wm);
+  await sleep(60);
+  ok('worn panel shows days left at the current wear rate', document.getElementById('worn1').textContent.indexOf(Math.ceil(vest.dur / 1.12 / DAY) + '日') >= 0, document.getElementById('worn1').textContent);
   for (let i = 0; i < 5; i++) g.hit({ type: '狼', x: p.x + 1, y: p.y }, 1);
   ok('five hits within 15 s shatter 甲, 襯 and 褲 but not 盔 and 靴', !p.worn['甲'] && !p.worn['襯'] && !p.worn['褲'] && p.worn['盔'] && p.worn['靴'] && !g.totemOn() && Math.abs(p.worn['盔'].wm - 1.12 * 1.5) < 1e-9, g.wornList().map(s => s.n + '@' + s.wm));
   p.hp = 100; p.hurtT = 0; g.takeOff('盔'); g.takeOff('靴'); trim(['木', '石', '石子', '草', '土', '磚', '大船']);
+  // 拆回自己放的東西不長膽氣；稻草人拆得回來
+  p.cour = 0; face(0, -1); w.set(T().x, T().y, '土'); g.addItem('磚', 1); hold('磚'); g.pressPlace(); g.addItem('石鎬', 1); hold('石鎬'); g.action = null; g.pressGather(); await until(() => !g.action, 12000);
+  ok('taking back a placed brick gives no courage', g.count('磚') >= 1 && p.cour === 0 && w.get(T().x, T().y) === '白', [p.cour, w.get(T().x, T().y)]);
+  w.set(T().x, T().y, '土'); g.addItem('偶', 1); hold('偶'); g.pressPlace(); const sck = T().x + ',' + T().y; g.action = null; g.pressGather(); await until(() => !g.action, 4000);
+  ok('scarecrow can be taken down', w.get(T().x, T().y) === '白' && !w.scarecrows.has(sck) && g.count('偶') === 1 && p.cour === 0, [w.get(T().x, T().y), g.count('偶')]);
+  g.removeItem('偶', 9); w.set(T().x, T().y, '土');
   // 鐵甲：減傷三成、毒不侵、慢四分之一、攻擊加半成、飢愜力掉得快八分
   g.addItem('內襯', 1); g.addItem('鐵甲', 1); g.addItem('鐵褲', 1); g.addItem('鐵盔', 1); g.addItem('鐵靴', 1);
   for (const n of ['內襯', '鐵甲', '鐵褲', '鐵盔', '鐵靴']) { hold(n); g.pressPlace(); }
@@ -326,7 +336,8 @@ const result = await page.evaluate(async () => {
   const nBag = p.bag.length; g.moveStack('bag', 0);
   ok('moving a stack into the chest', p.bag.length === nBag - 1 && w.chests.get(g.chestAt).length === 1);
   g.moveStack('chest', 0); ok('and back', p.bag.length === nBag && w.chests.get(g.chestAt).length === 0);
-  g.closeChest();
+  const ck2 = g.chestAt; document.getElementById('chest-take').click();
+  ok('an empty chest can be taken down', hidden('chest') && !w.chests.has(ck2) && g.count('櫃') === 1 && w.get(...ck2.split(',').map(Number)) === '白');
   // 船：放在淺水，上船，渡深水，到海邊渡海（先離開泉邊，免得面前是地標）
   p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; g.closeRead();
   face(1, 0); w.set(T().x, T().y, '水'); hold('大船'); g.pressPlace();
@@ -339,6 +350,16 @@ const result = await page.evaluate(async () => {
   ok('reaching the sea edge triggers the voyage ending', p.crossed && !hidden('voyage'));
   document.getElementById('voyage-back').click(); await sleep(50);
   ok('can turn back', g.paused === false && hidden('voyage'));
+  p.x = p.rx = 0; p.y = p.ry = G.ISLAND_R + 10; p.sailing = true; p.crossed = false; g.addItem('木', 1); p.hp = 0; await until(() => p.dead, 3000);
+  const landBag = [...w.bags.keys()].some(k => { const [x, y] = k.split(',').map(Number); const b = w.base(x, y); return w.get(x, y) === '包' && U.dist(x, y, 0, G.ISLAND_R + 10) < 30 && G.DB[b === '灘' ? '沙' : b].walk > 0 && G.DB[b].kind !== 'water'; });
+  const shipLeft = [...w.diff.entries()].some(([k, v]) => v === '舟' && (() => { const [x, y] = k.split(',').map(Number); return U.dist(x, y, 0, G.ISLAND_R + 10) < 30; })());
+  ok('dying at sea drops the 荷包 on the nearest land and leaves the ship on shallow water', p.dead && landBag && shipLeft, [landBag, shipLeft]);
+  await press('Enter', 20); await sleep(80);
+  ok('respawn after a sea death is back on land', !p.dead && !p.sailing && w.info(p.x, p.y).walk > 0);
+  // 漲潮困在灘上可以涉水走到別的灘
+  let beach = null; for (let r = 60; r <= 75 && !beach; r++) for (let a = 0; a < 360 && !beach; a += 2) { const x = Math.round(Math.cos(a * Math.PI / 180) * r), y = Math.round(Math.sin(a * Math.PI / 180) * r); if (w.raw(x, y) === '灘' && w.raw(x + 1, y) === '灘') beach = [x, y]; }
+  if (beach) { p.x = p.rx = beach[0]; p.y = p.ry = beach[1]; setDay(0.6); ok('caught by the tide on the causeway you can wade to the next shoal', w.get(beach[0], beach[1]) === '水' && g.pass(beach[0] + 1, beach[1]), beach); p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; }
+  else ok('caught by the tide on the causeway you can wade to the next shoal (no causeway found to test)', true);
   p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; p.sailing = false; p.crossed = false;
   // 草木長回來（計時器）
   face(0, 1); w.set(T().x, T().y, '草'); hold('木'); g.action = null; g.pressGather(); await until(() => !g.action, 4000);

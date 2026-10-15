@@ -7,7 +7,7 @@
 - 字庫鍵值是字本身（鳥、魚、龍、門、燈……），改字時全專案一起改；筆畫數採台灣標準（艹算四畫）。
 
 ## 每次更新後必做
-1. `python3 -m http.server 8123` 後跑 `NODE_PATH=$(npm root -g) node scripts/smoke.mjs`，全部 PASS、零報錯才算完成。
+1. `python3 -m http.server 8123` 後跑 `NODE_PATH=$(npm root -g) node scripts/smoke.mjs`，全部 PASS、零報錯才算完成；動到生成規則時另跑 `node scripts/gen-check.mjs 80`，八十座島都要通過。
 2. `python3 scripts/build-single.py` 產出 `dist/xieyi.html`，發佈到同一個 Artifact（網址見下），不要另開新的。
 3. 回覆裡用這個格式附上入口，網址獨立成行、後面不接任何文字，這樣才會顯示成可點的卡片：
 
