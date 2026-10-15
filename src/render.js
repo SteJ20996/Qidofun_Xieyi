@@ -8,7 +8,8 @@
     '草': '#b9c98f', '花': '#d29b8e', '木': '#8aa86f', '林': '#5e8a55', '森': '#3b5f3a', '竹': '#7fa36b', '田': '#d1c572',
     '土': '#a98a62', '灰': '#8d8781', '白': '#f3ebd8', '火': '#d9593c', '炎': '#d9593c', '焱': '#d9593c',
     '明': '#f0c54a', '休': '#9a6b45', '橋': '#9a6b45', '困': '#7a5a3e', '碑': '#2a2724', '日': '#e07a4a', '月': '#e3c35a',
-    '果': '#c9654a', '灶': '#d9593c', '木屋': '#7a4e2d', '囊': '#2a2724', '路': '#c9b27a', '牆': '#8a6a4a', '門': '#9a7a55', '井': '#4a6f8f',
+    '果': '#c9654a', '灶': '#d9593c', '囊': '#2a2724', '路': '#c9b27a', '牆': '#8a6a4a', '門': '#9a7a55', '井': '#4a6f8f',
+    '棉': '#e8e2d0', '礫': '#b9b4a8', '磚': '#9a5a40', '床': '#a06a4a', '橋': '#9a6b45', '漁': '#5a86a8',
     '塔': '#2a2724', '寺': '#5a3e2b', '船': '#5a3e2b', '泉': '#4a6f8f', '墓': '#6e6c75', '洞': '#2a2724', '燈': '#e0a020'
   };
 
@@ -119,7 +120,7 @@
         if (d.kind === 'fire' || burning) { scale *= 1 + 0.1 * Math.sin(now * 15 + r); rot += Math.sin(now * 9 + (r & 31)) * 0.06; }
         if (ch === '明' || ch === '日') scale *= 1 + 0.04 * Math.sin(now * 3 + r);
         if (burning) alpha = 1;
-        if (act && act.type === 'absorb' && act.x === x && act.y === y) { const pr = act.t / act.dur; alpha *= 1 - pr * 0.85; scale *= 1 - pr * 0.35; rot += pr * 0.5; }
+        if (act && act.type === 'gather' && act.x === x && act.y === y) { const pr = act.t / act.dur; alpha *= 1 - pr * 0.85; scale *= 1 - pr * 0.35; rot += pr * 0.5; }
         const color = burning && d.kind !== 'fire' ? G.INK.red : (ch === '灶' && !lit ? G.INK.ash : d.ink);
         if (ch.length > 1) {   // 雙字之物（木屋）：兩個字並排寫小一點
           this.drawGlyph(ch[0], color, ox + x * T + T * 0.3, oy + y * T + T / 2 + dy, T * scale * 0.62, rot, alpha);
@@ -140,15 +141,13 @@
       for (const e of g.ents.list) {
         if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) continue;
         const px = ox + e.rx * T + T / 2, py = oy + e.ry * T + T / 2, d = DB[e.type];
-        if (e.type === '日' || e.type === '月') {
-          const pulse = 0.55 + 0.45 * Math.sin(now * 4 + e.bob);
-          this.drawGlyph(e.type, d.ink, px, py + Math.sin(now * 2 + e.bob) * 2, T * 0.8 * (0.9 + 0.1 * pulse), 0, 0.35 + 0.65 * pulse);
-          ctx.save(); ctx.strokeStyle = e.type === '日' ? 'rgba(224,122,74,0.5)' : 'rgba(227,195,90,0.6)'; ctx.lineWidth = 1.5;
-          ctx.beginPath(); ctx.arc(px, py, T * (0.45 + 0.15 * pulse), 0, Math.PI * 2); ctx.stroke(); ctx.restore();
-          if (d.light) lights.push({ x: e.x, y: e.y, r: 1.5 });
+        if (e.type === '鬼') {
+          // 鬼：半透明、搖曳、腳下沒影子
+          const wob = Math.sin(now * 6 + e.bob) * 0.12, fade = e.fade !== undefined ? e.fade : 1;
+          ctx.save(); ctx.fillStyle = 'rgba(59,53,80,' + (0.18 * fade) + ')'; ctx.beginPath(); ctx.arc(px, py, T * 0.62, 0, 7); ctx.fill(); ctx.restore();
+          this.drawGlyph('鬼', d.ink, px, py + Math.sin(now * 3 + e.bob) * 3, T * 1.05, wob, 0.78 * fade);
           continue;
         }
-        if (e.type === '丶') { this.drawGlyph('丶', G.INK.black, px, py + Math.sin(now * 3 + e.bob) * 2, T * 0.9, 0, 0.9); continue; }
         const size = e.type === '虎' ? 0.95 : e.type === '龍' ? 1.1 : e.type === '鹿' ? 0.8 : e.type === '魚' ? 0.6 : 0.55;
         const bobY = e.type === '鳥' ? Math.sin(now * 5 + e.bob) * 3 : e.type === '龍' ? Math.sin(now * 3 + e.bob) * 4 : e.type === '魚' ? Math.sin(now * 2 + e.bob) * 1.5 : 0;
         if (e.type === '龍') lights.push({ x: e.x, y: e.y, r: 3 });
@@ -157,7 +156,6 @@
           ctx.save(); ctx.fillStyle = 'rgba(180,57,42,0.12)'; ctx.beginPath(); ctx.arc(px, py, T * 0.6, 0, 7); ctx.fill(); ctx.restore();
         }
         this.drawGlyph(e.type, d.ink, px, py + bobY, T * size, rot, 1);
-        if (e.cage > 0) this.drawGlyph('口', G.INK.brown, px, py, T * 1.15, 0, 0.9);
       }
 
       // —— 玩家：一個「人」字
@@ -179,7 +177,7 @@
       {
         const tx = p.x + p.fx, ty = p.y + p.fy;
         this.brushRect(ox + tx * T + 3, oy + ty * T + 3, T - 6, 'rgba(180,57,42,0.55)', 1.5);
-        if (act && act.type === 'absorb') {
+        if (act && act.type === 'gather') {
           const pr = act.t / act.dur, ccx = ox + act.x * T + T / 2, ccy = oy + act.y * T + T / 2;
           ctx.save(); ctx.strokeStyle = 'rgba(180,57,42,0.85)'; ctx.lineWidth = 3; ctx.lineCap = 'round';
           ctx.beginPath(); ctx.arc(ccx, ccy, T * 0.58, -Math.PI / 2, -Math.PI / 2 + pr * Math.PI * 2); ctx.stroke(); ctx.restore();
@@ -252,7 +250,7 @@
         const i = e.x - p.x + half, j = e.y - p.y + half;
         if (i < 0 || j < 0 || i >= N || j >= N) continue;
         if (e.type === '虎') { m.fillStyle = '#b4392a'; m.fillRect(i * px - 1, j * px - 1, px + 2, px + 2); }
-        else if (e.type === '日' || e.type === '月') { m.fillStyle = '#e07a4a'; m.fillRect(i * px, j * px, px + 1, px + 1); }
+        else if (e.type === '鬼') { m.fillStyle = '#3b3550'; m.fillRect(i * px - 1, j * px - 1, px + 2, px + 2); }
       }
       m.fillStyle = '#1c1a17'; m.beginPath(); m.arc(half * px + px / 2, half * px + px / 2, 3, 0, 7); m.fill();
       if (g.player.home) {

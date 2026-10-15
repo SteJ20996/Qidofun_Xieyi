@@ -122,7 +122,7 @@
     trample(x, y) {
       const k = U.key(x, y), n = (this.steps.get(k) || 0) + 1;
       this.steps.set(k, n);
-      if (n >= 6 && '草土沙花'.indexOf(this.raw(x, y)) >= 0 && !this.placeTiles.has(k)) this.set(x, y, '路');
+      if (n >= 6 && '草土沙花礫'.indexOf(this.raw(x, y)) >= 0 && !this.placeTiles.has(k)) this.set(x, y, '路');
     }
 
     // 點火：可燃格開始燃燒；火字本身也有壽命
@@ -195,9 +195,13 @@
         if (!this.diff.has(k)) continue;            // 只有被改動過的格子才會"演替"，底稿本身是穩定的
         const ch = this.diff.get(k);
         if (ch === '土') {
-          if (rng() < 0.35 && this.countAround(x, y, '草木林森田竹花果') >= 1) this.set(x, y, '草');
+          if (rng() < 0.35 && this.countAround(x, y, '草木林森田竹花果棉') >= 1) this.set(x, y, '草');
         } else if (ch === '草') {
           if (rng() < 0.12 && this.countAround(x, y, '木林森果') >= 2) this.set(x, y, '木');
+        } else if (ch === '木' && this.base(x, y) === '果') {
+          if (rng() < 0.05) this.set(x, y, '果');                       // 摘過的果樹又結果
+        } else if (ch === '草' && this.base(x, y) === '棉') {
+          if (rng() < 0.05) this.set(x, y, '棉');                       // 採過的棉又開花
         } else if (ch === '木') {
           if (rng() < 0.08 && this.countAround(x, y, '林森') >= 3) this.set(x, y, '林');
         } else if (ch === '白') {
