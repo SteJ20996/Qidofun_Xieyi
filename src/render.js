@@ -9,7 +9,7 @@
     '土': '#a98a62', '灰': '#8d8781', '白': '#f3ebd8', '火': '#d9593c', '炎': '#d9593c', '焱': '#d9593c',
     '明': '#f0c54a', '休': '#9a6b45', '橋': '#9a6b45', '困': '#7a5a3e', '碑': '#2a2724', '日': '#e07a4a', '月': '#e3c35a',
     '果': '#c9654a', '灶': '#d9593c', '囊': '#2a2724', '路': '#c9b27a', '牆': '#8a6a4a', '門': '#9a7a55', '井': '#4a6f8f',
-    '棉': '#e8e2d0', '礫': '#b9b4a8', '磚': '#9a5a40', '床': '#a06a4a', '橋': '#9a6b45', '漁': '#5a86a8',
+    '棉': '#e8e2d0', '礫': '#b9b4a8', '磚': '#9a5a40', '床': '#a06a4a', '橋': '#9a6b45', '漁': '#5a86a8', '麻': '#a9b07a', '偶': '#b08a5a', '櫃': '#7a4e2d', '舟': '#7a4e2d',
     '塔': '#2a2724', '寺': '#5a3e2b', '船': '#5a3e2b', '泉': '#4a6f8f', '墓': '#6e6c75', '洞': '#2a2724', '燈': '#e0a020'
   };
 
@@ -141,11 +141,11 @@
       for (const e of g.ents.list) {
         if (e.x < x0 || e.x > x1 || e.y < y0 || e.y > y1) continue;
         const px = ox + e.rx * T + T / 2, py = oy + e.ry * T + T / 2, d = DB[e.type];
-        if (e.type === '鬼') {
-          // 鬼：半透明、搖曳、腳下沒影子
+        if (e.type === '魄') {
+          // 魄：半透明、搖曳、腳下沒影子；煙滅時散開
           const wob = Math.sin(now * 6 + e.bob) * 0.12, fade = e.fade !== undefined ? e.fade : 1;
-          ctx.save(); ctx.fillStyle = 'rgba(59,53,80,' + (0.18 * fade) + ')'; ctx.beginPath(); ctx.arc(px, py, T * 0.62, 0, 7); ctx.fill(); ctx.restore();
-          this.drawGlyph('鬼', d.ink, px, py + Math.sin(now * 3 + e.bob) * 3, T * 1.05, wob, 0.78 * fade);
+          ctx.save(); ctx.fillStyle = 'rgba(59,53,80,' + (0.16 * fade) + ')'; ctx.beginPath(); ctx.arc(px, py, T * (0.62 + (1 - fade) * 0.8), 0, 7); ctx.fill(); ctx.restore();
+          this.drawGlyph('魄', d.ink, px, py + Math.sin(now * 3 + e.bob) * 3 - (1 - fade) * T * 0.6, T * (1.0 + (1 - fade) * 0.5), wob, (e.frozen ? 0.5 : 0.78) * fade);
           continue;
         }
         const size = e.type === '虎' ? 0.95 : e.type === '龍' ? 1.1 : e.type === '鹿' ? 0.8 : e.type === '魚' ? 0.6 : 0.55;
@@ -155,7 +155,7 @@
         if (e.type === '虎' && e.calm <= 0 && U.cheb(e.x, e.y, p.x, p.y) <= 8) {
           ctx.save(); ctx.fillStyle = 'rgba(180,57,42,0.12)'; ctx.beginPath(); ctx.arc(px, py, T * 0.6, 0, 7); ctx.fill(); ctx.restore();
         }
-        this.drawGlyph(e.type, d.ink, px, py + bobY, T * size, rot, 1);
+        this.drawGlyph(e.type, e.type === '蟾' && e.venom ? G.INK.red : d.ink, px, py + bobY, T * size, rot, 1);
       }
 
       // —— 玩家：一個「人」字
@@ -170,7 +170,8 @@
         ctx.fillStyle = halo; ctx.fillRect(px - T, py - T, T * 2, T * 2);
         ctx.fillStyle = 'rgba(30,20,10,0.16)'; ctx.beginPath(); ctx.ellipse(px, py + T * 0.44, T * 0.32, T * 0.1, 0, 0, 7); ctx.fill();
         ctx.restore();
-        this.drawGlyph('人', G.INK.black, px, py, T * 1.18, rot, 1);
+        if (p.sailing) this.drawGlyph('舟', G.INK.brown, px, py + T * 0.18, T * 1.5, Math.sin(now * 1.5) * 0.04, 0.95);
+        this.drawGlyph('人', G.INK.black, px, py - (p.sailing ? T * 0.12 : 0), T * 1.18, rot, 1);
         ctx.save(); ctx.fillStyle = G.INK.red; ctx.beginPath(); ctx.arc(px + T * 0.34, py + T * 0.36, T * 0.07, 0, 7); ctx.fill(); ctx.restore();
       }
       // —— 面前的格子
@@ -218,10 +219,21 @@
         }
         ctx.restore();
       }
-      // —— 紙邊的舊色
+      // —— 紙邊的舊色，以及身體的訊號：掉血泛紅、中毒泛綠、神志不清泛藍
       const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.45, w / 2, h / 2, Math.max(w, h) * 0.75);
       vg.addColorStop(0, 'rgba(80,60,30,0)'); vg.addColorStop(1, 'rgba(80,60,30,0.32)');
       ctx.fillStyle = vg; ctx.fillRect(0, 0, w, h);
+      const vig = g.vignette ? g.vignette() : null;
+      if (vig) {
+        const tints = [['180,40,30', vig.red], ['60,140,60', vig.green], ['50,80,180', vig.blue]];
+        for (const [rgb, a] of tints) {
+          if (a <= 0.01) continue;
+          const pulse = 0.85 + 0.15 * Math.sin(now * 3);
+          const gr = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.7);
+          gr.addColorStop(0, 'rgba(' + rgb + ',0)'); gr.addColorStop(1, 'rgba(' + rgb + ',' + (a * pulse) + ')');
+          ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h);
+        }
+      }
 
       // —— 小地圖
       this.miniAcc += dt;
@@ -250,7 +262,8 @@
         const i = e.x - p.x + half, j = e.y - p.y + half;
         if (i < 0 || j < 0 || i >= N || j >= N) continue;
         if (e.type === '虎') { m.fillStyle = '#b4392a'; m.fillRect(i * px - 1, j * px - 1, px + 2, px + 2); }
-        else if (e.type === '鬼') { m.fillStyle = '#3b3550'; m.fillRect(i * px - 1, j * px - 1, px + 2, px + 2); }
+        else if (e.type === '魄') { m.fillStyle = '#3b3550'; m.fillRect(i * px - 1, j * px - 1, px + 2, px + 2); }
+        else if (e.type === '豹' || e.type === '狼' || e.type === '蛇') { m.fillStyle = '#8a2a1a'; m.fillRect(i * px, j * px, px + 1, px + 1); }
       }
       m.fillStyle = '#1c1a17'; m.beginPath(); m.arc(half * px + px / 2, half * px + px / 2, 3, 0, 7); m.fill();
       if (g.player.home) {

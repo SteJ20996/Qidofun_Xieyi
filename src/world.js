@@ -15,7 +15,9 @@
       this.chunks = new Map();   // "cx,cy" -> 字符數組（底稿）
       this.diff = new Map();     // "x,y" -> 字（與底稿不同的格子）
       this.burn = new Map();     // "x,y" -> { t: 剩餘燃燒秒數, lvl: 火勢 }
-      this.timers = new Map();   // "x,y" -> { to: 目標字, at: 世界時間 }
+      this.timers = new Map();   // "x,y" -> { from: 現在的字, to: 目標字, at: 世界時間 }（灰化土、草木長回來）
+      this.scarecrows = new Map(); // "x,y" -> 稻草人失效的世界時間
+      this.chests = new Map();   // "x,y" -> 櫃裡的東西
       this.stoves = new Map();   // "x,y" -> 灶裡剩餘的柴火（秒）
       this.bags = new Map();     // "x,y" -> 落在地上的囊（物品列表）
       this.weirs = new Map();    // "x,y" -> 魚梁下一次有魚的時間
@@ -78,6 +80,8 @@
       if (old === '灶' && ch !== '灶') this.stoves.delete(k);
       if (ch === '灶' && !this.stoves.has(k)) this.stoves.set(k, 0);
       if (old === '囊' && ch !== '囊') this.bags.delete(k);
+      if (old === '偶' && ch !== '偶') this.scarecrows.delete(k);
+      if (old === '櫃' && ch !== '櫃') this.chests.delete(k);
       if (old === '漁' && ch !== '漁') this.weirs.delete(k);
       if (ch === '漁' && !this.weirs.has(k)) this.weirs.set(k, this.time + 45);
     }
@@ -88,6 +92,22 @@
     isBig(x, y) { const e = this.placeTiles.get(U.key(x, y)); return !!(e && e.big); }
     nearChar(x, y, ch, r) {
       for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) if (this.get(x + i, y + j) === ch) return true;
+      return false;
+    }
+    // 幾秒後若格子還是 from，就變成 to（灰化土、草木長回來）
+    schedule(x, y, from, to, sec) { this.timers.set(U.key(x, y), { from, to, at: this.time + sec }); }
+    // 稻草人：前半三十天十格、後半七格；再放一個續三十天，最多四十天
+    addScarecrow(x, y) {
+      const k = U.key(x, y), now = this.time, cur = Math.max(now, this.scarecrows.get(k) || 0);
+      this.scarecrows.set(k, Math.min(now + 40 * DAY, cur + 30 * DAY));
+    }
+    scareDays(x, y) { const e = this.scarecrows.get(U.key(x, y)); return e ? Math.max(0, (e - this.time) / DAY) : 0; }
+    scared(x, y) {
+      for (const [k, e] of this.scarecrows) {
+        const days = (e - this.time) / DAY; if (days <= 0) continue;
+        const [sx, sy] = U.unkey(k);
+        if (U.cheb(x, y, sx, sy) <= (days > 15 ? 10 : 7)) return true;
+      }
       return false;
     }
     // 灶
@@ -176,16 +196,16 @@
         if (b.t <= 0) {
           this.burn.delete(k);
           this.set(x, y, '灰');
-          this.timers.set(k, { to: '土', at: this.time + 25 + rng() * 25 });
+          this.timers.set(k, { from: '灰', to: '土', at: this.time + 25 + rng() * 25 });
         }
       }
       for (const [x, y, lvl] of spread) this.ignite(x, y, Math.min(lvl, 1.5));
-      // —— 定時演化（灰 → 土）
+      // —— 定時演化（灰 → 土；取過的草木長回來）
       for (const [k, tm] of this.timers) {
         if (this.time >= tm.at) {
           this.timers.delete(k);
           const [x, y] = U.unkey(k);
-          if (this.get(x, y) === '灰') this.set(x, y, tm.to);
+          if (this.get(x, y) === (tm.from || '灰') && !this.placeTiles.has(k)) this.set(x, y, tm.to);
         }
       }
       // —— 隨機採樣演替：每步採樣 300 格（約佔範圍的 10%），所以下面的概率要除以 10 才是每半秒的真實概率
@@ -237,19 +257,23 @@
     serialize() {
       const diff = {}; for (const [k, v] of this.diff) diff[k] = v;
       const burn = {}; for (const [k, v] of this.burn) burn[k] = [Math.round(v.t * 10) / 10, v.lvl];
-      const timers = {}; for (const [k, v] of this.timers) timers[k] = [v.to, Math.round(v.at)];
+      const timers = {}; for (const [k, v] of this.timers) timers[k] = [v.to, Math.round(v.at), v.from || '灰'];
+      const scarecrows = {}; for (const [k, v] of this.scarecrows) scarecrows[k] = Math.round(v);
+      const chests = {}; for (const [k, v] of this.chests) chests[k] = v;
       const stoves = {}; for (const [k, v] of this.stoves) stoves[k] = Math.round(v);
       const bags = {}; for (const [k, v] of this.bags) bags[k] = v;
       const weirs = {}; for (const [k, v] of this.weirs) weirs[k] = Math.round(v);
       const explored = {}; for (const [k, b] of this.explored) explored[k] = Array.from(b, v => v.toString(16).padStart(2, '0')).join('');
       const seen = this.places.filter(p => p.seen).map(p => p.id);
-      return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers, stoves, bags, weirs, explored, seen };
+      return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers, stoves, bags, weirs, explored, seen, scarecrows, chests };
     }
     restore(s) {
       this.time = s.time || 30;
       this.diff = new Map(Object.entries(s.diff || {}));
       this.burn = new Map(Object.entries(s.burn || {}).map(([k, v]) => [k, { t: v[0], lvl: v[1] }]));
-      this.timers = new Map(Object.entries(s.timers || {}).map(([k, v]) => [k, { to: v[0], at: v[1] }]));
+      this.timers = new Map(Object.entries(s.timers || {}).map(([k, v]) => [k, { to: v[0], at: v[1], from: v[2] || '灰' }]));
+      this.scarecrows = new Map(Object.entries(s.scarecrows || {}));
+      this.chests = new Map(Object.entries(s.chests || {}));
       this.stoves = new Map(Object.entries(s.stoves || {}));
       this.bags = new Map(Object.entries(s.bags || {}));
       this.weirs = new Map(Object.entries(s.weirs || {}));

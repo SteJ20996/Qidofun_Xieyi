@@ -20,10 +20,12 @@
     <div class="bar food"><div id="foodfill"></div><span id="foodlabel">飽</span></div>
     <div class="bar warm"><div id="warmfill"></div><span id="warmlabel">暖</span></div>
     <div class="bar sta"><div id="stafill"></div><span id="stalabel">力</span></div>
+    <div class="bar san"><div id="sanfill"></div><span id="sanlabel">愜</span></div>
   </div>
   <div id="topright">
     <div id="status"></div>
-    <canvas id="minimap" width="150" height="150"></canvas>
+    <div id="mapwrap" title="膽氣：採集、製作、擊敗野獸都會長；滿一圈升一重，回復更快"><canvas id="minimap" width="150" height="150"></canvas></div>
+    <div id="courlabel">膽氣 · 初</div>
   </div>
   <div id="toasts"></div>
   <div id="bottom">
@@ -39,22 +41,28 @@
     <div class="cols">
       <div>
         <h3>這是什麼</h3>
-        <p>一紙之島，萬物皆是字。你是一個「人」字，赤手空拳。收集、製作、砌牆，撐過一夜又一夜。第十夜起，外頭有鬼。</p>
+        <p>一紙之島，萬物皆是字。你是一個「人」字，赤手空拳。收集、製作、砌牆，撐過一夜又一夜。蛇在草木之交，豹狼在林與夜；第十三夜起，魄夜行。</p>
         <p><b>取</b>：面向一個字按 <kbd>E</kbd>，按住可連取。樹得木，野棉得棉，碎石地得石子，石地得石。山與磊要用鎬。</p>
         <p><b>製作</b>：按 <kbd>C</kbd>，每樣東西都要力氣。磚＝土二草一；門＝木三；床＝棉六木二；灶＝石六；火把＝木一草二；燈＝石二火把一。</p>
         <p><b>磨礪</b>：石一、石子一、木一，選方向：刀、鎬、鋤、劍、斧。工具有耐久，鈍了用石子重磨。</p>
-        <p><b>放</b>：選中囊裡的東西，面向地面按 <kbd>F</kbd>。磚與門擋得住獸與鬼。魚、肉放在旺的灶上會烤熟；木放在灶上是添柴。鋤面向土按 F，鋤成田。</p>
+        <p><b>放</b>：選中囊裡的東西，面向地面按 <kbd>F</kbd>。磚與門擋得住獸，魄則穿牆而過，只怕光。魚、肉、蛇肉、蟾蜍放在旺的灶上會烤熟；沙三燒成瓶；海水瓶蒸餾成淡水；木放在灶上是添柴。鋤面向土按 F，鋤成田。</p>
         <p><b>探索</b>：地圖只畫走過的地方（<kbd>M</kbd>）。登塔可見全圖。島上八處地方各留了一段話，面向村口的門按 E 可問路。退潮時沙路通往島外的燈。</p>
       </div>
       <div>
         <h3>活下去</h3>
         <ul>
-          <li><b>命</b>：餓與冷會耗命；虎與鬼傷人。藥可療傷；吃飽穿暖，血會慢慢回。</li>
+          <li><b>命</b>：餓、冷、力盡、毒會耗命；虎豹狼傷人。藥可療傷解毒；飽、愜意、力都在八成以上，血才慢慢回。畫面泛紅是掉血。</li>
           <li><b>飽</b>：野果、烤魚、烤肉。生魚生肉傷身。野果在囊裡放過十五夜變醉果：吃了昏睡到天明，醒來命 −15，當天不回血。</li>
           <li><b>暖</b>：夜裡冷，雪上與水中更冷。灶邊、火把、棉衣。</li>
-          <li><b>力</b>：製作耗力，歇著回得快，睡一覺全回。讀碑力氣上限 +10。</li>
-          <li><b>夜</b>：第十夜起鬼夜行，不畏火光，畏劍（兩下），刀要四下；磚與門擋得住，日出則散。虎畏火光，劍兩下、刀三下。</li>
-          <li><b>睡</b>：夜裡面向床按 <kbd>R</kbd>，一覺到天明；附近有鬼睡不著。</li>
+          <li><b>力</b>：每兩息回一點，取一次、打一下各耗一點，製作另計。力盡則每秒掉兩滴血。睡一覺全回；讀碑上限 +10。</li>
+          <li><b>愜意</b>：每十五息掉一點。製作 +8、睡床 +20、果酒 +20、烤蟾蜍 +10、讀地標 +10；每分鐘聽見鹿呦、鳥鳴、海浪各 +1。歸零則神志不清：時而能走時而亂走，畫面泛藍。</li>
+          <li><b>膽氣</b>：採集、製作、擊敗野獸都會長，右上地圖一圈一重，膽氣越高血、力、愜意回得越快（十重兩倍）。死則歸零。八重可造大船。</li>
+          <li><b>毒</b>：蛇與蜘蛛咬人，五秒內每秒三滴，六秒內連咬十五口必死；畫面泛綠。藥可解毒。生吃蟾蜍也中毒。</li>
+          <li><b>魄</b>：第十三夜起夜行，穿牆，不傷身而蝕心：四格內無光，愜意每秒 −3、力 −2。手持火把或蠟燭、戴燈帽、地上有燈，六格內即煙滅。白日藏於林中。</li>
+          <li><b>睡</b>：夜裡面向床按 <kbd>R</kbd>，一覺到天明；附近有魄睡不著。醉果吃了昏迷一刻，周圍照常。</li>
+          <li><b>稻草人</b>：麻布二、石子二、木三、草四。三十天內獸不近身，前半十格、後半七格；再放一個續到四十天。</li>
+          <li><b>瓶與酒</b>：沙三入旺灶成兩個瓶；空瓶面向水取海水、面向泉或井取淡水；海水瓶入灶成淡水；醉果二合淡水一成果酒。</li>
+          <li><b>船</b>：木二成板，板二木一成槳，麻布四木二成帆，板十二槳二帆一成大船（膽氣八重）。放在淺水上，面向它按 E 上船，可渡深海；開到海的盡頭便渡海而去。</li>
         </ul>
         <h3>操作</h3>
         <ul class="keys">
@@ -99,6 +107,28 @@
   </div>
 </div>
 
+<div id="chest" class="overlay hidden">
+  <div class="panel chestpanel">
+    <div class="maphead"><h2>櫃</h2><span class="dim">點一下就搬過去 · <kbd>E</kbd>/<kbd>Esc</kbd> 合上</span></div>
+    <h3>櫃裡</h3><div id="chest-grid" class="grid"></div>
+    <h3>囊裡</h3><div id="chest-bag" class="grid"></div>
+    <button id="chest-close">合上</button>
+  </div>
+</div>
+
+<div id="knock" class="overlay soft hidden">
+  <div class="knocktext"><span>昏</span><small id="knock-left"></small></div>
+</div>
+
+<div id="voyage" class="overlay hidden">
+  <div class="panel title">
+    <h1><span>渡</span><span>海</span></h1>
+    <p class="lore" id="voyage-text"></p>
+    <div class="row"><button id="voyage-new">再來一座島</button><button id="voyage-back" class="ghost">回頭</button></div>
+    <p class="dim small">再來一座島會帶著膽氣，其餘重新開始。</p>
+  </div>
+</div>
+
 <div id="dead" class="overlay hidden">
   <div class="panel title">
     <h1><span>墨</span><span>盡</span></h1>
@@ -111,7 +141,7 @@
   <div class="panel title">
     <h1><span>寫</span><span>意</span></h1>
     <p class="sub">寫木成木 · 寫水成水 · 一紙之島</p>
-    <p class="lore">鳥棲於山，是為島。一張紙落在海上，紙上的字活了。你是其中的一個「人」，赤手空拳。<br>取木、取棉、取石子；砌磚、造床、磨劍。撐過一夜，再撐過一夜。<br>第十夜起，外頭有鬼。這張紙是誰寫的？島上八處地方，各留了一段話。</p>
+    <p class="lore">鳥棲於山，是為島。一張紙落在海上，紙上的字活了。你是其中的一個「人」，赤手空拳。<br>取木、取棉、取石子；砌磚、造床、磨劍。撐過一夜，再撐過一夜。<br>第十三夜起，魄夜行。這張紙是誰寫的？島上八處地方，各留了一段話。膽氣夠了，就造一艘船離開。</p>
     <div class="row">
       <button id="btn-continue" class="hidden">繼續</button>
       <span id="save-info" class="dim"></span>
