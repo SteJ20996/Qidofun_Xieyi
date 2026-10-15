@@ -43,6 +43,7 @@ const result = await page.evaluate(async () => {
   const gather = async (ch) => { face(0, 1); w.set(T().x, T().y, ch); g.action = null; g.pressGather(); await until(() => !g.action, 12000); };
 
   try {
+  w.fogP = 0;   // 霧障是真隨機的，測試途中跳出彈窗會把遊戲停住；專門的霧障測試自己開
   // ============ A. 島與採集 ============
   ok('island edge is deep water', w.get(0, 75) === '淼' && w.get(-80, 0) === '淼');
   ok('eight landmarks placed', w.places.length === 8, w.places.map(x => x.name).join(''));
@@ -566,6 +567,54 @@ const result = await page.evaluate(async () => {
   ok('cut grass is scheduled to regrow in 30 s', w.get(T().x, T().y) === '白' && w.timers.has(tk) && Math.round(w.timers.get(tk).at - w.time) === 30, w.timers.get(tk));
   w.time += 31; w.step(p.x, p.y);
   ok('and it does regrow', w.get(T().x, T().y) === '草');
+
+  // ============ 霧障：每日兩擲；走進去問要不要用扇子；不用就五樣各掉一成，不致命 ============
+  {
+    for (const id of [...w.fogs.keys()]) w.removeFog(id);
+    const near1 = (f) => [...f.cells].some(k => { const [x, y] = k.split(',').map(Number); return Math.abs(x - p.x) <= 1 && Math.abs(y - p.y) <= 1; });
+    const connected = (f) => { const all = [...f.cells], seen = new Set([all[0]]), q = [all[0]]; while (q.length) { const [x, y] = q.shift().split(',').map(Number); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = (x + dx) + ',' + (y + dy); if (f.cells.has(k) && !seen.has(k)) { seen.add(k); q.push(k); } } } return seen.size === f.cells.size; };
+    w.fogP = 1; w.fogPlan = []; const d0 = Math.floor(w.time / DAY); w.fogDay = d0; w.time = (d0 + 1) * DAY + 1; w.step(p.x, p.y);
+    const planned = w.fogPlan.length; w.time = (d0 + 2) * DAY - 1; w.step(p.x, p.y); w.fogP = 0;
+    const fs = [...w.fogs.values()];
+    ok('a new day rolls twice for fog (odds forced to 1): two patches of 5–12 connected land tiles, none on the player', planned === 2 && fs.length === 2 && fs.every(f => f.cells.size >= 5 && f.cells.size <= 12 && connected(f) && !near1(f) && [...f.cells].every(k => { const [x, y] = k.split(',').map(Number); return w.fogLand(x, y); })), [planned, fs.map(f => f.cells.size)]);
+    const shapes = new Set(); for (let i = 0; i < 10; i++) { const f = w.spawnFog(p.x, p.y); if (!f) continue; const cs = [...f.cells].map(k => k.split(',').map(Number)), mx = Math.min(...cs.map(c => c[0])), my = Math.min(...cs.map(c => c[1])); shapes.add(cs.map(([x, y]) => (x - mx) + ':' + (y - my)).sort().join(' ')); }
+    ok('fog shapes vary', shapes.size >= 4, shapes.size);
+    for (const id of [...w.fogs.keys()]) w.removeFog(id);
+    // 自己擺一片霧在東邊兩格
+    const X = p.x, Y = p.y; for (let dx = 1; dx <= 4; dx++) w.set(X + dx, Y, '草');
+    const mk = () => w.addFog([(X + 1) + ',' + Y, (X + 2) + ',' + Y], w.time + DAY);
+    const stand = (x) => { p.x = p.rx = x; p.y = p.ry = Y; };
+    const snap = () => ({ hp: p.hp, food: p.food, warm: p.warm, sta: p.sta, san: p.san });
+    const tolled = (a, b) => ['hp', 'food', 'warm', 'sta', 'san'].every(k => Math.abs(b[k] - (a[k] - Math.round(a[k] * 0.1))) < 1e-9);
+    p.knock = 0; p.sailing = false; p.inFog = 0; g.removeItem('扇', 99); p.hp = 80; p.food = 50; p.warm = 60; p.sta = 40; p.san = 70;
+    let f1 = mk(); stand(X + 1); await until(() => !hidden('fogask'), 3000);
+    const noFanText = document.getElementById('fogask-text').textContent;
+    ok('walking into fog pops the question and pauses the world; without a fan only "walk through" is offered', !hidden('fogask') && g.paused && noFanText.indexOf('沒有扇子') >= 0 && hidden('fogask-use'), noFanText);
+    let s0 = snap(); document.getElementById('fogask-no').click(); const s1 = snap();
+    ok('without a fan: hp, food, warmth, stamina and ease each lose a tenth (rounded)', tolled(s0, s1) && !g.paused && p.inFog === f1.id, [JSON.stringify(s0), JSON.stringify(s1)]);
+    stand(X + 2); await sleep(200);
+    ok('moving about inside the same fog does not ask again', hidden('fogask'));
+    stand(X); await sleep(150); g.addItem('扇', 2); stand(X + 1); await until(() => !hidden('fogask'), 3000);
+    ok('leaving and walking back in asks again, now offering the fan', !hidden('fogask') && !hidden('fogask-use') && document.getElementById('fogask-use').textContent.indexOf('2') >= 0);
+    s0 = snap(); document.getElementById('fogask-use').click(); const s2 = snap();
+    ok('using a fan blows the whole fog away, costs one fan and nothing else', g.count('扇') === 1 && !w.fogs.has(f1.id) && !w.fogAt(X + 2, Y) && ['hp', 'food', 'warm', 'sta', 'san'].every(k => s2[k] === s0[k]) && !g.paused);
+    stand(X); await sleep(150); f1 = mk(); stand(X + 1); await until(() => !hidden('fogask'), 3000);
+    s0 = snap(); window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyN', bubbles: true })); const s3 = snap(); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyN', bubbles: true }));
+    ok('N refuses: the fan is kept and the toll is paid', hidden('fogask') && g.count('扇') === 1 && tolled(s0, s3) && w.fogs.has(f1.id), [JSON.stringify(s0), JSON.stringify(s3)]);
+    w.removeFog(f1.id); stand(X); await sleep(150); p.hp = 1; f1 = mk(); stand(X + 1); await until(() => !hidden('fogask'), 3000); await press('KeyN', 20); await sleep(30);
+    ok('the fog toll is never lethal', p.hp >= 1 && !p.dead, p.hp);
+    w.removeFog(f1.id); stand(X); p.hp = 80; await sleep(100);
+    const f2 = w.addFog([(X + 3) + ',' + Y, (X + 4) + ',' + Y], w.time + DAY); hold('扇'); g.useItem();
+    ok('a fan in hand blows away fog within three tiles (V)', !w.fogs.has(f2.id) && g.count('扇') === 0);
+    g.addItem('草', 4); g.addItem('木', 1); p.sta = 100; g.craft('fan');
+    ok('a fan is four grass and one wood', g.count('扇') === 1);
+    const f3 = w.addFog([(X + 3) + ',' + Y], w.time + DAY), f4 = w.addFog([(X + 4) + ',' + Y], w.time + 1);
+    const w2 = new window.World(w.seed); w2.restore(w.serialize());
+    ok('fogs are saved and restored', w2.fogs.size === w.fogs.size && !!w2.fogAt(X + 3, Y), w2.fogs.size);
+    w.time += 2; w.step(p.x, p.y);
+    ok('a fog left alone fades after its time', !w.fogs.has(f4.id) && w.fogs.has(f3.id));
+    w.removeFog(f3.id); g.removeItem('扇', 9);
+  }
 
   // ============ G. 地標、碑、問路、潮汐、存檔 ============
   const by = (id) => w.places.find(x => x.id === id);

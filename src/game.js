@@ -20,7 +20,8 @@
   // 衣甲：五件一套，一百八十日勻速穿破；十五息內挨打越多壞得越快，且會累加
   const SLOT_ORDER = ['襯', '褲', '甲', '盔', '靴', '帽'], ARMOR_SLOTS = ['襯', '褲', '甲', '盔', '靴'], ARMOR_LIFE = 180 * DAY, HIT_MULT = [1, 1.05, 1.12, 1.2, 1.5];
   const FUEL = { '煤': 120, '精煤': 300 };   // 灶的好柴：一塊煤燒一百二十息，精煤三百息
-  const WEAR_CAP = 6, REPAIR_WM = 1.5, HAT_FUEL = 400;   // 衣甲損耗倍率封頂；修補後從 1.5 倍起算；燈帽一根蠟燭四百息
+  const WEAR_CAP = 6, REPAIR_WM = 1.5, HAT_FUEL = 400;
+  const FOG_TOLL = 0.1, FAN_REACH = 3;   // 霧障：不吹散就五樣數值各掉當前的一成（四捨五入，命不低於一）；扇子選中按 V 吹得到三格   // 衣甲損耗倍率封頂；修補後從 1.5 倍起算；燈帽一根蠟燭四百息
   const $ = (id) => document.getElementById(id);
 
   class Game {
@@ -31,12 +32,13 @@
       this.ents = new Entities(this.world);
       this.world.onDiscover = (pl) => this.discover(pl);
       this.world.onWeather = (on) => { if (on) this.toast('下雨了', '雨會澆壞屋外的燈，四面有牆的屋裡不怕。'); else this.message('雨停了。'); };
+      this.world.onFog = (f) => { const c = this.world.fogCenter(f), p = this.player, dx = c.x - p.x, dy = c.y - p.y; this.toast('起霧了', this.dirName(dx, dy) + '約 ' + Math.round(Math.hypot(dx, dy)) + ' 步起了一片霧障（' + f.cells.size + ' 格）。走進去，命飽暖力愜意各掉一成；帶著扇子可以吹散。'); };
       this.world.onLampRuined = (x, y) => { this.toast('雨澆壞了一盞燈', '在 (' + x + ', ' + y + ')，燈沒了。屋外的燈每盞每息有千五分之一的機會淋壞。'); SFX.fail(); };
       this.renderer = new Renderer($('world'), $('minimap'));
       this.mapAcc = 0;
       this.player = { x: 0, y: 0, rx: 0, ry: 0, fx: 0, fy: 1, fromX: 0, fromY: 0, moveT: 0, stepDur: 0.2,
         hp: 100, hpMax: 100, food: 100, warm: 100, sta: 100, staMax: 100, san: 100, cour: 0, pillsMade: 0, pillsEaten: 0,
-        hurtT: 0, atkT: 0, bag: [], sel: 0, tools: [], tool: -1, worn: { '襯': null, '褲': null, '甲': null, '盔': null, '靴': null, '帽': null }, hitWin: { start: -99, n: 0 }, totemOff: false, craftLog: {}, pouches: 0, noGhostUntil: 0, home: null, readSteles: [], places: {}, creatures: [], raftTaken: false, dragon: false, finished: false,
+        hurtT: 0, atkT: 0, bag: [], sel: 0, tools: [], tool: -1, worn: { '襯': null, '褲': null, '甲': null, '盔': null, '靴': null, '帽': null }, hitWin: { start: -99, n: 0 }, totemOff: false, craftLog: {}, pouches: 0, noGhostUntil: 0, inFog: 0, home: null, readSteles: [], places: {}, creatures: [], raftTaken: false, dragon: false, finished: false,
         deaths: 0, dead: false, warned: {}, burn: {}, lastDay: 1,
         poisonT: 0, poisonPer: 0, biteN: 0, biteLast: -99, zeroSan: 0, insane: false, ctrl: true, ctrlT: 0, knock: 0, sailing: false, crossed: false, decayAt: 0 };
       this.stats = { gathered: 0, crafted: 0, kills: 0, read: 0, nights: 0, bites: 0 };
@@ -47,7 +49,7 @@
       this.saveAcc = 0; this.sanAcc = 0;
       this.last = 0;
       this.msgText = ''; this.hudSig = ''; this.barSig = ''; this.courSig = '';
-      this.chestAt = null; this.userPaused = false; this.craftCat = '全部';
+      this.chestAt = null; this.userPaused = false; this.craftCat = '全部'; this.fogAsk = null;
       this.spawn = this.world.findSpawn();
       if (save) this.load(save);
       else {
@@ -227,6 +229,7 @@
       this.world.tick(dt, p.x, p.y);
       if (this.day() !== p.lastDay) this.newDay();
       this.handleMove(dt);
+      this.checkFog();
       this.updateAction(dt);
       this.ents.update(dt, this);
       this.updateStats(dt);
@@ -374,6 +377,50 @@
       this.paused = false;
       this.toast('你在一個清晨醒來', homeOk ? '在你的床邊。' : '在最初的地方。');
       this.buildBag();
+    }
+    // ---------- 霧障 ----------
+    dirName(dx, dy) {
+      const a = Math.atan2(dy, dx) * 180 / Math.PI, names = ['東', '東南', '南', '西南', '西', '西北', '北', '東北'];
+      return names[((Math.round(a / 45) % 8) + 8) % 8] + '方';
+    }
+    checkFog() {          // 走進一片霧障：問要不要用扇子；同一片霧裡走動不再問，出去再進來才問
+      const p = this.player; if (p.dead || p.knock > 0 || p.sailing || this.fogAsk) return;
+      const f = this.world.fogAt(p.x, p.y);
+      if (!f) { p.inFog = 0; return; }
+      if (p.inFog === f.id) return;
+      this.askFog(f);
+    }
+    askFog(f) {
+      const n = this.count('扇');
+      this.fogAsk = f.id; this.paused = true; this.keys.clear(); this.action = null;
+      $('fogask-text').innerHTML = '一片霧障，' + f.cells.size + ' 格。不吹散就硬闖，命、飽、暖、力、愜意各掉當前的一成（不會致命）。' + (n ? '<br>囊中有扇子 ' + n + ' 把。' : '<br>你身上沒有扇子（草四木一可紮一把）。');
+      $('fogask-use').classList.toggle('hidden', !n); $('fogask-use').textContent = '用一把扇子吹散（' + n + '）';
+      $('fogask-no').textContent = n ? '不用，硬闖' : '穿霧而過';
+      $('fogask').classList.remove('hidden');
+    }
+    closeFog() { $('fogask').classList.add('hidden'); this.fogAsk = null; this.paused = false; }
+    fogUseFan() {
+      const id = this.fogAsk; if (!id || this.count('扇') < 1) return;
+      this.closeFog(); this.blowFog(this.world.fogs.get(id));
+    }
+    fogRefuse() {
+      const id = this.fogAsk; if (!id) return;
+      this.closeFog(); this.player.inFog = id; this.fogToll();
+    }
+    blowFog(f) {
+      if (!f) return;
+      const c = this.world.fogCenter(f);
+      this.removeItem('扇', 1); this.world.removeFog(f.id); this.player.inFog = 0;
+      this.fx.push({ type: 'write', x: Math.round(c.x), y: Math.round(c.y), ch: '風', color: G.INK.water, t: 0, dur: 0.7 });
+      this.message('一把扇子搧下去，霧障散了。囊中還有扇子 ' + this.count('扇') + ' 把。'); SFX.absorb(); this.buildBag();
+    }
+    fogToll() {           // 五樣數值各掉當前的一成，四捨五入；命不會因此歸零
+      const p = this.player, cut = (v) => Math.round(v * FOG_TOLL), parts = [];
+      const lose = { '命': cut(p.hp), '飽': cut(p.food), '暖': cut(p.warm), '力': cut(p.sta), '愜意': cut(p.san) };
+      p.hp = Math.max(Math.min(p.hp, 1), p.hp - lose['命']); p.food -= lose['飽']; p.warm -= lose['暖']; p.sta -= lose['力']; p.san -= lose['愜意'];
+      for (const k in lose) parts.push(k + ' −' + lose[k]);
+      this.fx.push({ type: 'float', x: p.x, y: p.y, text: '霧', color: G.INK.ash, t: 0, dur: 1.2 });
+      this.message('穿霧而過：' + parts.join('、') + '。'); SFX.fail();
     }
     // 停船：只停在真的水上。灘在漲潮時讀起來是「水」，停在那裡退潮就擱淺，還會堵住去燈塔的路
     parkShip(x, y, shallowOnly, maxR) {
@@ -784,6 +831,12 @@
       const it = G.item(s.n), f = it.food, tl = ITEMS[s.n] || {};
       if (tl.slot) { this.wearItem(p.sel); return; }
       if (s.n === '丹') { this.removeItem('丹', 1); this.eatPill(); return; }
+      if (s.n === '扇') {
+        let best = null, bd = 1e9;
+        for (const f of this.world.fogs.values()) for (const k of f.cells) { const [x, y] = U.unkey(k), d = U.cheb(x, y, p.x, p.y); if (d <= FAN_REACH && d < bd) { bd = d; best = f; } }
+        if (best) this.blowFog(best); else this.message('三格內沒有霧障。扇子留著，走進霧障時會問你要不要用。');
+        return;
+      }
       if (s.n === '龜甲') {
         this.removeItem('龜甲', 1);
         if (Math.random() < 0.25) { p.noGhostUntil = Math.max(p.noGhostUntil || 0, this.world.time) + TURTLE_PEACE_DAYS * DAY; this.toast('龜卜：吉', '裂紋成「安」字。五日內魄不來。'); SFX.learn(); }
@@ -1079,6 +1132,11 @@
         if (ev.repeat && !DIRS[ev.code]) return;
         if (!$('start').classList.contains('hidden')) { if (ev.code === 'Enter') { ev.preventDefault(); $('btn-continue').classList.contains('hidden') ? $('btn-new').click() : $('btn-continue').click(); } return; }
         if (this.player.dead) { if (ev.code === 'Enter' || ev.code === 'Space') { ev.preventDefault(); this.respawn(); } return; }
+        if (this.fogAsk) {
+          if (ev.code === 'KeyY' || ev.code === 'Enter') { if (this.count('扇')) this.fogUseFan(); else this.fogRefuse(); }
+          else if (ev.code === 'KeyN' || ev.code === 'Escape') this.fogRefuse();
+          ev.preventDefault(); return;
+        }
         if (!$('voyage').classList.contains('hidden')) return;
         if (this.userPaused) { if (ev.code === 'Escape') { this.togglePause(); ev.preventDefault(); } return; }
         if (this.player.knock > 0) { ev.preventDefault(); return; }
@@ -1143,12 +1201,14 @@
       $('pause-resume').addEventListener('click', () => this.togglePause());
       $('btn-map').addEventListener('click', () => { if (this.userPaused || this.player.dead || this.player.knock > 0) return; $('journal').classList.add('hidden'); $('craft').classList.add('hidden'); this.toggleMap(); });
       $('minimap').addEventListener('click', () => $('btn-map').click());
+      $('fogask-use').addEventListener('click', () => this.fogUseFan());
+      $('fogask-no').addEventListener('click', () => this.fogRefuse());
       $('voyage-back').addEventListener('click', () => { $('voyage').classList.add('hidden'); this.paused = false; this.message('回頭。再開出去就走了。'); });
       $('voyage-new').addEventListener('click', () => { try { localStorage.setItem(CARRY_KEY, String(this.player.cour)); } catch (e) { /* ignore */ } Game.clearSave(); location.reload(); });
     }
     cycle(d) { const p = this.player; if (p.bag.length) p.sel = (p.sel + d + p.bag.length) % p.bag.length; this.buildBag(); }
     togglePause() {
-      if (this.player.dead || !$('start').classList.contains('hidden') || !$('voyage').classList.contains('hidden')) return;
+      if (this.player.dead || this.fogAsk || !$('start').classList.contains('hidden') || !$('voyage').classList.contains('hidden')) return;
       this.userPaused = !this.userPaused; this.paused = this.userPaused;
       $('pause').classList.toggle('hidden', !this.userPaused); this.keys.clear(); this.action = null;
     }
@@ -1268,6 +1328,7 @@
       else if (e && e.type === '魄') s = '魄 · 無形。手裡有光六格內即煙滅';
       else if (e && e.type === '鷹') s = '鷹' + (e.tame ? '（你的 · 命 ' + Math.round(e.hp) + ' 力 ' + Math.round(e.sta) + '）' : e.angry ? '（怒）' : '（半友好）') + (hs && hs.n === '魚' ? ' · <kbd>F</kbd> ' + (e.tame ? '餵魚（力 +40）' : '投魚馴服（' + Math.round(this.tameChance() * 100) + '%）') : ' · 手持魚按 F ' + (e.tame ? '餵' : '馴')) + ' · <kbd>E</kbd> 攻擊';
       else if (e) s = '「' + e.type + '」' + (e.type === '蟾' ? (e.venom ? '（有毒）' : '（無毒）') : '') + (e.hp > 1 ? '（' + e.hp + '）' : '') + ' · <kbd>E</kbd> ' + (e.type === '魚' ? '捉' : e.type === '鳥' ? '驚' : this.heldDmg() ? '攻擊（' + this.activeTool().n + '）' : '<i>徒手打不了，具欄裡選把刀劍</i>');
+      else if (w.fogAt(t.x, t.y)) { const n = this.count('扇'); s = '霧障 · 走進去會問你要不要用扇子吹散' + (n ? '（囊中 ' + n + ' 把' + (hs && hs.n === '扇' ? '；<kbd>V</kbd> 現在就搧' : '') + '）' : '（沒有扇子：草四木一可紮一把）'); }
       else if (ch === '碑') s = '一塊古碑 · <kbd>E</kbd> 讀碑';
       else if (ch === '包') s = '落下的荷包 · <kbd>E</kbd> 取回';
       else if (d.net) { const rec = w.netAt(t.x, t.y), f = rec ? w.netFish(rec, w.time) : 0, r = w.netRule(d.net); s = (d.net === 1 ? '小網' : d.net === 2 ? '中網' : '大網') + ' · 魚 ' + f + '/' + r.cap + '（' + r.every + ' 息一條）' + (f ? ' · <kbd>E</kbd> 取魚' : ' · <kbd>E</kbd> 收回'); }
@@ -1316,7 +1377,7 @@
       try {
         localStorage.setItem(SAVE_KEY, JSON.stringify({ v: 5, seed: this.seed, diff: this.diff.key, savedAt: Date.now(), world: this.world.serialize(), ents: this.ents.serialize(),
           player: { x: p.x, y: p.y, fx: p.fx, fy: p.fy, hp: p.hp, food: p.food, warm: p.warm, sta: p.sta, staMax: p.staMax, san: p.san, cour: p.cour, bag: p.bag, sel: p.sel, home: p.home, readSteles: p.readSteles,
-            places: p.places, creatures: p.creatures, raftTaken: p.raftTaken, dragon: p.dragon, finished: p.finished, deaths: p.deaths, burn: p.burn, lastDay: p.lastDay, poisonT: p.poisonT, poisonPer: p.poisonPer, sailing: p.sailing, tools: p.tools, tool: p.tool, decayAt: p.decayAt, worn: p.worn, hitWin: p.hitWin, totemOff: p.totemOff, pouches: p.pouches, noGhostUntil: p.noGhostUntil, hpMax: p.hpMax, pillsMade: p.pillsMade, pillsEaten: p.pillsEaten }, stats: this.stats }));
+            places: p.places, creatures: p.creatures, raftTaken: p.raftTaken, dragon: p.dragon, finished: p.finished, deaths: p.deaths, burn: p.burn, lastDay: p.lastDay, poisonT: p.poisonT, poisonPer: p.poisonPer, sailing: p.sailing, tools: p.tools, tool: p.tool, decayAt: p.decayAt, worn: p.worn, hitWin: p.hitWin, totemOff: p.totemOff, pouches: p.pouches, noGhostUntil: p.noGhostUntil, hpMax: p.hpMax, pillsMade: p.pillsMade, pillsEaten: p.pillsEaten, inFog: p.inFog }, stats: this.stats }));
       } catch (err) { /* 隱私模式等情況下存不了，就算了 */ }
     }
     load(s) {
@@ -1324,7 +1385,7 @@
       this.world.restore(s.world || {});
       this.ents.restore(s.ents);
       const sp = s.player || {};
-      for (const k of ['x', 'y', 'fx', 'fy', 'hp', 'food', 'warm', 'sta', 'staMax', 'san', 'cour', 'bag', 'sel', 'home', 'readSteles', 'places', 'creatures', 'raftTaken', 'dragon', 'finished', 'deaths', 'burn', 'lastDay', 'poisonT', 'poisonPer', 'sailing', 'tools', 'tool', 'decayAt', 'worn', 'hitWin', 'totemOff', 'pouches', 'noGhostUntil', 'hpMax', 'pillsMade', 'pillsEaten']) if (sp[k] !== undefined) p[k] = sp[k];
+      for (const k of ['x', 'y', 'fx', 'fy', 'hp', 'food', 'warm', 'sta', 'staMax', 'san', 'cour', 'bag', 'sel', 'home', 'readSteles', 'places', 'creatures', 'raftTaken', 'dragon', 'finished', 'deaths', 'burn', 'lastDay', 'poisonT', 'poisonPer', 'sailing', 'tools', 'tool', 'decayAt', 'worn', 'hitWin', 'totemOff', 'pouches', 'noGhostUntil', 'hpMax', 'pillsMade', 'pillsEaten', 'inFog']) if (sp[k] !== undefined) p[k] = sp[k];
       // 舊存檔裡已經不存在的東西丟掉，身上的衣甲要對得上格子
       const known = (s) => !!(s && G.item(s.n));
       p.bag = (p.bag || []).filter(known); p.tools = (p.tools || []).filter(known);

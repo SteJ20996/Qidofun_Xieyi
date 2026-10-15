@@ -180,6 +180,9 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 .panel.chestpanel { max-width: 820px; }
 .panel .grid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .panel .grid .slot { cursor: pointer; }
+.panel.fogpanel { max-width: 560px; }
+.panel.fogpanel h2 { margin: 0 0 8px; }
+.panel.fogpanel p { line-height: 1.8; }
 .overlay.soft { background: rgba(20,16,30,.45); backdrop-filter: blur(2px); pointer-events: none; }
 .knocktext { text-align: center; color: #efe5cf; font: 120px/1 var(--font); text-shadow: 0 0 30px rgba(0,0,0,.6); animation: knock-sway 2s ease-in-out infinite; }
 .knocktext small { display: block; font-size: 18px; margin-top: 8px; opacity: .85; }

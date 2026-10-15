@@ -10,6 +10,9 @@
   const N4 = [[0, -1], [-1, 0], [1, 0], [0, 1]];
   // 天氣：雨。一場雨下 RAIN_MIN–RAIN_MAX 秒，停後隔 RAIN_GAP_MIN–RAIN_GAP_MAX 秒再來（真隨機，不走種子）；
   // 下雨時屋外的燈每盞每息有 RAIN_LAMP_P 的真隨機機會被澆壞；ROOM_LIMIT 格內被牆圍得住才算屋裡
+  // 霧障：每日擲 FOG_ROLLS 次、每次 FOG_P 的真隨機機會起一片霧（每日最多兩片，第二日起）；一片 FOG_MIN–FOG_MAX 格、形狀隨機長；
+  // 起在玩家 FOG_NEAR 格外的陸地上；放著不管 FOG_LIFE 後自己散
+  const FOG_ROLLS = 2, FOG_P = 0.25, FOG_MIN = 8, FOG_MAX = 12, FOG_NEAR = [8, 28], FOG_LIFE = DAY;
   const RAIN_MIN = DAY * 0.25, RAIN_MAX = DAY * 1.0, RAIN_GAP_MIN = DAY * 1.0, RAIN_GAP_MAX = DAY * 4.0, RAIN_LAMP_P = 1 / 1500, ROOM_LIMIT = 121;
 
   class World {
@@ -52,6 +55,12 @@
       this.rainAcc = 0; this.rainLampP = RAIN_LAMP_P;
       this.onWeather = null;     // 回調：雨起（true）／雨停（false）
       this.onLampRuined = null;  // 回調：某盞燈被雨澆壞
+      this.fogs = new Map();     // id -> { id, cells: Set("x,y"), until }：霧障
+      this.fogCells = new Map(); // "x,y" -> id
+      this.fogPlan = [];         // 今天還沒起的霧（世界時間）
+      this.fogDay = Math.floor(this.time / DAY);   // 已經擲過的那一日（第一日不起霧）
+      this.fogSeq = 0; this.fogP = FOG_P;
+      this.onFog = null;         // 回調：起了一片霧
     }
 
     chunk(cx, cy) {
@@ -200,6 +209,42 @@
       }
       return false;
     }
+    // ---------- 霧障 ----------
+    fogAt(x, y) { const id = this.fogCells.get(U.key(x, y)); return id ? this.fogs.get(id) : null; }
+    fogLand(x, y) { const d = this.info(x, y); return d.walk > 0 && d.kind !== 'water' && DB[this.raw(x, y)].kind !== 'water'; }
+    addFog(cells, until) {
+      const id = ++this.fogSeq, f = { id, cells: new Set(cells), until };
+      this.fogs.set(id, f); for (const k of f.cells) this.fogCells.set(k, id);
+      return f;
+    }
+    removeFog(id) { const f = this.fogs.get(id); if (!f) return; for (const k of f.cells) if (this.fogCells.get(k) === id) this.fogCells.delete(k); this.fogs.delete(id); }
+    // 在玩家附近的陸地上長一片霧：從一格起，隨機往四鄰長，有時團成一塊、有時拖成一條、有時分岔
+    spawnFog(px, py) {
+      const R = U.trueRand;
+      let seed = null;
+      for (let i = 0; i < 80 && !seed; i++) {
+        const a = R() * Math.PI * 2, r = FOG_NEAR[0] + R() * (FOG_NEAR[1] - FOG_NEAR[0]);
+        const x = px + Math.round(Math.cos(a) * r), y = py + Math.round(Math.sin(a) * r);
+        if (this.fogLand(x, y) && !this.fogCells.has(U.key(x, y))) seed = [x, y];
+      }
+      if (!seed) return null;
+      const want = FOG_MIN + Math.floor(R() * (FOG_MAX - FOG_MIN + 1));
+      const mode = R(), dir = N4[Math.floor(R() * 4)];   // mode < 0.4 團；< 0.75 拖成一條；其餘分岔
+      const cells = [seed], have = new Set([U.key(seed[0], seed[1])]);
+      for (let tries = 0; tries < 400 && cells.length < want; tries++) {
+        const from = mode < 0.4 ? cells[Math.floor(R() * cells.length)] : mode < 0.75 ? cells[cells.length - 1 - Math.floor(R() * Math.min(3, cells.length))] : cells[Math.floor(R() * R() * cells.length)];
+        const d = mode >= 0.4 && mode < 0.75 && R() < 0.6 ? dir : N4[Math.floor(R() * 4)];
+        const nx = from[0] + d[0], ny = from[1] + d[1], k = U.key(nx, ny);
+        if (have.has(k) || this.fogCells.has(k) || !this.fogLand(nx, ny) || (Math.abs(nx - px) <= 1 && Math.abs(ny - py) <= 1)) continue;
+        have.add(k); cells.push([nx, ny]);
+      }
+      if (cells.length < 5) return null;
+      const f = this.addFog(have, this.time + FOG_LIFE);
+      if (this.onFog) this.onFog(f);
+      return f;
+    }
+    fogCenter(f) { let sx = 0, sy = 0; for (const k of f.cells) { const [x, y] = U.unkey(k); sx += x; sy += y; } return { x: sx / f.cells.size, y: sy / f.cells.size }; }
+
     // ---------- 天氣：雨 ----------
     raining() { return this.time < this.rainUntil; }
     passable(x, y) { const d = this.info(x, y); return d.walk > 0 && !d.gate; }   // 門雖能走，算牆
@@ -246,6 +291,14 @@
       if (this.rainUntil > 0 && this.time >= this.rainUntil) { this.rainUntil = 0; this.nextRainAt = this.time + RAIN_GAP_MIN + U.trueRand() * (RAIN_GAP_MAX - RAIN_GAP_MIN); if (this.onWeather) this.onWeather(false); }
       else if (this.rainUntil <= 0 && this.time >= this.nextRainAt) { this.rainUntil = this.time + RAIN_MIN + U.trueRand() * (RAIN_MAX - RAIN_MIN); if (this.onWeather) this.onWeather(true); }
       if (this.raining()) { this.rainAcc += STEP; while (this.rainAcc >= 1) { this.rainAcc -= 1; this.rainLamps(); } } else this.rainAcc = 0;
+      // —— 霧障：到時的先起；換日擲兩次；放了一日的自己散
+      for (let i = this.fogPlan.length - 1; i >= 0; i--) if (this.time >= this.fogPlan[i]) { this.fogPlan.splice(i, 1); this.spawnFog(px, py); }
+      const today = Math.floor(this.time / DAY);
+      if (today !== this.fogDay) {
+        this.fogDay = today;
+        for (let i = 0; i < FOG_ROLLS; i++) if (U.trueRand() < this.fogP) this.fogPlan.push(today * DAY + U.trueRand() * DAY);
+      }
+      for (const [id, f] of this.fogs) if (this.time >= f.until) this.removeFog(id);
       // —— 灶裡的柴
       for (const [k, f] of this.stoves) { if (f > 0) this.stoves.set(k, Math.max(0, f - STEP)); }
       // —— 火勢蔓延
@@ -331,7 +384,8 @@
       const weirs = {}; for (const [k, v] of this.weirs) weirs[k] = Math.round(v);
       const explored = {}; for (const [k, b] of this.explored) explored[k] = Array.from(b, v => v.toString(16).padStart(2, '0')).join('');
       const seen = this.places.filter(p => p.seen).map(p => p.id);
-      return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers, stoves, bags, weirs, explored, seen, scarecrows, chests, nets, rainUntil: Math.round(this.rainUntil), nextRainAt: Math.round(this.nextRainAt) };
+      return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers, stoves, bags, weirs, explored, seen, scarecrows, chests, nets, rainUntil: Math.round(this.rainUntil), nextRainAt: Math.round(this.nextRainAt),
+        fogs: [...this.fogs.values()].map(f => [Math.round(f.until), [...f.cells].join(';')]), fogPlan: this.fogPlan.map(Math.round), fogDay: this.fogDay };
     }
     restore(s) {
       this.time = s.time || 30;
@@ -340,6 +394,10 @@
       this.rainUntil = (s.rainUntil || 0) > this.time ? s.rainUntil : 0;
       this.nextRainAt = s.nextRainAt || (this.time + DAY + U.trueRand() * DAY * 2);
       this.rainAcc = 0;
+      this.fogs = new Map(); this.fogCells = new Map(); this.fogSeq = 0;
+      for (const [until, cells] of s.fogs || []) if (until > this.time && cells) this.addFog(cells.split(';'), until);
+      this.fogPlan = (s.fogPlan || []).filter(t => typeof t === 'number');
+      this.fogDay = typeof s.fogDay === 'number' ? s.fogDay : Math.floor(this.time / DAY);
       this.burn = new Map(Object.entries(s.burn || {}).map(([k, v]) => [k, { t: v[0], lvl: v[1] }]));
       this.timers = new Map(Object.entries(s.timers || {}).map(([k, v]) => [k, { to: v[0], at: v[1], from: v[2] || '灰' }]));
       this.scarecrows = new Map(Object.entries(s.scarecrows || {}));

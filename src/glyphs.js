@@ -107,6 +107,7 @@
   // 囊中之物。工具：tool 類別、dmg 傷害、dur 耐久；light 手持照明半徑、life 可燃秒數；wear 穿戴即生效
   const ITEMS = {
     '石子': { s: 8, kind: 'item', flavor: '磨刀石。磨礪成工具，或重磨舊工具。' },
+    '扇': { s: 10, kind: 'use', flavor: '草四木一紮成的蒲扇，一搧就散。帶在囊裡：走進霧障時會問你要不要用它吹散；選中按 V，三格內的霧障也吹得散。' },
     '麻布': { s: 22, kind: 'item', flavor: '麻四棉二織成的布。做稻草人、船帆、燈帽。' },
     '木板': { s: 12, kind: 'item', flavor: '木二劈成兩塊板。造船用。' },
     '船槳': { s: 29, kind: 'item', flavor: '木板二木一。' },
@@ -177,7 +178,7 @@
   const CRAFT_CATS = ['全部', '居所', '工具', '衣甲', '燈火', '漁船', '食藥', '材料'];
   const CAT_OF = {
     '居所': ['brick', 'door', 'bed', 'chest', 'stove', 'cauldron', 'scarecrow', 'bridge'],
-    '工具': ['grind', 'regrind', 'forge', 'forgew', 'hammer'],
+    '工具': ['grind', 'regrind', 'forge', 'forgew', 'fan', 'hammer'],
     '衣甲': ['lining', 'pants', 'vest', 'cap', 'shoes', 'ironvest', 'helm', 'ironboots', 'wvest', 'whelm', 'wboots'],
     '燈火': ['torch', 'candle', 'lamp', 'hat'],
     '漁船': ['weir', 'net', 'midnet', 'bignet', 'bignet13', 'raft', 'plank', 'oar', 'sail', 'ship'],
@@ -198,6 +199,7 @@
     { id: 'lamp', out: '燈', n: 1, need: { '石': 2, '火把': 1 }, sta: 4, note: '放在地上，長明不滅' },
     { id: 'stove', out: '灶', n: 1, need: { '石': 6 }, sta: 6, note: '烤食、燒瓶、蒸餾；添木續火' },
     { id: 'cauldron', out: '鼎', n: 1, need: { '鐵': 3, '石': 4, '鎢鋼': 1, '精煤': 2 }, sta: 12, note: '煉丹用，添柴如灶' },
+    { id: 'fan', out: '扇', n: 1, need: { '草': 4, '木': 1 }, sta: 2, note: '一次性，吹散一片霧障' },
     { id: 'grind', out: null, need: { '石': 1, '石子': 1, '木': 1 }, sta: 8, note: '磨礪：選刀、鎬、鋤、劍、斧', choose: ['石刀', '石鎬', '石鋤', '石劍', '石斧'] },
     { id: 'regrind', out: null, need: { '石子': 1 }, sta: 3, note: '重磨手中的工具，耐久復滿', regrind: true },
     { id: 'forge', out: null, need: { '鐵': 2, '木': 1, '煤': 1 }, sta: 10, note: '鍛鋼具：耐久與戰力是石具的 140%', choose: ['鋼刀', '鋼鎬', '鋼鋤', '鋼劍', '鋼斧'] },

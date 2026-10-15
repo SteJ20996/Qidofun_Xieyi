@@ -199,6 +199,27 @@
         }
       }
 
+      // —— 霧障：每格幾團慢慢飄的白霧，正中寫一個淡淡的「霧」字
+      if (world.fogs.size) {
+        for (const f of world.fogs.values()) {
+          let cx = 0, cy = 0, n = 0;
+          for (const k of f.cells) {
+            const [x, y] = U.unkey(k); cx += x; cy += y; n++;
+            if (x < x0 - 1 || x > x1 + 1 || y < y0 - 1 || y > y1 + 1) continue;
+            const left = Math.min(1, (f.until - world.time) / 20);       // 快散時淡下去
+            for (let i = 0; i < 3; i++) {
+              const r = U.hash2(x, y, 300 + i), ph = (r & 1023) / 1023 * 6.28;
+              const px = ox + x * T + T / 2 + Math.sin(now * 0.35 + ph) * T * 0.28, py = oy + y * T + T / 2 + Math.cos(now * 0.27 + ph * 1.3) * T * 0.22;
+              const rad = T * (0.75 + ((r >>> 10) & 255) / 255 * 0.45);
+              const gr = ctx.createRadialGradient(px, py, 0, px, py, rad);
+              gr.addColorStop(0, 'rgba(248,247,242,' + (0.62 * left) + ')'); gr.addColorStop(0.6, 'rgba(240,238,232,' + (0.35 * left) + ')'); gr.addColorStop(1, 'rgba(240,238,232,0)');
+              ctx.fillStyle = gr; ctx.fillRect(px - rad, py - rad, rad * 2, rad * 2);
+            }
+          }
+          if (n) { const mx = ox + (cx / n) * T + T / 2, my = oy + (cy / n) * T + T / 2; if (mx > -T && my > -T && mx < w + T && my < h + T) this.drawGlyph('霧', G.INK.ash, mx, my, T * 0.9, 0, 0.35); }
+        }
+        ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      }
       // —— 夜色：一層藍墨，在玩家與光源處挖出洞
       const dark = g.darkness();
       if (dark > 0.02) {
@@ -278,6 +299,8 @@
         if (i < 0 || j < 0 || i >= N || j >= N) continue;
         m.fillText(pl.ch || pl.name, i * px + px / 2, j * px + px / 2);
       }
+      m.fillStyle = 'rgba(200,198,192,0.85)';
+      for (const f of g.world.fogs.values()) for (const k of f.cells) { const [x, y] = U.unkey(k), i = x - p.x + half, j = y - p.y + half; if (i >= 0 && j >= 0 && i < N && j < N && g.world.isSeen(x, y)) m.fillRect(i * px, j * px, px + 0.5, px + 0.5); }
       for (const e of g.ents.list) {
         const i = e.x - p.x + half, j = e.y - p.y + half;
         if (i < 0 || j < 0 || i >= N || j >= N) continue;
@@ -307,6 +330,8 @@
         m.fillRect(i * px, j * px, px + 0.4, px + 0.4);
       }
       m.globalAlpha = 1;
+      m.fillStyle = 'rgba(200,198,192,0.85)';
+      for (const f of w.fogs.values()) for (const k of f.cells) { const [x, y] = U.unkey(k); if (w.isSeen(x, y)) m.fillRect((x + R) * px, (y + R) * px, px + 0.4, px + 0.4); }
       // 碑
       m.font = Math.round(px * 2.6) + 'px ' + FONT; m.textAlign = 'center'; m.textBaseline = 'middle'; m.fillStyle = '#1c1a17';
       for (const s of w.steles.values()) if (w.isSeen(s.x, s.y)) m.fillText('碑', (s.x + R + 0.5) * px, (s.y + R + 0.5) * px);
