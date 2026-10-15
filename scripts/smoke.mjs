@@ -259,11 +259,13 @@ const result = await page.evaluate(async () => {
   p.cour = 45; g.addCourage(0);
   ok('courage level 2 gives 1.2x recovery', g.level() === 2 && Math.abs(g.mult() - 1.2) < 1e-9);
   ok('level thresholds grow as 20×(1+0.1n)², rounded to whole points', g.levelCost(0) === 20 && g.levelCost(1) === 24 && g.levelCost(2) === 29 && g.levelCost(3) === 34 && g.levelCost(4) === 39 && g.levelAt(1) === 20 && g.levelAt(2) === 44 && g.levelAt(8) === 300 && g.levelAt(10) === 437 && Number.isInteger(g.levelAt(31)), [g.levelAt(8), g.levelAt(10), g.levelAt(31)]);
-  ok('ship recipe locked below level 8', (() => { g.addItem('木板', 12); g.addItem('船槳', 2); g.addItem('船帆', 1); p.sta = 100; g.craft('ship'); return g.count('大船') === 0; })());
+  ok('ship recipe locked below level 8', (() => { g.addItem('木板', 8); g.addItem('船槳', 1); g.addItem('船帆', 1); p.sta = 100; g.craft('ship'); return g.count('孤帆') === 0; })());
   p.cour = 300; g.craft('ship');
-  ok('ship craftable at level 8', g.count('大船') === 1 && g.level() === 8, [g.count('大船'), g.level()]);
+  ok('a 孤帆 is craftable at level 8 for 8 planks, an oar and a sail', g.count('孤帆') === 1 && g.level() === 8 && g.count('木板') === 0, [g.count('孤帆'), g.level()]);
+  g.addItem('木板', 36); g.addItem('船槳', 4); g.addItem('船帆', 3); g.addItem('鐵', 8); g.addItem('麻布', 6); p.sta = 100; g.craft('ark');
+  ok('a 方舟 costs far more: 36 planks, 4 oars, 3 sails, 8 iron, 6 cloth', g.count('方舟') === 1 && g.count('木板') === 0 && g.count('鐵') === 0, [g.count('方舟'), g.count('木板')]);
   // 衣甲與山海衣：五件穿齊、十重膽氣才有獸紋；脫下一件就是普通衣甲
-  p.cour = g.levelAt(10); trim(['木', '石', '石子', '草', '土', '磚', '大船']);
+  p.cour = g.levelAt(10); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']);
   g.addItem('內襯', 1); g.addItem('布褲', 1); g.addItem('布甲', 1); g.addItem('布帽', 1); g.addItem('布靴', 1);
   for (const n of ['內襯', '布褲', '布甲', '布帽']) { hold(n); g.pressPlace(); }
   ok('four cloth pieces worn: 9% less damage, no 山海衣 yet', Math.abs(g.armorRed() - 0.09) < 1e-9 && !g.totemOn() && g.wornList().length === 4 && g.dmgMult() === 1, g.armorRed());
@@ -300,7 +302,7 @@ const result = await page.evaluate(async () => {
   ok('the wear multiplier caps at ×6', Math.abs(p.worn['盔'].wm - 6) < 1e-9 && p.hitWin.n === 0, p.worn['盔'].wm);
   g.addItem('麻布', 1); p.sta = 50; g.repairWorn('盔');
   ok('repairing with 麻布 restores 180 days and restarts wear at ×1.5', Math.round(p.worn['盔'].dur / DAY) === 180 && p.worn['盔'].wm === 1.5 && g.count('麻布') === 0 && p.sta === 46, [p.worn['盔'].wm, g.count('麻布')]);
-  p.hp = 100; p.hurtT = 0; g.takeOff('盔'); g.takeOff('靴'); trim(['木', '石', '石子', '草', '土', '磚', '大船']);
+  p.hp = 100; p.hurtT = 0; g.takeOff('盔'); g.takeOff('靴'); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']);
   // 拆回自己放的東西不長膽氣；稻草人拆得回來
   p.cour = 0; face(0, -1); w.set(T().x, T().y, '土'); g.addItem('磚', 1); hold('磚'); g.pressPlace(); g.addItem('石鎬', 1); hold('石鎬'); g.action = null; g.pressGather(); await until(() => !g.action, 12000);
   ok('taking back a placed brick gives no courage', g.count('磚') >= 1 && p.cour === 0 && w.get(T().x, T().y) === '白', [p.cour, w.get(T().x, T().y)]);
@@ -317,7 +319,7 @@ const result = await page.evaluate(async () => {
   ok('iron-clad, a snake bite does not poison', p.poisonT === 0 && p.poisonPer === 0);
   p.worn['甲'].wm = 3; g.addItem('鐵', 1); p.sta = 50; g.repairWorn('甲');
   ok('iron pieces are repaired with 鐵', p.worn['甲'].wm === 1.5 && g.count('鐵') === 0);
-  for (const k of ['襯', '甲', '褲', '盔', '靴']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚', '大船']); p.hitWin = { start: -99, n: 0 };
+  for (const k of ['襯', '甲', '褲', '盔', '靴']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); p.hitWin = { start: -99, n: 0 };
   // 難度：魄幾夜起、受傷與攻擊倍率、夜裡獸量
   const tSave = w.time; p.cour = 0;
   g.diff = XIEYI.DIFF.hard; w.time = DAY * 8 + DAY * 0.7;
@@ -378,7 +380,7 @@ const result = await page.evaluate(async () => {
   ok('tamed eagles are saved with the world', JSON.stringify(g.ents.serialize()).indexOf('鷹') >= 0);
   g.ents.remove(eg); g.addCourage(0);
   // 鼎與丹：蟾蜍肉分有無毒；前三顆 8%／12%，之後 1%／2%；前五十顆每顆命上限 +3，之後 +0.5
-  trim(['木', '石', '石子', '草', '土', '磚', '大船']); g.addItem('鐵', 3); g.addItem('石', 4); g.addItem('鎢鋼', 1); g.addItem('精煤', 2); p.sta = 100; g.craft('cauldron');
+  trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); g.addItem('鐵', 3); g.addItem('石', 4); g.addItem('鎢鋼', 1); g.addItem('精煤', 2); p.sta = 100; g.craft('cauldron');
   face(0, 1); w.set(T().x, T().y, '土'); hold('鼎'); g.pressPlace(); const ding = T();
   ok('a cauldron is crafted and placed, cold until fuelled', w.get(ding.x, ding.y) === '鼎' && !w.stoveLit(ding.x, ding.y));
   g.addItem('木', 1); hold('木'); g.pressPlace();
@@ -403,7 +405,7 @@ const result = await page.evaluate(async () => {
   ok('damage dealt is a whole number (40 × 1.15 = 46)', rt.hp === 300 - 46 && Number.isInteger(rt.hp), rt.hp);
   p.hp = 100; g.hit({ type: '虎', x: p.x + 1, y: p.y }, 20);
   ok('damage taken is a whole number (20 × 5/3 × 0.9 = 30)', p.hp === 70 && Number.isInteger(p.hp), p.hp);
-  g.ents.remove(rt); for (const k of ['襯', '褲', '甲', '盔', '靴']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚', '大船']); p.cour = 0; p.hp = 100; p.hurtT = 0;
+  g.ents.remove(rt); for (const k of ['襯', '褲', '甲', '盔', '靴']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); p.cour = 0; p.hp = 100; p.hurtT = 0;
   p.hpMax = 100; p.hp = 100; p.pillsEaten = 0; p.pillsMade = 0; g.removeItem('丹', 9); g.removeItem('蟾蜍肉', 9); g.removeItem('毒蟾肉', 9); w.set(ding.x, ding.y, '土');
   // 龜：少見不咬人，命五十；龜甲卜之，吉則五日無魄
   face(1, 0); w.set(T().x, T().y, '草'); const tu = g.ents.add('龜', T().x, T().y, { moveT: 99 }); hold('石劍'); p.atkT = 0; g.pressGather();
@@ -416,7 +418,7 @@ const result = await page.evaluate(async () => {
   ok('a good omen: five days without ghosts', g.peaceDays() === 5 && (() => { const t0 = w.time; w.time = Math.floor((p.noGhostUntil - DAY) / DAY) * DAY + DAY * 0.7; const inside = !g.ghostNight(); w.time = Math.floor(p.noGhostUntil / DAY) * DAY + DAY * 1.7; const after = g.ghostNight(); w.time = t0; return inside && after; })(), [g.peaceDays()]);
   p.noGhostUntil = 0;
   // 漁網：棉麻草織小網，四小成中，四中或十三小成大；放在水上按時存魚；空網收回
-  trim(['木', '石', '石子', '草', '土', '磚', '大船']); g.removeItem('草', 99); g.removeItem('魚', 99);
+  trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); g.removeItem('草', 99); g.removeItem('魚', 99);
   g.addItem('棉', 26); g.addItem('麻', 26); g.addItem('草', 39);
   for (let i = 0; i < 13; i++) { p.sta = 100; g.craft('net'); }
   ok('thirteen small nets from cotton, hemp and grass', g.count('漁網') === 13 && g.count('棉') === 0 && g.count('麻') === 0 && g.count('草') === 0, bag());
@@ -456,7 +458,7 @@ const result = await page.evaluate(async () => {
   ok('coal is strong fuel (+120)', Math.abs(w.stoveFuel(T().x, T().y) - f0 - 120) < 1 && g.count('煤') === 0, w.stoveFuel(T().x, T().y) - f0);
   w.set(T().x, T().y, '土'); hold('石劍'); p.hurtT = 0;
   // 鋼具與鎢鋼具：鐵二木一煤一鍛鋼具（140%）；鐵礦脈 1/30 出鎢礦；八煤成精煤；鎢礦一鐵礦二精煤一煉鎢鋼；鎢鋼具 150%／耐久 200%
-  trim(['木', '石', '石子', '草', '土', '磚', '大船']); g.addItem('鐵', 2); g.addItem('木', 1); g.addItem('煤', 1); p.sta = 100; g.craft('forge', '鋼劍');
+  trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); g.addItem('鐵', 2); g.addItem('木', 1); g.addItem('煤', 1); p.sta = 100; g.craft('forge', '鋼劍');
   ok('a steel sword: 56 damage and 56 durability (140% of stone)', !!tool('鋼劍') && tool('鋼劍').dur === 56 && G.ITEMS['鋼劍'].dmg === 56 && g.count('鐵') === 0, bag());
   ok('iron veins hide tungsten one time in thirty', Math.abs(G.DB['鐵'].bonus['鎢礦'] - 1 / 30) < 1e-9);
   const rndT = Math.random; Math.random = () => 0.01; face(0, 1); w.set(T().x, T().y, '鐵'); hold('石鎬'); g.action = null; g.pressGather(); await until(() => !g.action, 12000); Math.random = rndT;
@@ -530,10 +532,10 @@ const result = await page.evaluate(async () => {
   ok('an empty chest can be taken down', hidden('chest') && !w.chests.has(ck2) && g.count('櫃') === 1 && w.get(...ck2.split(',').map(Number)) === '白');
   // 船：放在淺水，上船，渡深水，到海邊渡海（先離開泉邊，免得面前是地標）
   p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; g.closeRead();
-  face(1, 0); w.set(T().x, T().y, '水'); hold('大船'); g.pressPlace();
-  ok('ship placed on shallow water as 舟', w.get(T().x, T().y) === '舟');
-  g.pressGather(); await sleep(300);
-  ok('boarded the ship', p.sailing && w.get(p.x, p.y) === '水');
+  face(1, 0); for (let dy = -1; dy <= 2; dy++) for (let dx = 0; dx <= 2; dx++) w.set(T().x + dx, T().y + dy, '水'); hold('孤帆'); g.pressPlace();
+  ok('a 孤帆 placed on shallow water takes two 舟 tiles (1×2)', w.get(T().x, T().y) === '舟' && w.get(T().x, T().y + 1) === '舟' && w.shipAt(T().x, T().y + 1) === w.shipAt(T().x, T().y) && w.shipAt(T().x, T().y).kind === '孤帆');
+  p.cour = g.levelAt(20); g.pressGather(); await sleep(300);
+  ok('boarded the ship: both tiles are water again and the hull follows you', p.sailing && w.get(p.x, p.y) === '水' && w.get(p.x, p.y + 1) === '水' && w.ships.size === 0 && p.ship && p.ship.kind === '孤帆');
   const deep = w.get(p.x + 1, p.y); w.set(p.x + 1, p.y, '淼');
   ok('sailing passes deep water', g.pass(p.x + 1, p.y)); w.set(p.x + 1, p.y, deep);
   p.x = p.rx = 0; p.y = p.ry = G.SEA_EDGE + 1; await sleep(200);
@@ -542,7 +544,7 @@ const result = await page.evaluate(async () => {
   ok('can turn back', g.paused === false && hidden('voyage'));
   let coastY = G.SEA_EDGE; while (coastY > 0 && G.DB[w.base(0, coastY)].kind === 'water') coastY--;   // 沿 +y 找到海岸，在岸外八格死
   const seaY = coastY + 8;
-  p.x = p.rx = 0; p.y = p.ry = seaY; p.sailing = true; p.ship = { hp: 200, ward: 0, skull: '' }; p.crossed = false; g.addItem('木', 1); p.hp = 0; await until(() => p.dead, 3000);
+  p.x = p.rx = 0; p.y = p.ry = seaY; p.sailing = true; p.ship = { kind: '孤帆', hp: 120, skulls: [], repairs: 0 }; p.crossed = false; g.addItem('木', 1); p.hp = 0; await until(() => p.dead, 3000);
   const landBag = [...w.bags.keys()].some(k => { const [x, y] = k.split(',').map(Number); const b = w.base(x, y); return w.get(x, y) === '包' && U.dist(x, y, 0, seaY) < 30 && G.DB[b === '灘' ? '沙' : b].walk > 0 && G.DB[b].kind !== 'water'; });
   const shipLeft = [...w.diff.entries()].some(([k, v]) => v === '舟' && (() => { const [x, y] = k.split(',').map(Number); return U.dist(x, y, 0, seaY) < 30 && w.base(x, y) === '水'; })());
   ok('dying at sea drops the 荷包 on the nearest land and leaves the ship on shallow water', p.dead && landBag && shipLeft, [landBag, shipLeft]);
@@ -583,22 +585,37 @@ const result = await page.evaluate(async () => {
     g.skullP = 0.35; g.removeItem('肉', 99);
     const X = p.x, Y = p.y;
     for (let dx = -3; dx <= 5; dx++) for (let dy = -2; dy <= 2; dy++) w.set(X + dx, Y + dy, dx >= 1 ? '水' : '草');
-    g.addItem('大船', 1); hold('大船'); face(1, 0); g.pressPlace();
-    const rec = w.shipAt(X + 1, Y);
-    ok('a new ship has 200 hp', w.get(X + 1, Y) === '舟' && rec && rec.hp === 200, JSON.stringify(rec));
+    const ships0 = w.ships.size;   // 海上死亡的那場已經停了一艘
+    w.set(X + 2, Y + 1, '草'); g.addItem('方舟', 1); hold('方舟'); face(1, 0); g.pressPlace();
+    ok('a 方舟 needs 2×3 real shallow water: one grass tile in the hull and it will not go down', w.ships.size === ships0 && g.count('方舟') === 1 && g.msgText.indexOf('淺水') >= 0, g.msgText);
+    w.set(X + 2, Y + 1, '水'); g.pressPlace();
+    const rec = w.shipAt(X + 2, Y + 1);
+    ok('with room it takes six 舟 tiles and has 420 hp and five skull slots', w.ships.size === ships0 + 1 && rec && rec.kind === '方舟' && rec.hp === 420 && rec.cells.length === 6 && w.get(X + 1, Y - 1) === '舟' && w.get(X + 2, Y + 1) === '舟' && G.SHIPS['方舟'].slots === 5, JSON.stringify(rec && rec.cells));
     hold('虎首骨'); g.pressPlace();
-    ok('a tiger skull on the bow wards the ship for three days', rec.skull === '虎首骨' && Math.round((rec.ward - w.time) / DAY) === 3);
+    ok('a tiger skull on the bow wards the ship for three days', rec.skulls.length === 1 && rec.skulls[0][0] === '虎首骨' && g.wardDaysOf(rec) === 3);
     hold('狼首骨'); g.pressPlace();
-    ok('skulls stack: a wolf skull adds a day (cap seven)', Math.round((rec.ward - w.time) / DAY) === 4 && rec.skull === '狼首骨');
-    rec.hp = 150; g.addItem('木板', 1); hold('木板'); g.pressPlace();
-    ok('a plank mends the ship by 25', rec.hp === 175 && g.count('木板') === 0);
+    ok('a second skull burns after the first: four days in all', rec.skulls.length === 2 && g.wardDaysOf(rec) === 4);
+    for (let i = 0; i < 4; i++) g.addItem('狼首骨', 1);
+    hold('狼首骨'); g.pressPlace(); g.pressPlace(); g.pressPlace(); const n5 = rec.skulls.length; g.pressPlace();
+    ok('a 方舟 holds five skulls, a sixth is refused', n5 === 5 && rec.skulls.length === 5 && g.count('狼首骨') === 1, [n5, rec.skulls.length, g.msgText]);
+    g.removeItem('狼首骨', 9);
+    rec.hp = 100; g.addItem('木板', 1); hold('木板'); g.pressPlace();
+    ok('the first repair costs one plank and restores a quarter (105)', rec.hp === 205 && rec.repairs === 1 && g.count('木板') === 0, rec.hp);
+    g.addItem('木板', 1); hold('木板'); g.pressPlace(); const hp1 = rec.hp; g.addItem('木板', 1); hold('木板'); g.pressPlace();
+    ok('the second repair costs two planks', hp1 === 205 && rec.hp === 310 && rec.repairs === 2 && g.count('木板') === 0, [hp1, rec.hp, g.msgText]);
+    rec.hp = 175; p.cour = g.levelAt(8);
     g.pressGather(); await sleep(250);
-    ok('boarding carries the ship hp and the bow ward along', p.sailing && p.ship && p.ship.hp === 175 && g.shipWarded() && !w.ships.has((X + 1) + ',' + Y));
-    let m = g.ents.add('蜃', X + 2, Y, { moveT: 0, atk: 0, fogT: 999 }); await sleep(1500);
+    ok('below level 20 boarding first asks whether to put to sea', !hidden('seaask') && g.paused && !p.sailing);
+    await press('KeyN', 20); await sleep(50);
+    ok('N turns back', hidden('seaask') && !g.paused && !p.sailing && w.ships.size === ships0 + 1);
+    g.pressGather(); await sleep(100); await press('KeyY', 20); await sleep(250);
+    ok('Y puts to sea: hull hp, skulls and repairs come along, the six tiles are water again', p.sailing && p.ship && p.ship.kind === '方舟' && p.ship.hp === 175 && p.ship.skulls.length === 5 && p.ship.repairs === 2 && g.shipWarded() && w.ships.size === ships0 && w.get(X + 2, Y + 1) === '水');
+    p.cour = g.levelAt(20);
+    let m = g.ents.add('蜃', X + 4, Y, { moveT: 0, atk: 0, fogT: 999 }); await sleep(1500);
     ok('the 蜃 will not ram a ship with a skull on the bow', p.ship.hp === 175 && g.ents.list.includes(m), p.ship.hp);
-    p.ship.ward = 0; m.x = m.rx = X + 2; m.y = m.ry = Y; m.moveT = 0; m.atk = 0;
+    p.ship.skulls = []; m.x = m.rx = X + 3; m.y = m.ry = Y; m.moveT = 0; m.atk = 0;
     await until(() => p.ship && p.ship.hp < 175, 5000);
-    ok('without a ward the 蜃 rams the ship for 25', p.ship && p.ship.hp === 150, p.ship && p.ship.hp);
+    ok('without a ward the 蜃 rams the hull for 25', p.ship && p.ship.hp === 150, p.ship && p.ship.hp);
     p.ship.hp = 10; m.x = m.rx = X + 2; m.y = m.ry = Y; m.moveT = 0; m.atk = 0;
     await until(() => p.swimming, 6000); g.ents.remove(m);
     ok('when the ship breaks you fall into the sea with sixty breaths to reach land', p.swimming && !p.sailing && !p.ship && p.swimT > 50 && p.swimT <= 60, [p.swimming, p.swimT]);
@@ -632,6 +649,11 @@ const result = await page.evaluate(async () => {
     p.atkT = 0; p.sta = 100; g.pressGather();
     const full = Math.round(120 * g.dmgMult()), half = Math.round(120 * g.dmgMult() * 0.5);
     ok('燭龍焚溟 burns the 蜃 for full damage and a tiger for half', sm.hp === 900 - full && tg.hp === 300 - half, [sm.hp, tg.hp, full, half]);
+    p.sailing = true; p.ship = { kind: '孤帆', hp: 120, skulls: [], repairs: 0 }; p.atkT = 0; p.sta = 100; g.pressGather();
+    ok('swung from the deck it scorches your own ship for a tenth', p.ship && p.ship.hp === 120 - Math.round(full / 10), p.ship && p.ship.hp);
+    p.ship.hp = 5; p.atkT = 0; g.pressGather();
+    ok('and can burn through your own hull', !p.sailing && p.swimming, [p.sailing, p.swimming]);
+    p.swimming = false; p.swimT = 0;
     g.addItem('九閽鳴雷', 1); hold('九閽鳴雷'); p.atkT = 0; p.sta = 100; const s1 = sm.hp, t1 = tg.hp; g.pressGather();
     ok('九閽鳴雷 does only half to the 蜃 and full to the tiger', s1 - sm.hp === half && t1 - tg.hp === full, [s1 - sm.hp, t1 - tg.hp]);
     g.ents.remove(sm); g.ents.remove(tg);
@@ -639,6 +661,13 @@ const result = await page.evaluate(async () => {
     p.tool = -1; p.cour = 0; p.decayAt = 0;
     g.save(); const sv2 = JSON.parse(localStorage.getItem('xieyi.save.v5'));
     ok('ship records and swimming are saved', sv2.world.ships && 'ship' in sv2.player && sv2.player.swimming === false);
+    // 沒解決的蜃：存檔裡有牠，讀檔後牠散了，膽氣減五重
+    const mm = g.ents.add('蜃', X + 4, Y, { moveT: 99, fogT: 999 }); p.cour = g.levelAt(12) + 10; g.save(); const sv3 = JSON.parse(localStorage.getItem('xieyi.save.v5')); g.ents.remove(mm);
+    ok('an unresolved 蜃 is written into the save', sv3.ents.some(e => e.t === '蜃'));
+    g.ents.list = g.ents.list.filter(e => e.type !== '龍' && !e.tame); g.load(sv3);
+    ok('loading drops the 蜃 and five courage levels, keeping the progress within the level', g.ents.count('蜃') === 0 && g.level() === 7 && p.cour === g.levelAt(7) + Math.floor(10 / g.levelCost(12) * g.levelCost(7)), [g.level(), p.cour]);
+    ok('vital bars carry three scale marks and tools wear a durability ring', getComputedStyle(document.querySelector('.bar'), '::after').backgroundPosition.split(',').length === 3 && (() => { g.addItem('石刀', 1); g.barSig = ''; g.buildBag(); return !!document.querySelector('#toolbar .slot.ringed .ring'); })());
+    p.cour = 0;
     p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y;
   }
 

@@ -22,11 +22,12 @@
   const FUEL = { '煤': 120, '精煤': 300 };   // 灶的好柴：一塊煤燒一百二十息，精煤三百息
   const WEAR_CAP = 6, REPAIR_WM = 1.5, HAT_FUEL = 400;
   const FOG_TOLL = 0.1, FAN_REACH = 3;
-  // 海：大船的命在 World.SHIP_HP（二百）；一塊木板補二十五。船毀了落水，SWIM_TIME 息內游上岸，否則溺死；
-  // 游泳時飽、愜意、力的消耗 ×SWIM_DRAIN、力不回反掉，武器傷害 ×SWIM_DMG
-  const SHIP_REPAIR = 25, SWIM_TIME = 60, SWIM_DRAIN = 2, SWIM_DMG = 0.75, SWIM_STEP = 0.32;
-  // 獸首骨：殺虎豹狼有 SKULL_P 的機會掉，掉一個或兩個（SKULL_TWO 的機會兩個）；放在船頭鎮船，日數見 ITEMS 的 ward，疊加最多 WARD_CAP
-  const SKULL_P = 0.35, SKULL_TWO = 0.3, WARD_CAP = 7 * DAY;
+  // 海：船分孤帆與方舟（大小、命、船頭首骨格數在 G.SHIPS）。修船每次回滿命的 SHIP_REPAIR_FRAC，第 n 次修要 n 塊木板。
+  // 船毀了落水，SWIM_TIME 息內游上岸，否則溺死；游泳時飽、愜意、力的消耗 ×SWIM_DRAIN、力不回反掉，武器傷害 ×SWIM_DMG。
+  // 燭龍焚溟在船上揮，自己的船也挨傷害的 GOD_SELF；膽氣不滿 SEA_WARN_LEVEL 重出海先問；讀檔時海上還有沒解決的蜃，膽氣減 SEA_PENALTY 重
+  const SHIP_REPAIR_FRAC = 0.25, SWIM_TIME = 60, SWIM_DRAIN = 2, SWIM_DMG = 0.75, SWIM_STEP = 0.32, GOD_SELF = 0.1, SEA_WARN_LEVEL = 20, SEA_PENALTY = 5;
+  // 獸首骨：殺虎豹狼有 SKULL_P 的機會掉，掉一個或兩個（SKULL_TWO 的機會兩個）；放在船頭鎮船，日數見 ITEMS 的 ward，一個接一個燒，船頭格數見 G.SHIPS
+  const SKULL_P = 0.35, SKULL_TWO = 0.3;
   const SEA_GOD = '燭龍焚溟', SEA_FOLK = '蜃龜';   // 海中之物：燭龍焚溟全傷、九閽鳴雷減半；其餘反過來   // 霧障：不吹散就五樣數值各掉當前的一成（四捨五入，命不低於一）；扇子選中按 V 吹得到三格   // 衣甲損耗倍率封頂；修補後從 1.5 倍起算；燈帽一根蠟燭四百息
   const $ = (id) => document.getElementById(id);
 
@@ -55,7 +56,7 @@
       this.saveAcc = 0; this.sanAcc = 0;
       this.last = 0;
       this.msgText = ''; this.hudSig = ''; this.barSig = ''; this.courSig = '';
-      this.chestAt = null; this.userPaused = false; this.craftCat = '全部'; this.fogAsk = null; this.skullP = SKULL_P;
+      this.chestAt = null; this.userPaused = false; this.craftCat = '全部'; this.fogAsk = null; this.seaAsk = null; this.skullP = SKULL_P;
       this.spawn = this.world.findSpawn();
       if (save) this.load(save);
       else {
@@ -182,13 +183,18 @@
       const l = this.level();
       if (l > l0) {
         let extra = '';
-        if (l === SHIP_LEVEL) extra = '可以造大船了。';
+        if (l === SHIP_LEVEL) extra = '可以造孤帆與方舟了。';
         else if (l === TOTEM_LEVEL) extra = '五件衣甲穿齊，衣上便浮出山海衣的獸紋：七格內獸慢而狠，你的攻擊 ×1.15。';
         else if (l > TOTEM_LEVEL && (l - TOTEM_LEVEL) % 7 === 0) extra = '山海衣再深一層：攻擊再 ×1.15，受傷再 ÷1.15。';
         else if (l === DECAY_LEVEL + 1) extra = '過了卅一重，三日一減，不低於卅一重。';
         this.toast('膽氣長了一重', '第 ' + l + ' 重：回復 ' + Math.round(this.mult() * 100) + '%。' + extra); SFX.learn();
         this.barSig = '';
       }
+    }
+    dropLevels(n) {          // 直接掉 n 重，保留這一重裡的進度比例
+      const p = this.player, l = this.level(); if (l <= 0) return;
+      const frac = this.levelFrac(), nl = Math.max(0, l - n);
+      p.cour = this.levelAt(nl) + Math.floor(frac * levelCost(nl)); p.decayAt = 0; this.courSig = '';
     }
     decayCourage() {
       const p = this.player, l = this.level(); if (l <= this.decayFloor()) return;
@@ -388,21 +394,31 @@
       this.buildBag();
     }
     // ---------- 海：船的命、首骨鎮船、蜃、落水 ----------
-    shipWarded() { const s = this.player.ship; return !!(s && s.ward > this.world.time); }
-    wardDays() { const s = this.player.ship; return s ? Math.max(0, Math.ceil((s.ward - this.world.time) / DAY - 1e-6)) : 0; }
+    shipMax(s) { return (G.SHIPS[s && s.kind] || G.SHIPS['孤帆']).hp; }
+    shipSkulls(s) { const now = this.world.time; s.skulls = (s.skulls || []).filter(x => x[1] > now); return s.skulls; }   // 燒完的首骨自己掉
+    shipWarded() { const s = this.player.ship; return !!(s && this.shipSkulls(s).length); }
+    wardDaysOf(s) { const a = this.shipSkulls(s); return a.length ? Math.max(0, Math.ceil((a[a.length - 1][1] - this.world.time) / DAY - 1e-6)) : 0; }
+    wardDays() { return this.player.ship ? this.wardDaysOf(this.player.ship) : 0; }
+    shipSkullName() { const s = this.player.ship, a = s ? this.shipSkulls(s) : []; return a.length ? a[0][0] : ''; }
+    shipCells() { const p = this.player; return this.world.shipFootprint(p.ship ? p.ship.kind : '孤帆', p.x, p.y); }   // 行船時船身在哪幾格
+    shipText(s) { const a = this.shipSkulls(s), k = G.SHIPS[s.kind] || G.SHIPS['孤帆']; return s.kind + ' · 命 ' + Math.round(s.hp) + '/' + k.hp + ' · 船頭' + (a.length ? a.map(x => x[0]).join('、') + '（' + a.length + '/' + k.slots + '）還鎮 ' + this.wardDaysOf(s) + ' 日' : '空著（放得下 ' + k.slots + ' 個首骨）'); }
     mountSkull(rec, name) {
       if (!rec) return;
-      const now = this.world.time, add = ITEMS[name].ward * DAY;
-      rec.ward = Math.min(now + WARD_CAP, Math.max(rec.ward || 0, now) + add); rec.skull = name;
-      this.removeItem(name, 1); this.buildBag(); SFX.learn();
-      this.message('船頭放上' + name + '：鎮到 ' + Math.ceil((rec.ward - now) / DAY - 1e-6) + ' 日後（最多七日），這段時間蜃不敢撞船。');
+      const now = this.world.time, alive = this.shipSkulls(rec), slots = (G.SHIPS[rec.kind] || G.SHIPS['孤帆']).slots;
+      if (alive.length >= slots) { this.message(rec.kind + '的船頭只放得下 ' + slots + ' 個首骨，都放滿了：' + alive.map(a => a[0]).join('、') + '。'); SFX.fail(); return; }
+      const end = (alive.length ? alive[alive.length - 1][1] : now) + ITEMS[name].ward * DAY;   // 一個接一個燒
+      alive.push([name, end]); this.removeItem(name, 1); this.buildBag(); SFX.learn();
+      this.message('船頭放上' + name + '（' + alive.length + '/' + slots + '）：鎮船到 ' + this.wardDaysOf(rec) + ' 日後，這段時間蜃不敢撞船。');
     }
-    repairShip(rec) {
+    repairShip(rec) {          // 第 n 次修要 n 塊木板，每次回滿命的四分之一
       if (!rec) return;
-      if (rec.hp >= World.SHIP_HP) { this.message('船好好的，不用補。'); return; }
-      rec.hp = Math.min(World.SHIP_HP, rec.hp + SHIP_REPAIR); this.removeItem('木板', 1); this.buildBag(); SFX.write();
-      this.message('一塊木板補上船身：船的命 ' + Math.round(rec.hp) + '/' + World.SHIP_HP + '。');
+      const max = this.shipMax(rec), cost = (rec.repairs || 0) + 1;
+      if (rec.hp >= max) { this.message('船好好的，不用補。'); return; }
+      if (this.count('木板') < cost) { this.message('這是第 ' + cost + ' 次修，要木板 ' + cost + ' 塊（每修一次多一塊），囊裡只有 ' + this.count('木板') + ' 塊。'); SFX.fail(); return; }
+      rec.hp = Math.min(max, rec.hp + Math.round(max * SHIP_REPAIR_FRAC)); rec.repairs = cost; this.removeItem('木板', cost); this.buildBag(); SFX.write();
+      this.message('木板 ' + cost + ' 塊補上船身：命 ' + Math.round(rec.hp) + '/' + max + '。下次修要 ' + (cost + 1) + ' 塊。');
     }
+    hintOnce(text) { if (this.msgText.indexOf(text) < 0) this.message(text); }
     seaMonsterRose(m) { const p = this.player, dx = m.x - p.x, dy = m.y - p.y; this.toast('蜃！', this.dirName(dx, dy) + '約 ' + Math.round(Math.hypot(dx, dy)) + ' 步，深海裡浮上一頭蜃。牠會撞船、吐霧；船頭有獸首骨就不敢近。'); SFX.tiger(); }
     ramShip(e) {
       const p = this.player, s = p.ship; if (!p.sailing || !s) return;
@@ -410,7 +426,7 @@
       s.hp = Math.max(0, s.hp - dmg); this.renderer.shake = 0.6; SFX.tiger();
       this.fx.push({ type: 'float', x: p.x, y: p.y, text: '船 −' + dmg, color: G.INK.red, t: 0, dur: 0.9 });
       if (s.hp <= 0) { this.wreck(); return; }
-      this.message('蜃撞船！船的命 ' + Math.round(s.hp) + '/' + World.SHIP_HP + '。');
+      this.message('蜃撞船！' + s.kind + '的命 ' + Math.round(s.hp) + '/' + this.shipMax(s) + '。');
     }
     wreck() {
       const p = this.player; p.sailing = false; p.ship = null; p.swimming = true; p.swimT = SWIM_TIME; this.action = null;
@@ -468,9 +484,11 @@
     }
     // 停船：只停在真的水上。灘在漲潮時讀起來是「水」，停在那裡退潮就擱淺，還會堵住去燈塔的路
     parkShip(x, y, shallowOnly, maxR) {
-      const w = this.world, ok = (i, j) => shallowOnly ? w.raw(i, j) === '水' : DB[w.raw(i, j)].kind === 'water';
-      const at = ok(x, y) ? [x, y] : this.nearestTile(x, y, ok, maxR);
-      if (at) { w.set(at[0], at[1], '舟'); if (this.player.ship) { w.ships.set(U.key(at[0], at[1]), this.player.ship); this.player.ship = null; } }
+      const w = this.world, s = this.player.ship || World.newShip('孤帆');
+      const ok = (i, j) => (shallowOnly ? w.raw(i, j) === '水' : DB[w.raw(i, j)].kind === 'water') && !w.shipCells.has(U.key(i, j));
+      const fits = (i, j) => w.shipFits(s.kind, i, j, ok);
+      const at = fits(x, y) ? [x, y] : this.nearestTile(x, y, fits, maxR);
+      if (at) { w.addShip(at[0], at[1], s); this.player.ship = null; }
       return at;
     }
     nearestTile(x0, y0, ok, maxR) {     // 由近而遠一圈圈找
@@ -609,9 +627,14 @@
       if (!this.pass(nx, ny) || this.ents.beastAt(nx, ny)) return false;
       if (dx && dy && !(this.pass(p.x + dx, p.y) && this.pass(p.x, p.y + dy))) return false;
       const d = w.info(nx, ny);
-      if (p.sailing && d.kind !== 'water') {        // 靠岸：船留在水上（灘不算水，退潮會擱淺）
-        if (!this.parkShip(p.x, p.y, false, 8)) { this.message('灘上靠不了岸，退潮會擱淺。往深一點的水去。'); return false; }
-        p.sailing = false; this.message('靠岸了。船停在那裡。');
+      if (p.sailing) {
+        const kind = p.ship ? p.ship.kind : '孤帆';
+        if (d.kind !== 'water') {        // 船頭撞岸：靠岸，船留在水上（灘不算水，退潮會擱淺）
+          if (!this.parkShip(p.x, p.y, false, 8)) { this.message('灘上靠不了岸，退潮會擱淺。往深一點的水去。'); return false; }
+          p.sailing = false; this.message('靠岸了。船停在那裡。');
+        } else if (!w.shipFits(kind, nx, ny, (x, y) => DB[w.get(x, y)].kind === 'water' && !w.shipCells.has(U.key(x, y)))) {
+          this.hintOnce(kind + '的船身' + (kind === '方舟' ? '二乘三' : '一乘二') + '，這邊過不去，找寬一點的水。'); return false;
+        }
       }
       if (p.swimming && d.kind !== 'water') { p.swimming = false; p.swimT = 0; this.toast('上岸了', '撿回一條命。船沒了，要渡海得再造一艘。'); SFX.learn(); }
       p.fromX = p.x; p.fromY = p.y; p.x = nx; p.y = ny;
@@ -745,7 +768,13 @@
       p.atkT = 1.5; p.sta = Math.max(0, p.sta - 3 * this.ironDrain()); this.wearTool(); this.renderer.shake = 0.6; SFX.tiger();
       const slain = this.godHits(targets, (o) => SEA_FOLK.indexOf(o.type) >= 0 ? full : half);
       this.fx.push({ type: 'write', x: p.x, y: p.y, ch: '焚', color: G.INK.red, t: 0, dur: 0.6 });
-      this.message('燭龍焚溟：' + targets.length + ' 頭同受灼燒，海中之物 ' + full + '、陸上天上 ' + half + (slain ? '，' + slain + ' 頭斃命' : '') + '。');
+      let selfNote = '';
+      if (p.sailing && p.ship) {             // 火也燎到自己的船：怪物所受的十分之一
+        const self = Math.round(full * GOD_SELF); p.ship.hp = Math.max(0, p.ship.hp - self); selfNote = '；火燎到自己的船 −' + self;
+        this.fx.push({ type: 'float', x: p.x, y: p.y + 1, text: '船 −' + self, color: G.INK.red, t: 0, dur: 0.9 });
+        if (p.ship.hp <= 0) { this.message('燭龍的火燒穿了自己的船！'); this.wreck(); return; }
+      }
+      this.message('燭龍焚溟：' + targets.length + ' 頭同受灼燒，海中之物 ' + full + '、陸上天上 ' + half + (slain ? '，' + slain + ' 頭斃命' : '') + selfNote + '。');
     }
     godHits(targets, dmgOf) {
       let slain = 0;
@@ -837,6 +866,15 @@
       const tileName = it.tile || name;             // 大船放下是「舟」
       if (DB[tileName] && DB[tileName].net) { this.placeNet(t, tileName, name); return; }
       if (!DB[tileName] || !DB[tileName].place) { this.message('「' + name + '」放不到地上。'); fail(); return; }
+      if (it.ship) {                    // 船：船身每格都要是真的淺水，沒被別的船、網、地標佔著
+        const kind = it.ship, k = G.SHIPS[kind], cells = w.shipFootprint(kind, t.x, t.y);
+        const bad = cells.find(([x, y]) => w.raw(x, y) !== '水' || w.get(x, y) !== '水' || w.shipCells.has(U.key(x, y)) || w.placeAt(x, y) || w.netAt(x, y));
+        if (bad) { this.message(kind + '要 ' + k.w + '×' + k.h + ' 格真的淺水才放得下，面前那格是船身的' + (kind === '方舟' ? '左邊中間' : '上頭') + '。'); fail(); return; }
+        w.addShip(t.x, t.y, World.newShip(kind)); this.removeItem(name, 1);
+        this.toast(kind + '下水了', '面向它按 E 上船。命 ' + k.hp + '，船頭放得下 ' + k.slots + ' 個首骨。深水亦可渡，開到海的盡頭便渡海而去。'); SFX.write();
+        this.fx.push({ type: 'write', x: t.x, y: t.y, ch: '舟', color: DB['舟'].ink, t: 0, dur: 0.35 });
+        return;
+      }
       if (DB[tileName].onWater) {       // 放在水上的東西只放真的淺水；灘上只准架橋（漲潮退潮都走得過，使用者裁定）
         const raw = w.raw(t.x, t.y), ok = raw === '水' || (tileName === '橋' && raw === '灘');
         if (!ok) { this.message(raw === '灘' ? '灘上漲潮才有水，退潮就擱淺了，「' + name + '」要放在真的淺水上；灘上只能架橋。' : '「' + name + '」要放在淺水上。'); fail(); return; }
@@ -849,7 +887,6 @@
       if (tileName === '床') { p.home = { x: t.x, y: t.y }; this.toast('床放好了', '夜裡面向它按 R，一覺到天明。'); this.save(); }
       else if (tileName === '偶') { w.addScarecrow(t.x, t.y); this.toast('稻草人立起來了', '三十天內獸不近身：前半十格、後半七格。'); }
       else if (tileName === '櫃') { w.chests.set(U.key(t.x, t.y), []); this.message('櫃放好了。面向它按 E 開。'); }
-      else if (tileName === '舟') { this.toast('大船下水了', '面向它按 E 上船。深水亦可渡，開到海的盡頭便渡海而去。'); }
       else this.message('放下「' + name + '」。');
       SFX.write();
       this.fx.push({ type: 'write', x: t.x, y: t.y, ch: tileName, color: DB[tileName].ink, t: 0, dur: 0.35 });
@@ -1100,12 +1137,24 @@
 
     // ---------- 船 ----------
     board(t) {
-      const p = this.player, w = this.world;
-      const b = w.base(t.x, t.y);                 // 船開走了，水面還原；船的命與船頭首骨跟著人走
-      p.ship = Object.assign({}, w.shipAt(t.x, t.y) || World.newShip());
-      w.set(t.x, t.y, DB[b] && DB[b].kind === 'water' ? b : '水');
-      p.fromX = p.x; p.fromY = p.y; p.x = t.x; p.y = t.y; p.moveT = 0.2; p.stepDur = 0.2; p.sailing = true;
-      this.toast('上船了', '船的命 ' + Math.round(p.ship.hp) + '/' + World.SHIP_HP + (this.shipWarded() ? '，船頭' + p.ship.skull + '還鎮 ' + this.wardDays() + ' 日' : '') + '。深水亦可渡，開到海的盡頭便渡海而去；撞上岸就靠岸。海上有蜃。');
+      const rec = this.world.shipAt(t.x, t.y); if (!rec) return;
+      if (this.level() < SEA_WARN_LEVEL) { this.askSea(rec); return; }
+      this.doBoard(rec);
+    }
+    askSea(rec) {
+      this.seaAsk = rec; this.paused = true; this.keys.clear(); this.action = null;
+      const a = this.shipSkulls(rec);
+      $('seaask-text').innerHTML = '膽氣第 ' + this.level() + ' 重，不滿二十重。海上有蜃：命九百，撞船一下二十五，吐海霧；船毀了只有六十息游上岸。' + (a.length ? '這艘' + rec.kind + '船頭有' + a.map(x => x[0]).join('、') + '鎮著 ' + this.wardDaysOf(rec) + ' 日。' : '這艘' + rec.kind + '船頭沒有首骨。') + '<br>真的要出海？';
+      $('seaask').classList.remove('hidden');
+    }
+    closeSea() { $('seaask').classList.add('hidden'); this.seaAsk = null; this.paused = false; }
+    seaGo() { const rec = this.seaAsk; this.closeSea(); if (rec && rec.cells && this.world.ships.get(U.key(rec.cells[0][0], rec.cells[0][1])) === rec) this.doBoard(rec); }
+    doBoard(rec) {
+      const p = this.player, w = this.world, [ax, ay] = rec.cells[0];     // 船開走了，水面還原；船的命與船頭首骨跟著人走
+      w.removeShip(U.key(ax, ay));
+      p.ship = { kind: rec.kind, hp: rec.hp, skulls: this.shipSkulls(rec), repairs: rec.repairs || 0 };
+      p.fromX = p.x; p.fromY = p.y; p.x = ax; p.y = ay; p.moveT = 0.2; p.stepDur = 0.2; p.sailing = true;
+      this.toast('上了' + rec.kind, this.shipText(p.ship) + '。深水亦可渡，開到海的盡頭便渡海而去；撞上岸就靠岸。海上有蜃。');
     }
     crossSea() {
       const p = this.player; p.crossed = true; this.paused = true;
@@ -1217,6 +1266,10 @@
         if (ev.repeat && !DIRS[ev.code]) return;
         if (!$('start').classList.contains('hidden')) { if (ev.code === 'Enter') { ev.preventDefault(); $('btn-continue').classList.contains('hidden') ? $('btn-new').click() : $('btn-continue').click(); } return; }
         if (this.player.dead) { if (ev.code === 'Enter' || ev.code === 'Space') { ev.preventDefault(); this.respawn(); } return; }
+        if (this.seaAsk) {
+          if (ev.code === 'KeyY' || ev.code === 'Enter') this.seaGo(); else if (ev.code === 'KeyN' || ev.code === 'Escape') this.closeSea();
+          ev.preventDefault(); return;
+        }
         if (this.fogAsk) {
           if (ev.code === 'KeyY' || ev.code === 'Enter') { if (this.count('扇')) this.fogUseFan(); else this.fogRefuse(); }
           else if (ev.code === 'KeyN' || ev.code === 'Escape') this.fogRefuse();
@@ -1286,6 +1339,8 @@
       $('pause-resume').addEventListener('click', () => this.togglePause());
       $('btn-map').addEventListener('click', () => { if (this.userPaused || this.player.dead || this.player.knock > 0) return; $('journal').classList.add('hidden'); $('craft').classList.add('hidden'); this.toggleMap(); });
       $('minimap').addEventListener('click', () => $('btn-map').click());
+      $('seaask-go').addEventListener('click', () => this.seaGo());
+      $('seaask-no').addEventListener('click', () => this.closeSea());
       $('fogask-use').addEventListener('click', () => this.fogUseFan());
       $('fogask-no').addEventListener('click', () => this.fogRefuse());
       $('voyage-back').addEventListener('click', () => { $('voyage').classList.add('hidden'); this.paused = false; this.message('回頭。再開出去就走了。'); });
@@ -1293,7 +1348,7 @@
     }
     cycle(d) { const p = this.player; if (p.bag.length) p.sel = (p.sel + d + p.bag.length) % p.bag.length; this.buildBag(); }
     togglePause() {
-      if (this.player.dead || this.fogAsk || !$('start').classList.contains('hidden') || !$('voyage').classList.contains('hidden')) return;
+      if (this.player.dead || this.fogAsk || this.seaAsk || !$('start').classList.contains('hidden') || !$('voyage').classList.contains('hidden')) return;
       this.userPaused = !this.userPaused; this.paused = this.userPaused;
       $('pause').classList.toggle('hidden', !this.userPaused); this.keys.clear(); this.action = null;
     }
@@ -1323,7 +1378,7 @@
           else if (s.fuel !== undefined) sub = s.fuel > 0 ? Math.ceil(s.fuel) + '息' : '滅';
           else if (s.n === '果') { const age = this.day() - this.fruitDays(s)[0]; sub = '×' + s.c + (age >= FERMENT_NIGHTS - 3 ? ' 將醉' : age >= 1 ? ' ' + age + '夜' : ''); }
           el.innerHTML = '<span class="num">' + (i < 9 ? i + 1 : '') + '</span><span class="ch' + (s.n.length > 1 ? ' word' : '') + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">' + sub + '</span>';
-          if (s.dur !== undefined) el.innerHTML += '<i class="dur" style="width:' + Math.round(100 * s.dur / (it.dur || this.lifeOf(s))) + '%"></i>';
+          if (s.dur !== undefined) { const pct = Math.round(100 * s.dur / (it.dur || this.lifeOf(s))); el.classList.add('ringed'); el.innerHTML += '<i class="ring' + (pct <= 25 ? ' low' : '') + '" style="--p:' + pct + '%"></i>'; }   // 耐久：一圈環包著格子
           else if (s.fuel !== undefined) el.innerHTML += '<i class="dur" style="width:' + Math.round(100 * s.fuel / HAT_FUEL) + '%"></i>';
           el.title = it.flavor + (s.n === '果' ? '\n' + this.fruitNote(s) : '');
         }
@@ -1336,7 +1391,7 @@
         el.className = 'slot bag tool' + (s ? '' : ' empty') + (s && i === p.tool ? ' sel' : '');
         if (s) {
           const it = ITEMS[s.n];
-          el.innerHTML = '<span class="ch' + (s.n.length > 1 ? ' word' : '') + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">耐 ' + s.dur + '</span><i class="dur" style="width:' + Math.round(100 * s.dur / it.dur) + '%"></i>';
+          el.innerHTML = '<span class="ch' + (s.n.length > 1 ? ' word' : '') + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">耐 ' + s.dur + '</span><i class="ring' + (s.dur / it.dur <= 0.25 ? ' low' : '') + '" style="--p:' + Math.round(100 * s.dur / it.dur) + '%"></i>'; el.classList.add('ringed');
           el.title = it.flavor + '（點一下手持，再點一下空手；右鍵移回囊）';
         } else el.title = '具欄：工具放這裡，P 換手持';
         el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; if (ev.button === 2) { this.unequipToBag(i); return; } p.tool = (p.tool === i) ? -1 : i; this.buildBag(); });
@@ -1391,7 +1446,7 @@
         $('hpfill').parentNode.classList.toggle('low', p.hp < 30); $('foodfill').parentNode.classList.toggle('low', p.food < 25); $('warmfill').parentNode.classList.toggle('low', p.warm < 30); $('stafill').parentNode.classList.toggle('low', p.sta < 15); $('sanfill').parentNode.classList.toggle('low', p.san < 20);
         $('hplabel').innerHTML = '命<br>' + Math.round(p.hp) + (p.hpMax > 100 ? '<small>／' + Math.round(p.hpMax) + '</small>' : ''); $('foodlabel').innerHTML = '飽<br>' + Math.round(p.food); $('warmlabel').innerHTML = '暖<br>' + Math.round(p.warm); $('stalabel').innerHTML = '力<br>' + Math.round(p.sta); $('sanlabel').innerHTML = '愜<br>' + Math.round(p.san);
         const nn = this.nightNo();
-        $('status').innerHTML = '<b>第 ' + this.day() + ' 日</b> &nbsp;' + this.shichen() + ' ' + (this.daylight() > 0.5 ? '日' : '月') + (w.raining() ? '雨' : '') + (this.isNight() ? '<span class="dim">（第 ' + nn + ' 夜' + (nn >= this.diff.ghost ? '，魄夜' : '') + '）</span>' : '') + ' &nbsp;·&nbsp; ' + w.tideName() + ' &nbsp;·&nbsp; ' + (p.sailing ? '船上 · 船 ' + Math.round(p.ship ? p.ship.hp : World.SHIP_HP) + '/' + World.SHIP_HP + (this.shipWarded() ? ' · 船頭' + p.ship.skull + ' ' + this.wardDays() + ' 日' : '') : p.swimming ? '<b style="color:#b4392a">落水 · 還有 ' + Math.ceil(p.swimT) + ' 息</b>' : G.biomeName(w.get(p.x, p.y))) + (this.peaceDays() ? ' &nbsp;·&nbsp; <span class="dim">龜卜 · ' + this.peaceDays() + ' 日無魄</span>' : '') + ' &nbsp;·&nbsp; <span class="dim">(' + p.x + ', ' + p.y + ') · ' + this.diff.name + '</span>';
+        $('status').innerHTML = '<b>第 ' + this.day() + ' 日</b> &nbsp;' + this.shichen() + ' ' + (this.daylight() > 0.5 ? '日' : '月') + (w.raining() ? '雨' : '') + (this.isNight() ? '<span class="dim">（第 ' + nn + ' 夜' + (nn >= this.diff.ghost ? '，魄夜' : '') + '）</span>' : '') + ' &nbsp;·&nbsp; ' + w.tideName() + ' &nbsp;·&nbsp; ' + (p.sailing ? '船上 · ' + (p.ship ? p.ship.kind + ' ' + Math.round(p.ship.hp) + '/' + this.shipMax(p.ship) : '') + (this.shipWarded() ? ' · 船頭' + this.shipSkullName() + ' ' + this.wardDays() + ' 日' : '') : p.swimming ? '<b style="color:#b4392a">落水 · 還有 ' + Math.ceil(p.swimT) + ' 息</b>' : G.biomeName(w.get(p.x, p.y))) + (this.peaceDays() ? ' &nbsp;·&nbsp; <span class="dim">龜卜 · ' + this.peaceDays() + ' 日無魄</span>' : '') + ' &nbsp;·&nbsp; <span class="dim">(' + p.x + ', ' + p.y + ') · ' + this.diff.name + '</span>';
       }
       const lv = this.level(), daysLeft = p.decayAt ? Math.max(1, Math.ceil((p.decayAt - w.time) / DAY - 1e-6)) : 0;
       const cs = p.cour + '|' + lv + '|' + daysLeft + '|' + (this.hasHammer() ? 1 : 0);
@@ -1411,7 +1466,7 @@
         if (!this.shoreAt || performance.now() - this.shoreAt > 400) { this.shoreAt = performance.now(); this.shore = this.nearestShore(); }
         s = '<b>落水了！還有 ' + Math.ceil(p.swimT) + ' 息</b>' + (this.shore ? ' · 最近的岸：' + this.shore.dir + '約 ' + this.shore.n + ' 步' : '') + (e && e.type === '蜃' ? ' · <kbd>E</kbd> 打蜃' : '');
       }
-      else if (p.sailing) s = '船上 · 船 ' + Math.round(p.ship ? p.ship.hp : World.SHIP_HP) + '/' + World.SHIP_HP + (this.shipWarded() ? ' · 船頭' + p.ship.skull + '還鎮 ' + this.wardDays() + ' 日' : ' · 船頭空著') + ' · 撞岸即靠岸' + (e && e.type === '魚' ? ' · <kbd>E</kbd> 捉魚' : e && e.type === '蜃' ? ' · <kbd>E</kbd> 打蜃' : '') + (hs && ITEMS[hs.n] && ITEMS[hs.n].ward ? ' · <kbd>V</kbd> 放上船頭' : hs && hs.n === '木板' ? ' · <kbd>V</kbd> 補船' : '');
+      else if (p.sailing) s = (p.ship ? this.shipText(p.ship) : '船上') + ' · 撞岸即靠岸' + (e && e.type === '魚' ? ' · <kbd>E</kbd> 捉魚' : e && e.type === '蜃' ? ' · <kbd>E</kbd> 打蜃' : '') + (hs && ITEMS[hs.n] && ITEMS[hs.n].ward ? ' · <kbd>V</kbd> 放上船頭' : hs && hs.n === '木板' ? ' · <kbd>V</kbd> 補船' : '');
       else if (plc) s = '「' + plc.name + '」 · <kbd>E</kbd> 讀' + (hs && hs.n === '玻璃瓶' && (ch === '泉' || ch === '井') ? '　<kbd>E</kbd> 取淡水' : '');
       else if (e && e.type === '龍') s = '你的龍。';
       else if (e && e.type === '魄') s = '魄 · 無形。手裡有光六格內即煙滅';
@@ -1424,7 +1479,7 @@
       else if (ch === '漁') s = '魚梁 · <kbd>E</kbd> 取魚' + (w.time < (w.weirs.get(U.key(t.x, t.y)) || 0) ? '（魚還沒來）' : '');
       else if (ch === '門') s = '門 · <kbd>E</kbd> 問路';
       else if (ch === '櫃') s = '櫃 · <kbd>E</kbd> 開';
-      else if (ch === '舟') { const rec = w.shipAt(t.x, t.y); s = '大船 · 命 ' + Math.round(rec.hp) + '/' + World.SHIP_HP + (rec.ward > w.time ? ' · 船頭' + rec.skull + '還鎮 ' + Math.ceil((rec.ward - w.time) / DAY - 1e-6) + ' 日' : '') + ' · <kbd>E</kbd> 上船' + (hs && ITEMS[hs.n] && ITEMS[hs.n].ward ? ' · <kbd>F</kbd> 首骨放上船頭' : hs && hs.n === '木板' ? ' · <kbd>F</kbd> 補船' : ''); }
+      else if (ch === '舟') { const rec = w.shipAt(t.x, t.y); s = (rec ? this.shipText(rec) : '船') + ' · <kbd>E</kbd> 上船' + (hs && ITEMS[hs.n] && ITEMS[hs.n].ward ? ' · <kbd>F</kbd> 首骨放上船頭' : hs && hs.n === '木板' ? ' · <kbd>F</kbd> 補船' : ''); }
       else if (ch === '偶') { const days = w.scareDays(t.x, t.y); s = '稻草人 · 還能守 ' + Math.ceil(days) + ' 天' + (hs && hs.n === '偶' ? ' · <kbd>F</kbd> 續' : '') + ' · <kbd>E</kbd> 拆下（重放重計）'; }
       else {
         s = '面前：' + (ch === '白' ? '白紙' : '<b>' + ch + '</b>') + (w.isBurning(t.x, t.y) ? ' <i class="fire">燃燒中</i>' : '') + ((ch === '灶' || ch === '鼎') ? (w.stoveLit(t.x, t.y) ? ' <i class="fire">火旺 ' + Math.round(w.stoveFuel(t.x, t.y)) + ' 息</i>' : ' <i>冷的，先添柴</i>') : '');
@@ -1475,7 +1530,14 @@
       this.ents.restore(s.ents);
       const sp = s.player || {};
       for (const k of ['x', 'y', 'fx', 'fy', 'hp', 'food', 'warm', 'sta', 'staMax', 'san', 'cour', 'bag', 'sel', 'home', 'readSteles', 'places', 'creatures', 'raftTaken', 'dragon', 'finished', 'deaths', 'burn', 'lastDay', 'poisonT', 'poisonPer', 'sailing', 'tools', 'tool', 'decayAt', 'worn', 'hitWin', 'totemOff', 'pouches', 'noGhostUntil', 'hpMax', 'pillsMade', 'pillsEaten', 'inFog', 'ship', 'swimming', 'swimT']) if (sp[k] !== undefined) p[k] = sp[k];
-      if (p.sailing && !p.ship) p.ship = World.newShip();     // 舊存檔在船上：給一條滿命的船
+      if (p.sailing && !p.ship) p.ship = World.newShip('孤帆');     // 舊存檔在船上：給一條滿命的孤帆
+      if (p.ship && !p.ship.kind) p.ship = { kind: '孤帆', hp: Math.min(p.ship.hp, G.SHIPS['孤帆'].hp), skulls: p.ship.skull && p.ship.ward > this.world.time ? [[p.ship.skull, p.ship.ward]] : [], repairs: 0 };   // v0.11 的船
+      const rename = (list) => { for (const it of list || []) if (it && it.n === '大船') it.n = '孤帆'; };   // v0.11 的大船就是現在的孤帆
+      rename(p.bag); for (const l of this.world.chests.values()) rename(l); for (const l of this.world.bags.values()) rename(l);
+      if ((s.ents || []).some(e => e.t === '蜃')) {              // 沒解決的蜃：讀檔後牠散了，但膽氣減五重
+        const before = this.level(); this.dropLevels(SEA_PENALTY);
+        this.toast('蜃沒了結', '讀檔時海上的蜃散了，可你是逃掉的：膽氣第 ' + before + ' 重減到第 ' + this.level() + ' 重。其餘都在。', 10000);
+      }
       // 舊存檔裡已經不存在的東西丟掉，身上的衣甲要對得上格子
       const known = (s) => !!(s && G.item(s.n));
       p.bag = (p.bag || []).filter(known); p.tools = (p.tools || []).filter(known);

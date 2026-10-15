@@ -29,6 +29,9 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 #vitals { position: absolute; left: calc(24px + env(safe-area-inset-left, 0px)); top: calc(110px + env(safe-area-inset-top, 0px)); display: flex; gap: 24px; align-items: flex-start; }
 .bar { position: relative; width: 22px; height: 180px; border: 2px solid rgba(28,26,23,.75); border-radius: 12px; background: rgba(239,229,207,.5); overflow: visible; }
 .bar > div { position: absolute; left: 3px; right: 3px; bottom: 3px; height: calc((100% - 6px) * var(--p, 0.3)); border-radius: 9px; transition: height .25s ease; opacity: .88; }
+.bar::after { content: ''; position: absolute; left: 3px; right: 3px; top: 3px; bottom: 3px; pointer-events: none;   /* 尺標：25%、50%、75% 三道 */
+  background-image: linear-gradient(rgba(28,26,23,.6), rgba(28,26,23,.6)), linear-gradient(rgba(28,26,23,.6), rgba(28,26,23,.6)), linear-gradient(rgba(28,26,23,.6), rgba(28,26,23,.6));
+  background-size: 100% 1.5px; background-repeat: no-repeat; background-position: 0 25%, 0 50%, 0 75%; }
 .bar > span { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 6px; width: 44px; text-align: center; line-height: 1.15; font: 15px/1.15 var(--font); color: var(--ink); background: rgba(239,229,207,.55); padding: 3px 0; border-radius: 4px; }
 #inkfill { background: linear-gradient(180deg, #3a3530, var(--ink)); }
 
@@ -96,6 +99,12 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 #diff-desc { margin-left: 6px; }
 .slot.bag .cost { font-size: 10px; }
 .slot .dur { position: absolute; left: 4px; bottom: 3px; height: 3px; background: var(--red); border-radius: 2px; }
+/* 耐久環：一圈包著格子，從正上方順時針，剩多少畫多少；低於四分之一轉紅 */
+.slot.ringed { border-color: transparent; }
+.slot .ring { position: absolute; inset: 0; border-radius: 5px; padding: 3px; pointer-events: none; box-sizing: border-box;
+  background: conic-gradient(var(--ring-c, var(--ink-2)) var(--p, 100%), rgba(28,26,23,.14) 0);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); mask-composite: exclude; }
+.slot .ring.low { --ring-c: var(--red); }
 .panel.craftpanel { max-width: 1000px; }
 .craftbody { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 10px; }
 #craft-cats { display: flex; flex-direction: column; gap: 6px; min-width: 92px; }

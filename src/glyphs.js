@@ -38,7 +38,7 @@
     '森': { s: 12, walk: 0.5, kind: 'plant', flam: 0.8, ink: INK.forest, yield: { '木': 3 }, time: 3.4, fast: '斧', regrow: 240, flavor: '三木成森，虎豹踞其中。' },
     // —— 水
     '水': { s: 4, walk: 0, kind: 'water', ink: INK.water, flavor: '淺水。有筏可渡，可架橋；空瓶可取海水。' },
-    '淼': { s: 12, walk: 0, kind: 'water', ink: INK.deep, flavor: '深水。唯大船可渡。' },
+    '淼': { s: 12, walk: 0, kind: 'water', ink: INK.deep, flavor: '深水。唯船可渡。' },
     // —— 山石
     '石': { s: 5, walk: 0.7, kind: 'rock', ink: INK.rock, yield: { '石': 1 }, time: 3.0, bonus: { '石子': 0.3 }, fast: '鎬', place: true, flavor: '石地。鎬採之快一倍，偶得石子。' },
     '磊': { s: 15, walk: 0, kind: 'rock', ink: INK.rock, yield: { '石': 3 }, time: 3.0, need: '鎬', flavor: '三石為磊。要用鎬。' },
@@ -63,7 +63,7 @@
     '罾': { s: 17, walk: 0, kind: 'object', ink: INK.water, place: true, onWater: true, net: 3, flavor: '大網，三乘三，四張中網或十三張小網編成：十息一條魚、存二十條。' },
     '偶': { s: 11, walk: 0, kind: 'object', ink: INK.brown, yield: { '偶': 1 }, time: 1.0, place: true, flavor: '稻草人。三十天內獸不近身：前半十格，後半七格。再放一個可以續到四十天；面向按 E 拆下，重放重計。' },
     '櫃': { s: 18, walk: 0, kind: 'object', ink: INK.brown, yield: { '櫃': 1 }, time: 1.0, place: true, flavor: '四角用石、四邊用木的櫃子。面向它按 E 開，二十四格。' },
-    '舟': { s: 6, walk: 0, kind: 'object', ink: INK.brown, place: true, onWater: true, flavor: '大船。面向它按 E 上船；上了船，深水亦可渡。' },
+    '舟': { s: 6, walk: 0, kind: 'object', ink: INK.brown, place: true, onWater: true, flavor: '停著的船（孤帆一乘二、方舟二乘三）。面向它按 E 上船；上了船，深水亦可渡。' },
     '碑': { s: 13, walk: 0, kind: 'object', ink: INK.black, flavor: '古碑，刻著活下去的法子。讀之，力氣漸長。' },
     '包': { s: 5, walk: 0, kind: 'object', ink: INK.black, flavor: '落下的荷包。死時囊裡、具欄裡、身上的東西都在裡面。' },
     '牆': { s: 17, walk: 0, kind: 'object', ink: INK.brown, yield: { '石': 1 }, time: 3.0, fast: '鎬', flavor: '村裡的殘牆。' },
@@ -116,7 +116,8 @@
     '木板': { s: 12, kind: 'item', flavor: '木二劈成兩塊板。造船用。' },
     '船槳': { s: 29, kind: 'item', flavor: '木板二木一。' },
     '船帆': { s: 23, kind: 'item', flavor: '麻布四木二。' },
-    '大船': { s: 14, kind: 'build', tile: '舟', flavor: '木板十二、槳二、帆一。放在淺水上，上船可渡深海。' },
+    '孤帆': { s: 16, kind: 'build', tile: '舟', ship: '孤帆', flavor: '一葉孤帆，一乘二。木板八、槳一、帆一。命一百二十，船頭放得下兩個獸首骨。放在淺水上，面向按 E 上船可渡深海。' },
+    '方舟': { s: 14, kind: 'build', tile: '舟', ship: '方舟', flavor: '兩船相並為方舟，二乘三。木板三十六、槳四、帆三、鐵八、麻布六。命四百二十，船頭放得下五個獸首骨。要六格淺水才放得下。' },
     '肉': { s: 6, kind: 'food', food: { eat: 20, hurt: 8 }, flavor: '生肉。生食傷身，烤之則美。' },
     '烤魚': { s: 21, kind: 'food', food: { eat: 40 }, flavor: '灶上烤的魚。香。' },
     '烤肉': { s: 16, kind: 'food', food: { eat: 55 }, flavor: '灶上烤的肉。更香。' },
@@ -179,6 +180,11 @@
     '鎢鋼斧': { s: 21, kind: 'tool', tool: '斧', dmg: 32, dur: 112, tung: true, flavor: '鎢鋼斧。耐久一百一十二。重磨耗力八、飽十。' },
   };
   const TOOL_NAMES = { '刀': '刀', '鎬': '鎬', '鋤': '鋤', '劍': '劍', '斧': '斧', '鎚': '九閽鳴雷', '焚': '燭龍焚溟' };   // 石、鋼、鎢鋼都算
+  // 船：兩種。off 是行船時船身相對於人的格子（人站在船身裡）；hp 命；slots 船頭放得下幾個獸首骨
+  const SHIPS = {
+    '孤帆': { w: 1, h: 2, hp: 120, slots: 2, off: [[0, 0], [0, 1]] },
+    '方舟': { w: 2, h: 3, hp: 420, slots: 5, off: [[0, 0], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]] },   // 第一格是人站的那格（左邊中間）
+  };
   // 製作欄的大類（左側選）：每條配方照 id 歸類，沒列到的進「材料」
   const CRAFT_CATS = ['全部', '居所', '工具', '衣甲', '燈火', '漁船', '食藥', '材料'];
   const CAT_OF = {
@@ -186,7 +192,7 @@
     '工具': ['grind', 'regrind', 'forge', 'forgew', 'fan', 'hammer', 'seagod'],
     '衣甲': ['lining', 'pants', 'vest', 'cap', 'shoes', 'ironvest', 'helm', 'ironboots', 'wvest', 'whelm', 'wboots'],
     '燈火': ['torch', 'candle', 'lamp', 'hat'],
-    '漁船': ['weir', 'net', 'midnet', 'bignet', 'bignet13', 'raft', 'plank', 'oar', 'sail', 'ship'],
+    '漁船': ['weir', 'net', 'midnet', 'bignet', 'bignet13', 'raft', 'plank', 'oar', 'sail', 'ship', 'ark'],
     '食藥': ['med', 'wine'],
   };
   function item(name) { return ITEMS[name] || DB[name] || null; }
@@ -238,7 +244,8 @@
     { id: 'plank', out: '木板', n: 2, need: { '木': 2 }, sta: 2, note: '造船用' },
     { id: 'oar', out: '船槳', n: 1, need: { '木板': 2, '木': 1 }, sta: 4, note: '造船用' },
     { id: 'sail', out: '船帆', n: 1, need: { '麻布': 4, '木': 2 }, sta: 6, note: '造船用' },
-    { id: 'ship', out: '大船', n: 1, need: { '木板': 12, '船槳': 2, '船帆': 1 }, sta: 20, level: 8, note: '膽氣八重方可造。放在淺水上，渡海而去' },
+    { id: 'ship', out: '孤帆', n: 1, need: { '木板': 8, '船槳': 1, '船帆': 1 }, sta: 16, level: 8, note: '膽氣八重方可造。一乘二，命一百二十，船頭兩個首骨' },
+    { id: 'ark', out: '方舟', n: 1, need: { '木板': 36, '船槳': 4, '船帆': 3, '鐵': 8, '麻布': 6 }, sta: 48, level: 8, note: '二乘三，命四百二十，船頭五個首骨；要六格淺水' },
     { id: 'hammer', out: '九閽鳴雷', n: 1, need: { '鐵': 12, '煤': 6, '石子': 9, '麻布': 2, '果酒': 1 }, sta: 60, level: 31, note: '三格內諸獸同受 120 傷；隨身膽氣二日一減、下限廿五重' },
   ];
 
@@ -342,7 +349,7 @@
     { r: 0.42, hint: '二土一草成磚，木三成門，石四木四成櫃。砌一圈留一扇門，獸不得入。麻布三棉二織錦囊，用之囊更大。麻布二石子二木三草四，是一個稻草人，三十天內獸不近身。' },
     { r: 0.56, hint: '石子磨石加一根木，可成刀、鎬、鋤、劍、斧。山裡有煤有鐵，礦二煤一入旺灶可煉鐵，鐵可打甲。蛇與蛛咬人有毒，連咬不斷（兩口相隔不過六息）滿十五口必死；藥可解毒。豹與狼一撲十滴血。' },
     { r: 0.70, hint: '第十三夜起，魄夜行，穿牆而過，不傷身而蝕心。手持火把或蠟燭、頭戴燈帽、地上有燈，六格內魄即煙滅。白日藏於林中。' },
-    { r: 0.83, hint: '野果久藏則醉，醉可昏睡一刻。沙三入旺灶成瓶，瓶取泉水，醉果二合淡水成酒，飲之愜意。膽氣八重，可造大船渡海；卅一重，鐵十二煤六石子九，可鑄九閽鳴雷。' }
+    { r: 0.83, hint: '野果久藏則醉，醉可昏睡一刻。沙三入旺灶成瓶，瓶取泉水，醉果二合淡水成酒，飲之愜意。膽氣八重，可造孤帆、方舟渡海；卅一重，鐵十二煤六石子九，可鑄九閽鳴雷。' }
   ];
   function spiralFind(tx, ty, maxR, test) {
     for (let rr = 0; rr < maxR; rr++) {
@@ -463,5 +470,5 @@
   }
 
   RECIPES.forEach(r => { r.cat = '材料'; for (const c in CAT_OF) if (CAT_OF[c].indexOf(r.id) >= 0) r.cat = c; });
-  root.G = { INK, DB, ITEMS, TOOL_NAMES, RECIPES, CRAFT_CATS, COOK, item, baseTile, fields, islet, stelePlan, placePlan, PLACES, biomeName, ISLAND_R, SEA_EDGE };
+  root.G = { INK, DB, ITEMS, TOOL_NAMES, RECIPES, CRAFT_CATS, COOK, item, baseTile, fields, islet, stelePlan, placePlan, PLACES, biomeName, ISLAND_R, SEA_EDGE, SHIPS };
 })();
