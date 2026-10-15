@@ -239,9 +239,18 @@
       let fermented = 0;
       for (let i = p.bag.length - 1; i >= 0; i--) {
         const s = p.bag[i];
-        if (s.n === '果' && s.d !== undefined && p.lastDay - s.d >= FERMENT_NIGHTS) { fermented += s.c; p.bag.splice(i, 1); }
+        if (s.n !== '果') continue;
+        const ds = this.fruitDays(s);
+        let k = 0; while (k < ds.length && p.lastDay - ds[k] >= FERMENT_NIGHTS) k++;   // 由陳到新，前面幾顆放滿了十五夜
+        if (!k) continue;
+        ds.splice(0, k); s.c -= k; fermented += k;
+        if (s.c <= 0) p.bag.splice(i, 1);
       }
-      if (fermented) { this.addItem('醉果', fermented); this.toast('果子醉了', '放過十五夜的果變成了醉果。吃了昏迷一刻；二醉果合一淡水成酒。'); }
+      if (fermented) {
+        const left = this.addItem('醉果', fermented);
+        if (left > 0) this.addItem('果', left, { d: p.lastDay - FERMENT_NIGHTS });   // 囊滿放不下的，先留在果裡，明天再醉
+        this.toast('果子醉了', (fermented - left) + ' 顆放滿十五夜的果變成了醉果' + (left > 0 ? '，囊滿，還有 ' + left + ' 顆沒處放' : '') + '。吃了昏迷一刻；二醉果合一淡水成酒。');
+      }
       this.buildBag();
     }
 
@@ -377,8 +386,7 @@
     canAdd(n, c) {
       c = c || 1; const bag = this.player.bag, it = G.item(n);
       if (it && (it.dur || it.single)) return Math.max(0, c - (it.dur ? this.toolSlots() - this.player.tools.length : 0)) + bag.length <= this.slots();
-      const day = n === '果' ? this.day() : undefined;
-      for (const s of bag) if (s.n === n && s.d === day && s.c < STACK) c -= Math.min(c, STACK - s.c);
+      for (const s of bag) if (s.n === n && s.dur === undefined && s.c < STACK) c -= Math.min(c, STACK - s.c);
       return c <= 0 || bag.length + Math.ceil(c / STACK) <= this.slots();
     }
     addItem(n, c, extra) {
@@ -389,14 +397,51 @@
         while (c > 0 && bag.length < this.slots()) { bag.push(Object.assign({ n, c: 1 }, it && it.dur ? { dur: it.dur } : {}, it && it.single && it.fuel !== undefined ? { fuel: it.fuel } : {}, extra || {})); c--; }
         this.barSig = ''; return c;
       }
-      const day = n === '果' ? (extra && extra.d !== undefined ? extra.d : this.day()) : undefined;
-      for (const s of bag) { if (s.n === n && s.d === day && s.dur === undefined && s.c < STACK) { const k = Math.min(c, STACK - s.c); s.c += k; c -= k; if (!c) break; } }
-      while (c > 0 && bag.length < this.slots()) { const k = Math.min(c, STACK); const s = { n, c: k }; if (day !== undefined) s.d = day; bag.push(s); c -= k; }
+      // 果：每顆帶著摘下的日數（extra.ds 由陳到新；舊格式 extra.d 整批同一天；沒給就是今天摘的），不分堆，陳的先放
+      let days = null;
+      if (n === '果') { days = extra && extra.ds ? extra.ds.slice().sort((a, b) => a - b) : []; while (days.length < c) days.push(extra && extra.d !== undefined ? extra.d : this.day()); }
+      for (const s of bag) {
+        if (s.n !== n || s.dur !== undefined || s.c >= STACK) continue;
+        const k = Math.min(c, STACK - s.c);
+        if (days) { this.fruitDays(s); s.ds.push(...days.splice(0, k)); s.ds.sort((a, b) => a - b); }
+        s.c += k; c -= k; if (!c) break;
+      }
+      while (c > 0 && bag.length < this.slots()) { const k = Math.min(c, STACK); const s = { n, c: k }; if (days) s.ds = days.splice(0, k); bag.push(s); c -= k; }
       this.barSig = '';
       return c;
     }
+    // 果：一疊裡每顆各記摘下的日數 ds（由陳到新）；舊存檔整疊一個 d 的，補成 ds
+    fruitDays(s) {
+      if (!Array.isArray(s.ds)) s.ds = [];
+      const d0 = s.d !== undefined ? s.d : this.day();
+      while (s.ds.length < s.c) s.ds.push(d0);
+      if (s.ds.length > s.c) s.ds.length = s.c;
+      delete s.d;
+      s.ds.sort((a, b) => a - b);
+      return s.ds;
+    }
+    fruitNote(s) {       // 滑鼠停在果上：每批放了幾夜
+      const ds = this.fruitDays(s), today = this.day(), m = new Map();
+      for (const d of ds) { const a = today - d; m.set(a, (m.get(a) || 0) + 1); }
+      return [...m.entries()].sort((a, b) => b[0] - a[0]).map(([a, k]) => (a >= 1 ? a + ' 夜' : '今天摘的') + ' ×' + k).join('、') + '；先吃最陳的，放滿十五夜變醉果。';
+    }
+    // 先吃陳的：每一顆都從所有果裡挑摘得最早的；回傳拿掉的那幾顆的日數
+    takeFruit(c) {
+      const p = this.player, bag = p.bag, taken = [];
+      while (c > 0) {
+        let best = null;
+        for (const s of bag) { if (s.n !== '果' || s.c <= 0) continue; this.fruitDays(s); if (!best || s.ds[0] < best.ds[0]) best = s; }
+        if (!best) break;
+        taken.push(best.ds.shift()); best.c--; c--;
+        if (best.c <= 0) bag.splice(bag.indexOf(best), 1);
+      }
+      if (p.sel >= bag.length) p.sel = Math.max(0, bag.length - 1);
+      this.barSig = '';
+      return taken;
+    }
     removeItem(n, c) {
       const bag = this.player.bag;
+      if (n === '果') { this.takeFruit(c); return; }
       for (let i = bag.length - 1; i >= 0 && c > 0; i--) { if (bag[i].n !== n) continue; const k = Math.min(c, bag[i].c); bag[i].c -= k; c -= k; if (bag[i].c <= 0) bag.splice(i, 1); }
       if (this.player.sel >= bag.length) this.player.sel = Math.max(0, bag.length - 1);
       this.barSig = '';
@@ -745,7 +790,8 @@
       }
       if (s.n === '海水瓶') { this.message('海水鹹，喝不得。放在旺的灶上蒸餾。'); return; }
       if (!f) { this.message(tl.tool && tl.dur ? '「' + s.n + '」是工具，按 F 移進具欄。' : tl.tool || tl.kind === 'wear' ? '「' + s.n + '」在囊中即生效。' : '「' + s.n + '」不能吃，按 F 放到地上。'); return; }
-      this.removeItem(s.n, 1);
+      const ate = s.n === '果' ? this.takeFruit(1) : null; if (!ate) this.removeItem(s.n, 1);
+      const age = ate && ate.length ? this.day() - ate[0] : 0;
       if (f.bottle) this.addItem('玻璃瓶', 1);
       if (f.knock) { this.knockOut(f); return; }
       const parts = [];
@@ -756,7 +802,7 @@
       if (f.san) { p.san = Math.min(100, p.san + f.san); parts.push('愜意 +' + f.san); }
       if (f.poison) { this.poison(f.poison[0], f.poison[1]); parts.push('中毒'); }
       SFX.absorb();
-      this.message('吃了「' + s.n + '」，' + parts.join('，') + '。');
+      this.message('吃了「' + s.n + '」' + (age >= 1 ? '（最陳的那顆，放了 ' + age + ' 夜）' : '') + '，' + parts.join('，') + '。');
     }
     knockOut(f) {
       const p = this.player;
@@ -892,8 +938,9 @@
       if (!box) return;
       if (from === 'chest') {
         const s = box[i]; if (!s) return;
-        const left = this.addItem(s.n, s.c, { dur: s.dur, d: s.d, wm: s.wm, fuel: s.fuel });
-        if (left > 0) { s.c = left; this.message('囊裡放不下這麼多。'); } else box.splice(i, 1);
+        const ds = s.n === '果' ? this.fruitDays(s).slice() : undefined;
+        const left = this.addItem(s.n, s.c, { dur: s.dur, wm: s.wm, fuel: s.fuel, ds });
+        if (left > 0) { s.c = left; if (ds) s.ds = ds.slice(ds.length - left); this.message('囊裡放不下這麼多。'); } else box.splice(i, 1);
       } else {
         const s = p.bag[i]; if (!s) return;
         if (box.length >= CHEST_SLOTS) { this.message('櫃滿了。'); return; }
@@ -976,7 +1023,11 @@
     pickBag(t) {
       const k = U.key(t.x, t.y), items = this.world.bags.get(k) || [];
       const left = [];
-      for (const s of items) { const r = this.addItem(s.n, s.c, { dur: s.dur, d: s.d, wm: s.wm, fuel: s.fuel }); if (r > 0) left.push({ n: s.n, c: r, dur: s.dur, d: s.d, wm: s.wm, fuel: s.fuel }); }
+      for (const s of items) {
+        const ds = s.n === '果' ? this.fruitDays(s).slice() : undefined;
+        const r = this.addItem(s.n, s.c, { dur: s.dur, wm: s.wm, fuel: s.fuel, ds });
+        if (r > 0) left.push({ n: s.n, c: r, dur: s.dur, wm: s.wm, fuel: s.fuel, ds: ds ? ds.slice(ds.length - r) : undefined });
+      }
       if (left.length) { this.world.bags.set(k, left); this.message('囊已滿，還有些東西留在荷包裡。'); }
       else { this.world.set(t.x, t.y, '白'); this.message('取回了荷包。'); }
       SFX.absorb();
@@ -1098,7 +1149,7 @@
     }
     buildBag() {
       const p = this.player, bar = $('bagbar'); this.sortBag();
-      const sig = p.bag.map(s => s.n + s.c + (s.dur !== undefined ? 'd' + s.dur : '') + (s.d !== undefined ? '@' + s.d : '')).join(',') + '|' + p.sel + '|' + this.day() + '|' + p.tools.map(s => s.n + s.dur).join(',') + '|' + p.tool
+      const sig = p.bag.map(s => s.n + s.c + (s.dur !== undefined ? 'd' + s.dur : '') + (s.n === '果' ? '@' + this.fruitDays(s).join('.') : '')).join(',') + '|' + p.sel + '|' + this.day() + '|' + p.tools.map(s => s.n + s.dur).join(',') + '|' + p.tool
         + '|' + SLOT_ORDER.map(k => p.worn[k] ? p.worn[k].n + (p.worn[k].dur !== undefined ? this.effDays(p.worn[k]) : Math.ceil((p.worn[k].fuel || 0) / 10)) : '').join(',') + '|' + this.slots() + '|' + (this.totemOn() ? 1 : 0) + '|' + this.ironCount();
       if (sig === this.barSig) return;
       this.barSig = sig; bar.innerHTML = '';
@@ -1113,11 +1164,11 @@
           let sub = '×' + s.c;
           if (s.dur !== undefined) sub = this.durText(s);
           else if (s.fuel !== undefined) sub = s.fuel > 0 ? Math.ceil(s.fuel) + '息' : '滅';
-          else if (s.d !== undefined) { const age = this.day() - s.d; sub = '×' + s.c + (age >= FERMENT_NIGHTS - 3 ? ' 將醉' : age >= 1 ? ' ' + age + '夜' : ''); }
+          else if (s.n === '果') { const age = this.day() - this.fruitDays(s)[0]; sub = '×' + s.c + (age >= FERMENT_NIGHTS - 3 ? ' 將醉' : age >= 1 ? ' ' + age + '夜' : ''); }
           el.innerHTML = '<span class="num">' + (i < 9 ? i + 1 : '') + '</span><span class="ch' + (s.n.length > 1 ? ' word' : '') + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">' + sub + '</span>';
           if (s.dur !== undefined) el.innerHTML += '<i class="dur" style="width:' + Math.round(100 * s.dur / (it.dur || this.lifeOf(s))) + '%"></i>';
           else if (s.fuel !== undefined) el.innerHTML += '<i class="dur" style="width:' + Math.round(100 * s.fuel / HAT_FUEL) + '%"></i>';
-          el.title = it.flavor;
+          el.title = it.flavor + (s.n === '果' ? '\n' + this.fruitNote(s) : '');
         }
         el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; if (this.isTool(s.n) && this.equipFromBag(i)) return; p.sel = i; this.buildBag(); });
         bar.appendChild(el);
@@ -1269,6 +1320,8 @@
       const worn = {}; for (const k of SLOT_ORDER) { const s = p.worn && p.worn[k]; worn[k] = known(s) && ITEMS[s.n].slot === k ? s : null; } p.worn = worn;
       if (!p.hitWin || typeof p.hitWin.n !== 'number') p.hitWin = { start: -99, n: 0 };
       for (const s of p.bag) if (s.n === '燈帽' && s.fuel === undefined) { s.fuel = HAT_FUEL; s.c = 1; }   // 舊存檔的燈帽補上蠟燭
+      const fr = p.bag.filter(s => s.n === '果');   // 舊存檔按日分堆的果合成一疊，每顆的日數記進 ds
+      if (fr.length) { const ds = []; for (const s of fr) ds.push(...this.fruitDays(s)); p.bag = p.bag.filter(s => s.n !== '果'); this.addItem('果', ds.length, { ds }); }
       p.rx = p.x; p.ry = p.y; p.moveT = 0;
       Object.assign(this.stats, s.stats || {});
     }

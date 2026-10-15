@@ -62,7 +62,7 @@ const result = await page.evaluate(async () => {
   ok('山 needs a pickaxe', !g.action && w.get(T().x, T().y) === '山');
   await gather('果');
   const fruit = p.bag.find(s => s.n === '果');
-  ok('gathering 果 stamps the day', fruit && fruit.c === 2 && fruit.d === g.day() && w.get(T().x, T().y) === '木', bag());
+  ok('gathering 果 stamps each piece with the day', fruit && fruit.c === 2 && Array.isArray(fruit.ds) && fruit.ds.length === 2 && fruit.ds.every(d => d === g.day()) && w.get(T().x, T().y) === '木', bag());
   p.food = 50; hold('果'); g.useItem();
   ok('fresh 果 is edible (+20)', Math.round(p.food) === 70 && g.count('果') === 1, [p.food, g.count('果')]);
 
@@ -142,9 +142,15 @@ const result = await page.evaluate(async () => {
   ok('sleeping restores 20 sanity', Math.round(p.san) === 70, p.san);
   setDay(0.04); const tN = w.time; g.sleep();
   ok('no napping after sunrise', w.time === tN, g.msgText);
-  setDay(0.3); g.removeItem('果', 99); g.removeItem('肉', 99); g.removeItem('磚', 99); g.addItem('果', 5); p.bag.find(s => s.n === '果').d = g.day() - 15;
-  w.time += DAY; await until(() => g.count('醉果') === 5, 3000);
-  ok('fruit older than 15 nights ferments', g.count('醉果') === 5 && g.count('果') === 0, bag());
+  setDay(0.3); g.removeItem('果', 99); g.removeItem('肉', 99); g.removeItem('磚', 99);
+  g.addItem('果', 2); g.addItem('果', 3, { d: g.day() - 15 });
+  const fstacks = () => p.bag.filter(s => s.n === '果'), dNow = g.day();
+  ok('fruit picked on different days shares one stack, oldest first inside', fstacks().length === 1 && fstacks()[0].c === 5 && fstacks()[0].ds.join() === [dNow - 15, dNow - 15, dNow - 15, dNow, dNow].join(), JSON.stringify(fstacks()));
+  w.time += DAY; await until(() => g.count('醉果') === 3, 3000);
+  ok('only the fruit older than 15 nights ferments, the rest stays', g.count('醉果') === 3 && g.count('果') === 2 && fstacks()[0].ds.every(d => d === g.day() - 1), bag());
+  g.addItem('果', 1, { d: g.day() - 5 }); p.food = 50; hold('果'); g.useItem();
+  ok('eating takes the oldest fruit first', g.count('果') === 2 && fstacks()[0].ds.every(d => d === g.day() - 1) && g.msgText.indexOf('5 夜') >= 0, g.msgText);
+  g.removeItem('醉果', 99);
   // ============ F. 魄夜、毒、豹狼、稻草人 ============
   p.hp = 100; p.poisonT = 0; p.san = 100;
   w.time = DAY * 12 + DAY * 0.7;   // 第 13 日的夜 → 第十三夜
@@ -514,6 +520,9 @@ const result = await page.evaluate(async () => {
   const nBag = p.bag.length; g.moveStack('bag', 0);
   ok('moving a stack into the chest', p.bag.length === nBag - 1 && w.chests.get(g.chestAt).length === 1);
   g.moveStack('chest', 0); ok('and back', p.bag.length === nBag && w.chests.get(g.chestAt).length === 0);
+  g.removeItem('果', 99); g.addItem('果', 2, { d: g.day() - 7 }); g.moveStack('bag', p.bag.findIndex(s => s.n === '果')); const inChest = w.chests.get(g.chestAt)[0]; g.moveStack('chest', 0);
+  ok('fruit keeps each piece\'s age through a chest', inChest.n === '果' && g.count('果') === 2 && p.bag.find(s => s.n === '果').ds.every(d => d === g.day() - 7), JSON.stringify(p.bag.find(s => s.n === '果')));
+  g.removeItem('果', 99);
   const ck2 = g.chestAt; document.getElementById('chest-take').click();
   ok('an empty chest can be taken down', hidden('chest') && !w.chests.has(ck2) && g.count('櫃') === 1 && w.get(...ck2.split(',').map(Number)) === '白');
   // 船：放在淺水，上船，渡深水，到海邊渡海（先離開泉邊，免得面前是地標）
