@@ -191,11 +191,12 @@ const result = await page.evaluate(async () => {
   g.addItem('藥', 1); hold('藥'); g.useItem();
   ok('藥 cures poison', p.poisonT === 0 && p.poisonPer === 0);
   g.ents.remove(snake);
-  p.hp = 100; p.biteN = 14; p.biteLast = w.time; const snake2 = g.ents.add('蛇', T().x, T().y, { moveT: 0, atk: 0 });
+  p.hp = 100; p.biteN = 14; p.biteLast = w.time; p.cour = 100; const swd = tool('石劍'); if (swd) swd.dur = 20; const snake2 = g.ents.add('蛇', T().x, T().y, { moveT: 0, atk: 0 });
   await until(() => p.dead, 3000);
   ok('fifteenth consecutive bite kills', p.dead, [p.hp, p.biteN]);
   g.ents.remove(snake2); await press('Enter', 20); await sleep(80);
-  ok('respawn resets courage to zero', !p.dead && p.cour === 0);
+  ok('respawn keeps 40% of courage (100 → 40)', !p.dead && p.cour === 40, p.cour);
+  ok('durable things in the 荷包 are halved', [...w.bags.values()].some(v => v.some(s => s.n === '石劍' && s.dur === 10)), [...w.bags.values()].flat().filter(s => s.dur !== undefined).map(s => s.n + s.dur).join(','));
   ok('belongings drop as one 荷包', w.bags.size >= 1 && [...w.bags.keys()].every(k => { const [x, y] = k.split(',').map(Number); return w.get(x, y) === '包'; }) && [...w.bags.values()].some(v => v.some(s => s.n === '石劍')), w.bags.size);
   // 蜘蛛不惹不咬；除草十分之一出蜘蛛
   w.set(T().x, T().y, '草'); g.ents.list = g.ents.list.filter(e => e.type !== '蛛');
@@ -363,6 +364,28 @@ const result = await page.evaluate(async () => {
   g.ents.remove(prey); eg.sta = 100;
   ok('tamed eagles are saved with the world', JSON.stringify(g.ents.serialize()).indexOf('鷹') >= 0);
   g.ents.remove(eg); g.addCourage(0);
+  // 鼎與丹：蟾蜍肉分有無毒；前三顆 8%／12%，之後 1%／2%；前五十顆每顆命上限 +3，之後 +0.5
+  trim(['木', '石', '石子', '草', '土', '磚', '大船']); g.addItem('鐵', 3); g.addItem('石', 4); g.addItem('煤', 2); p.sta = 100; g.craft('cauldron');
+  face(0, 1); w.set(T().x, T().y, '土'); hold('鼎'); g.pressPlace(); const ding = T();
+  ok('a cauldron is crafted and placed, cold until fuelled', w.get(ding.x, ding.y) === '鼎' && !w.stoveLit(ding.x, ding.y));
+  g.addItem('木', 1); hold('木'); g.pressPlace();
+  ok('wood fuels the cauldron like a stove', w.stoveLit(ding.x, ding.y));
+  g.ents.list = g.ents.list.filter(e => e.type !== '蟾'); face(1, 0); w.set(T().x, T().y, '草');
+  const td = g.ents.add('蟾', T().x, T().y, { moveT: 99, venom: true }); hold('石劍'); for (let i = 0; i < 3; i++) { p.atkT = 0; g.pressGather(); }
+  ok('a venomous toad drops 毒蟾肉', !g.ents.list.includes(td) && g.count('毒蟾肉') === 1, bag());
+  g.addItem('蟾蜍肉', 5); p.pillsMade = 0; p.pillsEaten = 0; p.hpMax = 100;
+  ok('pill odds: 8%/12% for the first three pills, then 1%/2%', g.pillChance('蟾蜍肉') === 0.08 && g.pillChance('毒蟾肉') === 0.12 && (() => { p.pillsMade = 3; const r = g.pillChance('蟾蜍肉') === 0.01 && g.pillChance('毒蟾肉') === 0.02; p.pillsMade = 0; return r; })());
+  face(0, 1); hold('蟾蜍肉'); const rndP = Math.random; Math.random = () => 0.5; p.sta = 50; g.pressPlace();
+  ok('a failed refinement burns the meat', g.count('蟾蜍肉') === 4 && g.count('丹') === 0 && p.pillsMade === 0);
+  Math.random = () => 0.05; g.pressPlace(); Math.random = rndP;
+  ok('a successful refinement yields a 丹', g.count('丹') === 1 && p.pillsMade === 1 && g.count('蟾蜍肉') === 3);
+  hold('丹'); g.useItem();
+  ok('eating a pill raises max hp by 3 (first fifty)', p.hpMax === 103 && p.pillsEaten === 1, p.hpMax);
+  p.pillsEaten = 50; p.hpMax = 250; g.addItem('丹', 1); hold('丹'); g.useItem();
+  ok('from the fifty-first pill each adds 0.5', p.hpMax === 250.5 && p.pillsEaten === 51, p.hpMax);
+  p.hp = p.hpMax; await sleep(60);
+  ok('hp bar and label follow the raised maximum', document.getElementById('hplabel').textContent.indexOf('250.5') >= 0 || document.getElementById('hplabel').textContent.indexOf('251') >= 0, document.getElementById('hplabel').textContent);
+  p.hpMax = 100; p.hp = 100; p.pillsEaten = 0; p.pillsMade = 0; g.removeItem('丹', 9); g.removeItem('蟾蜍肉', 9); g.removeItem('毒蟾肉', 9); w.set(ding.x, ding.y, '土');
   // 龜：少見不咬人，命五十；龜甲卜之，吉則五日無魄
   face(1, 0); w.set(T().x, T().y, '草'); const tu = g.ents.add('龜', T().x, T().y, { moveT: 99 }); hold('石劍'); p.atkT = 0; g.pressGather();
   ok('a turtle takes two sword blows (50 hp)', tu.hp === 10 && g.ents.list.includes(tu), tu.hp);

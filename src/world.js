@@ -79,8 +79,8 @@
       const k = U.key(x, y), old = this.get(x, y);
       if (ch === this.base(x, y)) this.diff.delete(k); else this.diff.set(k, ch);
       if (DB[ch].flam <= 0) this.burn.delete(k);
-      if (old === '灶' && ch !== '灶') this.stoves.delete(k);
-      if (ch === '灶' && !this.stoves.has(k)) this.stoves.set(k, 0);
+      if ((old === '灶' || old === '鼎') && ch !== '灶' && ch !== '鼎') this.stoves.delete(k);
+      if ((ch === '灶' || ch === '鼎') && !this.stoves.has(k)) this.stoves.set(k, 0);
       if (old === '包' && ch !== '包') this.bags.delete(k);
       if (old === '偶' && ch !== '偶') this.scarecrows.delete(k);
       if ('網罟罾'.indexOf(old) >= 0 && '網罟罾'.indexOf(ch) < 0 && this.netCells.has(k)) { const rec = this.nets.get(this.netCells.get(k)); if (rec) this.removeNet(rec); }
@@ -138,7 +138,7 @@
     }
     // 灶
     stoveFuel(x, y) { return this.stoves.get(U.key(x, y)) || 0; }
-    stoveLit(x, y) { return this.get(x, y) === '灶' && this.stoveFuel(x, y) > 0; }
+    stoveLit(x, y) { const c = this.get(x, y); return (c === '灶' || c === '鼎') && this.stoveFuel(x, y) > 0; }
     addFuel(x, y, sec) { const k = U.key(x, y); this.stoves.set(k, Math.min(900, (this.stoves.get(k) || 0) + sec)); }
 
     // ---------- 探索：看過的格子才會畫到地圖上 ----------
