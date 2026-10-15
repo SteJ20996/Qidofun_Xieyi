@@ -327,7 +327,7 @@
       for (const k of SLOT_ORDER) {
         const s = p.worn[k]; if (!s || s.dur === undefined) continue;
         s.dur -= dt * (s.wm || 1) * wearRate;
-        if (s.dur <= 0) { p.worn[k] = null; this.barSig = ''; this.toast('「' + s.n + '」穿破了', '一百八十日的布與鐵，到頭了。'); SFX.fail(); }
+        if (s.dur <= 0) { p.worn[k] = null; this.barSig = ''; this.toast('「' + s.n + '」穿破了', '壽命到頭了。'); SFX.fail(); }
       }
       // 膽氣過了卅一重，三日一減，不低於卅一重
       if (this.level() > this.decayFloor()) {
@@ -345,8 +345,7 @@
       for (const s of drop) if (s.dur !== undefined) s.dur = Math.max(1, Math.floor(s.dur / 2));   // 留下的東西，有耐久的全打對折（可修）
       const landOk = (x, y) => { const d = w.info(x, y); return d.walk > 0 && d.kind !== 'object' && d.kind !== 'place' && !w.stele(x, y) && DB[w.raw(x, y)].kind !== 'water' && w.raw(x, y) !== '灘'; };
       if (p.sailing) {           // 船停在最近的淺水上
-        const sea = DB[w.get(p.x, p.y)].kind === 'water' && w.get(p.x, p.y) === '水' ? [p.x, p.y] : this.nearestTile(p.x, p.y, (x, y) => w.get(x, y) === '水', 60);
-        if (sea) w.set(sea[0], sea[1], '舟');
+        this.parkShip(p.x, p.y, true, 60);
       }
       if (drop.length) {
         const spot = this.nearestTile(p.x, p.y, landOk, 80) || [this.spawn.x, this.spawn.y];
@@ -375,6 +374,13 @@
       this.paused = false;
       this.toast('你在一個清晨醒來', homeOk ? '在你的床邊。' : '在最初的地方。');
       this.buildBag();
+    }
+    // 停船：只停在真的水上。灘在漲潮時讀起來是「水」，停在那裡退潮就擱淺，還會堵住去燈塔的路
+    parkShip(x, y, shallowOnly, maxR) {
+      const w = this.world, ok = (i, j) => shallowOnly ? w.raw(i, j) === '水' : DB[w.raw(i, j)].kind === 'water';
+      const at = ok(x, y) ? [x, y] : this.nearestTile(x, y, ok, maxR);
+      if (at) w.set(at[0], at[1], '舟');
+      return at;
     }
     nearestTile(x0, y0, ok, maxR) {     // 由近而遠一圈圈找
       for (let r = 0; r <= maxR; r++) for (let i = -r; i <= r; i++) for (const [x, y] of r ? [[x0 + i, y0 - r], [x0 + i, y0 + r], [x0 - r, y0 + i], [x0 + r, y0 + i]] : [[x0, y0]]) if (ok(x, y)) return [x, y];
@@ -512,8 +518,8 @@
       if (!this.pass(nx, ny) || this.ents.beastAt(nx, ny)) return false;
       if (dx && dy && !(this.pass(p.x + dx, p.y) && this.pass(p.x, p.y + dy))) return false;
       const d = w.info(nx, ny);
-      if (p.sailing && d.kind !== 'water') {        // 靠岸：船留在水上
-        if (DB[w.get(p.x, p.y)].kind === 'water') w.set(p.x, p.y, '舟');
+      if (p.sailing && d.kind !== 'water') {        // 靠岸：船留在水上（灘不算水，退潮會擱淺）
+        if (!this.parkShip(p.x, p.y, false, 8)) { this.message('灘上靠不了岸，退潮會擱淺。往深一點的水去。'); return false; }
         p.sailing = false; this.message('靠岸了。船停在那裡。');
       }
       p.fromX = p.x; p.fromY = p.y; p.x = nx; p.y = ny;
@@ -706,7 +712,7 @@
       const tileName = it.tile || name;             // 大船放下是「舟」
       if (DB[tileName] && DB[tileName].net) { this.placeNet(t, tileName, name); return; }
       if (!DB[tileName] || !DB[tileName].place) { this.message('「' + name + '」放不到地上。'); fail(); return; }
-      if (DB[tileName].onWater) { if (base !== '水') { this.message('「' + name + '」要放在淺水上。'); fail(); return; } }
+      if (DB[tileName].onWater) { if (base !== '水' || w.raw(t.x, t.y) !== '水') { this.message(w.raw(t.x, t.y) === '灘' ? '灘上漲潮才有水，退潮就擱淺了，「' + name + '」要放在真的淺水上。' : '「' + name + '」要放在淺水上。'); fail(); return; } }
       else {
         if (!(bd.kind === 'ground' || bd.kind === 'blank')) { this.message('這裡放不下，先把地上的東西取走。'); fail(); return; }
         if (this.ents.beastAt(t.x, t.y)) { this.message('有東西擋著。'); fail(); return; }

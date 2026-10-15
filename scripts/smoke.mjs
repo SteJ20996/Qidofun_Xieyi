@@ -440,6 +440,7 @@ const result = await page.evaluate(async () => {
   g.pressGather();
   ok('taking a big net back clears all nine cells', g.count('大漁網') === 2 && w.get(nk.x + 1, nk.y + 1) === '淼' && !w.netAt(nk.x + 2, nk.y + 2));
   g.removeItem('魚', 99); g.removeItem('大漁網', 9); g.removeItem('漁網', 9);
+  for (let dx = 0; dx < 3; dx++) for (let dy = 0; dy < 3; dy++) w.set(nk.x + dx, nk.y + dy, w.base(nk.x + dx, nk.y + dy));   // 測試挖的深水還原，免得把出生點圍住
   // 煤與鐵：山裡有礦；礦二煤一入旺灶煉鐵；煤是好柴
   let coal = 0, iron = 0; for (let x = -60; x <= 60; x++) for (let y = -60; y <= 60; y++) { const b = w.base(x, y); if (b === '煤') coal++; else if (b === '鐵') iron++; }
   ok('coal seams and iron veins spawn in the mountains', coal >= 5 && iron >= 3, [coal, iron]);
@@ -539,7 +540,7 @@ const result = await page.evaluate(async () => {
   ok('can turn back', g.paused === false && hidden('voyage'));
   p.x = p.rx = 0; p.y = p.ry = G.ISLAND_R + 10; p.sailing = true; p.crossed = false; g.addItem('木', 1); p.hp = 0; await until(() => p.dead, 3000);
   const landBag = [...w.bags.keys()].some(k => { const [x, y] = k.split(',').map(Number); const b = w.base(x, y); return w.get(x, y) === '包' && U.dist(x, y, 0, G.ISLAND_R + 10) < 30 && G.DB[b === '灘' ? '沙' : b].walk > 0 && G.DB[b].kind !== 'water'; });
-  const shipLeft = [...w.diff.entries()].some(([k, v]) => v === '舟' && (() => { const [x, y] = k.split(',').map(Number); return U.dist(x, y, 0, G.ISLAND_R + 10) < 30; })());
+  const shipLeft = [...w.diff.entries()].some(([k, v]) => v === '舟' && (() => { const [x, y] = k.split(',').map(Number); return U.dist(x, y, 0, G.ISLAND_R + 10) < 30 && w.base(x, y) === '水'; })());
   ok('dying at sea drops the 荷包 on the nearest land and leaves the ship on shallow water', p.dead && landBag && shipLeft, [landBag, shipLeft]);
   await press('Enter', 20); await until(() => !p.dead, 2000); await sleep(80);
   ok('respawn after a sea death is back on land', !p.dead && !p.sailing && w.info(p.x, p.y).walk > 0, [p.dead, p.sailing, p.x, p.y, w.get(p.x, p.y), JSON.stringify(p.home), JSON.stringify(g.spawn)]);
@@ -547,6 +548,12 @@ const result = await page.evaluate(async () => {
   let beach = null; for (let r = 60; r <= 75 && !beach; r++) for (let a = 0; a < 360 && !beach; a += 2) { const x = Math.round(Math.cos(a * Math.PI / 180) * r), y = Math.round(Math.sin(a * Math.PI / 180) * r); if (w.raw(x, y) === '灘' && w.raw(x + 1, y) === '灘') beach = [x, y]; }
   if (beach) { p.x = p.rx = beach[0]; p.y = p.ry = beach[1]; setDay(0.6); ok('caught by the tide on the causeway you can wade to the next shoal', w.get(beach[0], beach[1]) === '水' && g.pass(beach[0] + 1, beach[1]), beach); p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; }
   else ok('caught by the tide on the causeway you can wade to the next shoal (no causeway found to test)', true);
+  if (beach) {   // 漲潮時灘看起來是水，但船、魚梁、橋都不能停在灘上，否則退潮會堵住去燈塔的路
+    setDay(0.6); p.x = p.rx = beach[0] - 1; p.y = p.ry = beach[1]; face(1, 0); g.addItem('漁', 1); hold('漁'); g.pressPlace();
+    const parked = g.parkShip(beach[0], beach[1], true, 60); const pk = parked ? w.base(parked[0], parked[1]) : null; if (parked) w.set(parked[0], parked[1], w.base(parked[0], parked[1]));
+    ok('nothing parks or gets built on the causeway at high tide', w.raw(beach[0], beach[1]) === '灘' && g.count('漁') === 1 && parked && pk === '水', [w.raw(beach[0], beach[1]), g.count('漁'), JSON.stringify(parked), pk]);
+    g.removeItem('漁', 9); p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y;
+  }
   p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; p.sailing = false; p.crossed = false;
   // 草木長回來（計時器）
   face(0, 1); w.set(T().x, T().y, '草'); hold('木'); g.action = null; g.pressGather(); await until(() => !g.action, 4000);
@@ -583,9 +590,9 @@ const result = await page.evaluate(async () => {
   ok('village gate gives directions', toasts().indexOf('問路') >= 0, toasts().slice(-30));
   const st = [...w.steles.values()][0]; goNextTo(st.x, st.y); const sm = p.staMax; g.pressGather(); await sleep(30);
   ok('stele raises stamina cap', p.staMax === sm + 10, p.staMax);
-  const reach = () => { const sp = g.spawn, d = by('deng'); const seen = new Set([sp.x + ',' + sp.y]); const q = [[sp.x, sp.y]]; while (q.length) { const [x, y] = q.shift(); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy, k = nx + ',' + ny; if (seen.has(k)) continue; if (Math.abs(nx - d.x) <= 1 && Math.abs(ny - d.y) <= 1) return true; if (w.walkable(nx, ny)) { seen.add(k); q.push([nx, ny]); } } } return false; };
+  const reach = () => { const sp = g.spawn, d = by('deng'); const seen = new Set([sp.x + ',' + sp.y]); const q = [[sp.x, sp.y]]; while (q.length) { const [x, y] = q.shift(); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy, k = nx + ',' + ny; if (seen.has(k)) continue; if (Math.abs(nx - d.x) <= 1 && Math.abs(ny - d.y) <= 1) return true; if (w.walkable(nx, ny)) { seen.add(k); q.push([nx, ny]); } } } reach.last = { n: seen.size, sp: sp.x + ',' + sp.y + ' ' + w.get(sp.x, sp.y), around: [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => w.get(sp.x + dx, sp.y + dy)).join('') }; return false; };
   setDay(0.25); const lo = reach(); setDay(0.6); const hi = reach();
-  ok('lighthouse reachable only at low tide', lo && !hi, [lo, hi]);
+  ok('lighthouse reachable only at low tide', lo && !hi, [lo, hi, JSON.stringify(reach.last)]);
   await press('KeyM', 20); await sleep(50); const mapOpen = !hidden('map'); await press('KeyM', 20); await sleep(30);
   ok('island map toggles', mapOpen && hidden('map'));
   await press('KeyJ', 20); await sleep(30); const jt = document.getElementById('journal-body').textContent; await press('KeyJ', 20);
