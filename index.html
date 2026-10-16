@@ -165,7 +165,9 @@
   <div class="panel fogpanel">
     <h2>手柄對應</h2>
     <p id="padmap-text"></p>
-    <p class="dim small">照提示一顆一顆按，按完放開再按下一顆；搖桿推到底再回中。沒有那顆鍵就按「略過」。十字鍵是「帽子軸」、扳機是軸、搖桿是按鍵或只有半幅的手柄都認得。卡住時看下面一行：推搖桿時哪根軸標了 ★，就是它。</p>
+    <p id="padmap-state" class="padstate"></p>
+    <p class="dim small">照提示一顆一顆按，按完放開、等「好，請按」再按下一顆；搖桿推到底再回中。沒有那顆鍵就按「略過」。下面每根軸一條、每顆鍵一格：推搖桿時哪一條的紅點在跑、按鍵時哪一格亮，就是它。<b>推左搖桿時沒有任何一條在動</b>，是瀏覽器讀不到這支手柄的搖桿——把手柄切到 PC／X-input 模式（說明書多半是按住某個組合鍵開機），或換一個瀏覽器（Firefox、Edge、Safari）試試。</p>
+    <div id="padmap-bars" class="padbars"></div>
     <p id="padmap-live" class="dim small"></p>
     <div class="row"><button id="padmap-skip" class="ghost">略過這顆（空白鍵）</button><button id="padmap-std" class="ghost">用標準對應</button><button id="padmap-cancel" class="ghost">取消（Esc）</button></div>
   </div>
@@ -227,6 +229,7 @@
     <div class="row"><button id="pause-resume">繼續</button><button id="pause-help" class="ghost">生存之道</button><button id="pause-pad" class="ghost">手柄對應</button><button id="pause-home" class="ghost">回到主頁</button></div>
     <p class="dim small">回到主頁會先存檔，再回起始頁的三格存檔。</p>
     <div class="row"><span class="dim small">手柄不聽話時：</span><button id="pause-center" class="ghost small">校正中點</button><button id="pause-swap" class="ghost small">對調左右搖桿</button><button id="pause-flipy" class="ghost small">左搖桿上下反向</button><button id="pause-flipx" class="ghost small">左搖桿左右反向</button><button id="pause-record" class="ghost small">錄八秒讀數</button></div>
+    <div id="pause-bars" class="padbars"></div>
     <p id="pause-live" class="dim small"></p>
     <textarea id="pause-rec" class="hidden" rows="4" readonly spellcheck="false"></textarea>
   </div>
