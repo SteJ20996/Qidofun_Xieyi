@@ -16,8 +16,9 @@
   const SEA_FOG_MIN = 6, SEA_FOG_MAX = 10, SEA_FOG_LIFE = 90;   // 蜃吐的海霧：六到十格，九十息就散
   const SHIPS = G.SHIPS;                                        // 船的兩種（孤帆、方舟）：大小、命、船頭首骨格數
   const RAIN_MIN = DAY * 0.25, RAIN_MAX = DAY * 1.0, RAIN_GAP_MIN = DAY * 1.0, RAIN_GAP_MAX = DAY * 4.0, RAIN_LAMP_P = 1 / 1500, ROOM_LIMIT = 121;
-  // 小屋：牆與門圍起不超過 SAFE_ROOM 格的空間，裡面不生生靈、除玩家外的生靈（連魄、鷹、龍）也進不去
-  const SAFE_ROOM = 45;
+  // 小屋：牆與門圍起的小空間，裡面不生生靈、生靈也進不去。多小才算看難度，由 game 透過 roomLimitFor(type) 告訴世界：獸一個門檻、魄一個門檻
+  // （簡單 28／18、一般 18／8、困難 10／0，0 ＝ 牆擋不住魄）；MAX_ROOM 是各門檻的最大值，漫延數到這裡就停
+  const MAX_ROOM = 28;
   // 霧障會動：每 FOG_STEP 息挪一格，速度慢；FOG_LIGHT_R 格內有光（燈、火、旺灶、玩家手裡的光）就往反方向躲，沒光就慢慢亂飄
   const FOG_STEP = 6, FOG_LIGHT_R = 10;
 
@@ -67,7 +68,8 @@
       this.fogDay = Math.floor(this.time / DAY);   // 已經擲過的那一日（第一日不起霧）
       this.fogSeq = 0; this.fogP = FOG_P; this.fogStep = FOG_STEP;
       this.playerLit = () => false;   // 回調：玩家手裡（或帽上）有沒有光，霧障躲光用
-      this.roomCache = new Map();     // "x,y" -> 是不是小屋裡；每步與每次改格清掉
+      this.roomCache = new Map();     // "x,y" -> 圍起來的格數（超過 MAX_ROOM 記 MAX_ROOM+1，牆上門上水裡記 Infinity）；每步與每次改格清掉
+      this.roomLimitFor = () => 0;    // 回調：某種生靈被多小的屋子擋住（0 ＝ 擋不住），game 依難度給
       this.onFog = null;         // 回調：起了一片霧
       this.ships = new Map();    // 錨點 "x,y" -> { kind, hp, skulls: [[首骨, 鎮到幾時]…], repairs, cells }：停著的船
       this.shipCells = new Map(); // 船身每一格 -> 錨點
@@ -355,24 +357,24 @@
       }
       return true;
     }
-    // 小屋：從這格順著能走的格子漫延（門算牆），SAFE_ROOM 格內圍得住就是小屋裡。牆上、門上、水裡都不算
-    sheltered(x, y) {
+    // 小屋：從這格順著能走的格子四向漫延（門算牆），數圍起來有幾格；超過 MAX_ROOM 就回 MAX_ROOM+1，牆上、門上、水裡回 Infinity
+    roomSize(x, y) {
       const k0 = U.key(x, y), hit = this.roomCache.get(k0);
       if (hit !== undefined) return hit;
-      let res = false;
-      if (this.passable(x, y)) {
-        const seen = new Set([k0]), q = [[x, y]];
-        res = true;
-        while (q.length) {
-          if (seen.size > SAFE_ROOM) { res = false; break; }
-          const [cx, cy] = q.shift();
-          for (const [dx, dy] of N4) { const nx = cx + dx, ny = cy + dy, k = U.key(nx, ny); if (!seen.has(k) && this.passable(nx, ny)) { seen.add(k); q.push([nx, ny]); } }
-        }
-        if (res) for (const k of seen) this.roomCache.set(k, true);   // 同一間屋裡的格子一起記下
+      if (!this.passable(x, y)) { this.roomCache.set(k0, Infinity); return Infinity; }
+      const seen = new Set([k0]), q = [[x, y]];
+      let size = 0;
+      while (q.length) {
+        if (seen.size > MAX_ROOM) { size = MAX_ROOM + 1; break; }
+        const [cx, cy] = q.shift();
+        for (const [dx, dy] of N4) { const nx = cx + dx, ny = cy + dy, k = U.key(nx, ny); if (!seen.has(k) && this.passable(nx, ny)) { seen.add(k); q.push([nx, ny]); } }
       }
-      this.roomCache.set(k0, res);
-      return res;
+      if (!size) { size = seen.size; for (const k of seen) this.roomCache.set(k, size); }   // 同一間屋裡的格子一起記下
+      else this.roomCache.set(k0, size);
+      return size;
     }
+    // 這格是不是「某種生靈進不來」的小屋裡：門檻由難度決定（type 是生靈的字；魄另一個門檻）
+    sheltered(x, y, type) { const lim = this.roomLimitFor(type); return lim > 0 && this.roomSize(x, y) <= lim; }
     // 每息一次：屋外的燈各擲一次真隨機，中了就澆壞、消失
     rainLamps() {
       for (const k of Array.from(this.lamps)) {
