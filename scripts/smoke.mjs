@@ -431,7 +431,7 @@ const result = await page.evaluate(async () => {
   g.addItem('龜甲', 1); hold('龜甲'); Math.random = () => 0.1; g.useItem(); Math.random = rnd3;
   ok('a good omen: five days without ghosts', g.peaceDays() === 5 && (() => { const t0 = w.time; w.time = Math.floor((p.noGhostUntil - DAY) / DAY) * DAY + DAY * 0.7; const inside = !g.ghostNight(); w.time = Math.floor(p.noGhostUntil / DAY) * DAY + DAY * 1.7; const after = g.ghostNight(); w.time = t0; return inside && after; })(), [g.peaceDays()]);
   p.noGhostUntil = 0;
-  // 漁網：棉麻草織小網，四小成中，四中或十三小成大；放在水上按時存魚；空網收回
+  // 漁網：棉麻草織小網，四小成中，四中或十三小成大（v0.21 起是撒網）
   trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); g.removeItem('草', 99); g.removeItem('魚', 99);
   g.addItem('棉', 26); g.addItem('麻', 26); g.addItem('草', 39);
   for (let i = 0; i < 13; i++) { p.sta = 100; g.craft('net'); }
@@ -442,80 +442,61 @@ const result = await page.evaluate(async () => {
   ok('four small nets weave a medium net', g.count('中漁網') === 4 && g.count('漁網') === 0);
   p.sta = 100; g.craft('bignet');
   ok('four medium nets weave a big net', g.count('大漁網') === 2 && g.count('中漁網') === 0);
-  g.addItem('漁網', 1); face(1, 0); w.set(T().x, T().y, '水'); hold('漁網'); g.pressPlace(); const nk = T(), fish0 = g.count('魚');
-  ok('a small net sits on shallow water', w.get(nk.x, nk.y) === '網' && !!w.netAt(nk.x, nk.y) && g.count('漁網') === 0);
-  w.time += 200; g.action = null; g.pressGather();
-  ok('after 200 s it holds two fish (one per 90 s, at most 3)', g.count('魚') === fish0 + 2, g.count('魚') - fish0);
-  g.pressGather(); takeYes();
-  ok('an empty net is taken back with E', w.get(nk.x, nk.y) === '水' && g.count('漁網') === 1 && !w.netAt(nk.x, nk.y));
-  w.set(nk.x, nk.y, '淼'); g.pressPlace();
-  ok('a small net refuses deep water', w.get(nk.x, nk.y) === '淼' && g.count('漁網') === 1);
-  for (let dx = 0; dx < 3; dx++) for (let dy = -1; dy < 2; dy++) w.set(nk.x + dx, nk.y + dy, '淼');
-  hold('大漁網'); g.pressPlace();
-  ok('a big net spreads away from you and centred: three by three of deep water', w.get(nk.x + 2, nk.y + 1) === '罾' && w.get(nk.x + 2, nk.y - 1) === '罾' && w.netAt(nk.x + 2, nk.y + 1) === w.netAt(nk.x, nk.y) && w.get(p.x, p.y) !== '罾' && g.count('大漁網') === 1);
-  ok('a fresh big net has 240 durability and is not on the flats', w.netAt(nk.x, nk.y).dur === 240 && !w.netAt(nk.x, nk.y).tidal, w.netAt(nk.x, nk.y));
-  w.time += 1000; g.pressGather();
-  ok('a big net stores up to twenty fish, one every 10 s', g.count('魚') === fish0 + 22, g.count('魚') - fish0);
-  ok('taking twenty fish wears the net by twenty', w.netAt(nk.x, nk.y).dur === 220, w.netAt(nk.x, nk.y).dur);
-  g.pressGather(); takeYes();
-  ok('taking a big net back clears all nine cells', g.count('大漁網') === 2 && w.get(nk.x + 1, nk.y + 1) === '淼' && !w.netAt(nk.x + 2, nk.y - 1));
-  const usedBig = p.bag.find(x => x.n === '大漁網' && x.dur === 220);
-  ok('the used big net keeps its durability in the bag as its own stack', !!usedBig && usedBig.c === 1 && g.count('大漁網') === 2 && g.durText(usedBig) === '耐 220', bag());
-  // 水邊：面前是灘也放得（魚慢三成）；中網從岸上朝北放，網往外伸、不壓到自己
-  for (let dx = 0; dx < 3; dx++) for (let dy = -1; dy < 2; dy++) w.set(nk.x + dx, nk.y + dy, '水');
-  w.set(nk.x, nk.y, '灘'); setDay(0.6); hold('漁網'); g.pressPlace();
-  ok('a small net goes down on the tidal flats at high tide', w.get(nk.x, nk.y) === '網' && w.netAt(nk.x, nk.y).tidal && w.netRule(1, true).every === 129, w.netAt(nk.x, nk.y));
-  g.action = null; g.pressGather(); takeYes();
-  setDay(0.3); hold('漁網'); g.pressPlace();
-  ok('and at low tide too, when the flats read as sand', w.tideLow() && w.get(nk.x, nk.y) === '網' && w.netAt(nk.x, nk.y).tidal, w.get(nk.x, nk.y));
-  const trec = w.netAt(nk.x, nk.y), f1 = g.count('魚'), nd1 = trec.dur; w.time += 129 * 2; g.pressGather();   // 這張網前面已取過兩條（耐 28），再放耐久跟著走
-  ok('on the flats a small net takes 129 s per fish, and the net it was placed with was already worn (28)', g.count('魚') === f1 + 2 && nd1 === 28 && trec.dur === 26, [g.count('魚') - f1, nd1, trec.dur]);
-  g.pressGather(); takeYes(); w.set(nk.x, nk.y, '水');
-  ok('taking the net back from the flats restores the flats', w.raw(nk.x, nk.y) === '水' && p.bag.some(x => x.n === '漁網' && x.dur === 26), bag());
-  face(0, -1); const mn = { x: p.x, y: p.y - 1 }; for (const [x, y] of [[mn.x, mn.y], [mn.x + 1, mn.y], [mn.x, mn.y - 1], [mn.x + 1, mn.y - 1]]) w.set(x, y, '水');
-  g.addItem('中漁網', 1); hold('中漁網'); g.pressPlace();
-  ok('a medium net placed facing north from the shore spreads north, not over your feet', w.get(mn.x + 1, mn.y - 1) === '罟' && w.netAt(mn.x + 1, mn.y - 1) === w.netAt(mn.x, mn.y) && w.get(p.x, p.y) !== '罟' && g.count('中漁網') === 0, [w.get(mn.x, mn.y), w.get(mn.x + 1, mn.y - 1)]);
-  g.action = null; g.pressGather(); takeYes(); for (const [x, y] of [[mn.x, mn.y], [mn.x + 1, mn.y], [mn.x, mn.y - 1], [mn.x + 1, mn.y - 1]]) w.set(x, y, '土');
-  ok('and comes back as a medium net', g.count('中漁網') === 1 && !w.netAt(mn.x, mn.y));
-  // 耐久：取完就破，不再進魚；面向按 F 用棉麻加固，同一張 1、2、4、8、8；囊裡的破網在製作欄「加固」
-  face(1, 0); w.set(nk.x, nk.y, '水'); const worn = p.bag.find(x => x.n === '漁網' && x.dur === 26); p.sel = p.bag.indexOf(worn); worn.dur = 2; g.pressPlace();
-  const rec2 = w.netAt(nk.x, nk.y);
-  ok('a worn net placed again keeps its durability', !!rec2 && rec2.dur === 2 && !p.bag.includes(worn), rec2 && rec2.dur);
-  const f2 = g.count('魚'); w.time += 300; g.msgText = ''; g.pressGather();
-  ok('taking three fish with two durability left tears the net (durability 0)', rec2.dur === 0 && g.count('魚') === f2 + 3 && g.msgText.indexOf('網破了') >= 0, [rec2.dur, g.msgText]);
-  w.time += 300;
-  ok('a torn net catches nothing more', w.netFish(rec2, w.time) === 0 && rec2.fish === 0);
-  g.msgText = ''; g.msgUntil = 0; g.updateHUD(); ok('the hint says the net is torn and offers mending for one cotton and one hemp', document.getElementById('msg').innerHTML.indexOf('破了') >= 0 && document.getElementById('msg').innerHTML.indexOf('加固（棉麻各 1）') >= 0, document.getElementById('msg').textContent);
-  g.removeItem('棉', 99); g.removeItem('麻', 99); g.msgText = ''; g.pressPlace();
-  ok('mending needs cotton and hemp in the bag', rec2.dur === 0 && g.msgText.indexOf('棉 1 麻 1') >= 0, g.msgText);
-  g.addItem('棉', 20); g.addItem('麻', 20); p.sta = 50; g.pressPlace();
-  ok('F facing the torn net mends it: one cotton, one hemp, durability back to 30, stamina −3', rec2.dur === 30 && rec2.rf === 1 && g.count('棉') === 19 && g.count('麻') === 19 && p.sta === 47, [rec2.dur, rec2.rf, g.count('棉')]);
-  const f3 = g.count('魚'); w.time += 100; g.pressGather();
-  ok('a mended net fishes again from the moment it was mended', g.count('魚') === f3 + 1 && rec2.dur === 29, [g.count('魚') - fish0, rec2.dur]);
-  g.msgText = ''; g.pressPlace();
-  ok('a net that is nearly whole is still mendable (not refused)', rec2.dur === 30 && rec2.rf === 2 && g.count('棉') === 17, [rec2.dur, rec2.rf, g.count('棉')]);
-  rec2.dur = 1; g.pressPlace(); ok('the third mend costs four of each (when it had worn)', rec2.rf === 3 && g.count('棉') === 13, [rec2.rf, g.count('棉')]);
-  rec2.dur = 1; g.pressPlace(); ok('the fourth costs eight', rec2.rf === 4 && g.count('棉') === 5, [rec2.rf, g.count('棉')]);
-  rec2.dur = 1; g.addItem('棉', 10); g.addItem('麻', 10); g.pressPlace(); ok('and eight stays the cap', rec2.rf === 5 && g.count('棉') === 7 && g.count('麻') === 7, [rec2.rf, g.count('棉')]);
-  g.msgText = ''; g.pressPlace(); ok('a whole net is not mended again', rec2.rf === 5 && g.msgText.indexOf('不用加固') >= 0, g.msgText);
-  rec2.dur = 3; g.pressGather(); takeYes();
-  const back = p.bag.find(x => x.n === '漁網' && x.dur === 3);
-  ok('the net comes back with durability 3 and five mends on it', !!back && back.rf === 5, back);
-  p.sel = p.bag.indexOf(back); g.craftCat = '全部'; g.buildCraft();
-  const mrow = Array.from(document.querySelectorAll('#craft-list .recipe')).find(r => r.textContent.indexOf('加固') >= 0);
-  ok('the craft panel has an 加固 row that reads this net as its sixth mend at eight each', !!mrow && mrow.textContent.indexOf('第 6 次：棉麻各 8') >= 0, mrow && mrow.textContent);
-  g.addItem('棉', 1); g.addItem('麻', 1); p.sta = 50; g.craft('mendnet');
-  ok('mending from the craft panel: eight cotton, eight hemp, durability 30, six mends', back.dur === 30 && back.rf === 6 && g.count('棉') === 0 && g.count('麻') === 0, [back.dur, back.rf, g.count('棉')]);
-  g.addItem('棉', 8); g.addItem('麻', 8); g.msgText = ''; g.craft('mendnet');
-  ok('a whole net in the bag is refused by the craft panel', g.msgText.indexOf('不用加固') >= 0 && g.count('棉') === 8, g.msgText);
-  g.addItem('漁網', 1); p.sel = p.bag.findIndex(x => x.n === '漁網' && x.dur === undefined); g.msgText = ''; g.craft('mendnet');
-  ok('a fresh net is refused too', g.msgText.indexOf('不用加固') >= 0 && g.count('棉') === 8, g.msgText);
-  face(1, 0); w.set(nk.x, nk.y, '水'); p.sel = p.bag.indexOf(back); g.pressPlace(); const rec3 = w.netAt(nk.x, nk.y); rec3.dur = 7; g.save();
-  const svn2 = JSON.parse(localStorage.getItem('xieyi.save.v5')); const nrec = Object.values(svn2.world.nets).find(v => v[1] === nk.x && v[2] === nk.y);
-  ok('the save records a net\'s durability and mends', !!nrec && nrec[6] === 7 && nrec[7] === 6, nrec);
-  g.load(svn2); const rec4 = w.netAt(nk.x, nk.y);
-  ok('and loading brings them back', !!rec4 && rec4.dur === 7 && rec4.rf === 6 && rec4.tidal === false, rec4);
-  g.pressGather(); takeYes(); g.removeItem('棉', 99); g.removeItem('麻', 99);
+  // 撒網（v0.21）：拿著網走到水邊，水上浮出網影；F 瞬間撒出，網影裡的魚一網打盡；耐久照網到幾條扣：0 條 1、1 條 2、2 條 4、3 條以上 7
+  {
+    const PX = p.x, PY = p.y, area = [];
+    for (let dx = -1; dx <= 4; dx++) for (let dy = -3; dy <= 3; dy++) { const x = PX + dx, y = PY + dy; area.push([x, y, w.raw(x, y)]); w.set(x, y, dx <= 0 ? '土' : '水'); }
+    g.ents.list = g.ents.list.filter(e => e.type !== '魚'); p.cour = 0;
+    const fishAt = (x, y) => g.ents.add('魚', x, y, { moveT: 99 }), shadow = () => { const cp = g.castPreview(); return cp ? cp.cells.map(c => (c[0] - PX) + ':' + (c[1] - PY)).sort().join(',') : ''; };
+    face(-1, 0); hold('漁網'); g.addItem('漁網', 2); hold('漁網');
+    ok('holding a small net by the water shows its shadow on the water, even facing inland', shadow() === '1:0', shadow());
+    hold('木'); ok('holding anything else shows no shadow', g.castPreview() === null);
+    face(1, 0); hold('大漁網');
+    ok('the big net\'s shadow is three by three, out from the shore and centred, never over your feet', shadow() === '1:-1,1:0,1:1,2:-1,2:0,2:1,3:-1,3:0,3:1', shadow());
+    const inside = [fishAt(PX + 1, PY), fishAt(PX + 2, PY + 1), fishAt(PX + 3, PY - 1)], outside = fishAt(PX + 4, PY), f0 = g.count('魚'), c0 = p.cour; g.msgText = '';
+    g.pressPlace(); const big = g.held();
+    ok('F casts the big net at once: the three fish in its shadow are caught, the one outside is not', g.count('魚') === f0 + 3 && inside.every(e => !g.ents.list.includes(e)) && g.ents.list.includes(outside) && g.msgText.indexOf('網到 3 條魚') >= 0, [g.count('魚') - f0, g.msgText]);
+    ok('three or more fish cost 7 durability: one net is split off the pile and kept in hand (240 → 233)', big && big.n === '大漁網' && big.dur === 233 && big.c === 1 && g.count('大漁網') === 2 && g.durText(big) === '耐 233', [big && big.dur, bag()]);
+    ok('each fish caught is a point of courage (3 × 1.25 → 4)', p.cour === c0 + 4, p.cour - c0);
+    g.pressPlace(); ok('an empty cast costs 1', big.dur === 232 && g.msgText.indexOf('空的') >= 0, [big.dur, g.msgText]);
+    fishAt(PX + 2, PY); g.pressPlace(); ok('one fish costs 2', big.dur === 230, big.dur);
+    fishAt(PX + 1, PY + 1); fishAt(PX + 3, PY); g.pressPlace(); ok('two fish cost 4', big.dur === 226, big.dur);
+    for (let i = 0; i < 5; i++) fishAt(PX + 1 + (i % 3), PY - 1 + Math.floor(i / 3)); g.pressPlace(); ok('five fish still cost 7', big.dur === 219, big.dur);
+    big.dur = 3; for (let i = 0; i < 3; i++) fishAt(PX + 1 + i, PY); g.msgText = ''; g.pressPlace();
+    ok('a cast that costs more than is left tears the net (3 − 7 → 0), and the fish are still caught', big.dur === 0 && g.msgText.indexOf('網破了') >= 0, [big.dur, g.msgText]);
+    const fT = g.count('魚'); fishAt(PX + 2, PY); g.msgText = ''; g.pressPlace();
+    ok('a torn net cannot be cast', g.count('魚') === fT && g.msgText.indexOf('破了') >= 0 && g.castPreview().torn, g.msgText);
+    g.msgText = ''; g.msgUntil = 0; g.updateHUD(); ok('the hint for a torn net in hand points to mending', document.getElementById('msg').textContent.indexOf('網破了') >= 0, document.getElementById('msg').textContent);
+    g.ents.list = g.ents.list.filter(e => e.type !== '魚');
+    // 加固：囊裡選中那張網在製作欄「加固」，同一張棉麻各 1、2、4、8、8
+    g.removeItem('棉', 99); g.removeItem('麻', 99); g.addItem('棉', 30); g.addItem('麻', 30); p.sel = p.bag.indexOf(big);
+    const mcost = []; for (let i = 0; i < 5; i++) { const c = g.count('棉'); big.dur = 1; p.sta = 50; g.craft('mendnet'); mcost.push(c - g.count('棉')); }
+    ok('mending the same net from the craft panel costs 1, 2, 4, 8, 8 of each and fills it to 240', mcost.join(',') === '1,2,4,8,8' && big.dur === 240 && big.rf === 5 && g.count('麻') === 7, [mcost, big.dur, big.rf]);
+    g.craftCat = '全部'; g.buildCraft(); const mrow = Array.from(document.querySelectorAll('#craft-list .recipe')).find(r => r.textContent.indexOf('加固') >= 0);
+    ok('the craft row reads this net as its sixth mend at eight each', !!mrow && mrow.textContent.indexOf('第 6 次：棉麻各 8') >= 0, mrow && mrow.textContent);
+    g.addItem('棉', 10); g.addItem('麻', 10); g.msgText = ''; g.craft('mendnet'); ok('a whole net is not mended', g.msgText.indexOf('不用加固') >= 0 && big.rf === 5, g.msgText);
+    p.sel = p.bag.findIndex(x => x.n === '大漁網' && x.dur === undefined); g.msgText = ''; g.craft('mendnet'); ok('nor is a fresh one', g.msgText.indexOf('不用加固') >= 0, g.msgText);
+    // 小網、灘、深水、朝北撒
+    face(1, 0); hold('漁網'); fishAt(PX + 1, PY); const fS = g.count('魚'); g.pressPlace(); const small = g.held();
+    ok('a small net catches the fish right in front: 30 − 2 = 28', g.count('魚') === fS + 1 && small.n === '漁網' && small.dur === 28, [g.count('魚') - fS, small && small.dur]);
+    w.set(PX + 1, PY, '淼'); fishAt(PX + 1, PY); const fD = g.count('魚'); g.pressPlace();
+    ok('a cast net works over deep water too', g.count('魚') === fD + 1, g.count('魚') - fD);
+    w.set(PX + 1, PY, '灘'); setDay(0.6); ok('over the flats at high tide the shadow shows', shadow() === '1:0' && w.get(PX + 1, PY) === '水', shadow());
+    setDay(0.3); ok('at low tide the flats are sand: no shadow, F says to find water', shadow() === '' && w.get(PX + 1, PY) === '沙' && (g.msgText = '', g.pressPlace(), g.msgText.indexOf('水邊') >= 0), [shadow(), g.msgText]);
+    w.set(PX + 1, PY, '水'); w.set(PX, PY - 1, '水'); w.set(PX, PY - 2, '水'); face(0, -1); g.addItem('中漁網', 1); hold('中漁網');
+    ok('a medium net facing north from the shore spreads north, not over your feet', shadow() === '0:-1,0:-2,1:-1,1:-2', shadow());
+    g.ents.list = g.ents.list.filter(e => e.type !== '魚');
+    // 舊存檔裡下在水上的網：照舊進魚、E 取魚，空網收回成撒網（帶著耐久）
+    w.set(PX + 1, PY, '水'); face(1, 0); const old = w.addNet(PX + 1, PY, 1, w.time); const fL = g.count('魚'); w.time += 200; g.action = null; g.pressGather();
+    ok('an old net left in the water still fills with fish (two in 200 s) and E takes them', w.get(PX + 1, PY) === '網' && g.count('魚') === fL + 2 && old.dur === 28, [g.count('魚') - fL, old.dur]);
+    old.dur = 7; old.rf = 6; g.save(); const svn = JSON.parse(localStorage.getItem('xieyi.save.v5')); const nrec = Object.values(svn.world.nets).find(v => v[1] === PX + 1 && v[2] === PY);
+    ok('the save keeps an old net\'s durability and mends', !!nrec && nrec[6] === 7 && nrec[7] === 6, nrec);
+    g.load(svn); const old2 = w.netAt(PX + 1, PY); ok('and loading brings them back', !!old2 && old2.dur === 7 && old2.rf === 6, old2);
+    g.pressGather(); takeYes();
+    ok('taken back, the old net becomes a cast net in the bag with its durability', w.get(PX + 1, PY) === '水' && p.bag.some(x => x.n === '漁網' && x.dur === 7 && x.rf === 6), bag());
+    for (const [x, y, c] of area) w.set(x, y, c); g.ents.list = g.ents.list.filter(e => e.type !== '魚');
+    g.removeItem('棉', 99); g.removeItem('麻', 99); p.cour = 0;
+  }
   g.removeItem('魚', 99); g.removeItem('大漁網', 9); g.removeItem('漁網', 9); g.removeItem('中漁網', 9);
   // 雪域與熱氣（v0.18）：離雪五格內待過五息暖才多掉、越待越快；烤的東西給九十息熱氣、累積一百五十；有熱氣時凍不傷命。雨裡燈的損壞率看難度
   ok('lamp ruin odds per difficulty: easy 1/4500, normal 1/2500, hard 1/800; the world carries the current one', XIEYI.DIFF.easy.lampP === 1 / 4500 && XIEYI.DIFF.normal.lampP === 1 / 2500 && XIEYI.DIFF.hard.lampP === 1 / 800 && w.rainLampP === 1 / 2500, w.rainLampP);
@@ -664,7 +645,6 @@ const result = await page.evaluate(async () => {
     for (const [x, y, c] of ring) w.set(x, y, c); g.ents.remove(gh2);
     g.removeItem('火把', 9); p.snuffT = 0; w.time = tKeep; calm();
   }
-  for (let dx = 0; dx < 3; dx++) for (let dy = 0; dy < 3; dy++) w.set(nk.x + dx, nk.y + dy, w.base(nk.x + dx, nk.y + dy));   // 測試挖的深水還原，免得把出生點圍住
   // 煤與鐵：山裡有礦；礦二煤一入旺灶煉鐵；煤是好柴
   let coal = 0, iron = 0; for (let x = -60; x <= 60; x++) for (let y = -60; y <= 60; y++) { const b = w.base(x, y); if (b === '煤') coal++; else if (b === '鐵') iron++; }
   ok('coal seams and iron veins spawn in the mountains', coal >= 5 && iron >= 3, [coal, iron]);
@@ -677,7 +657,7 @@ const result = await page.evaluate(async () => {
   g.stoveCook('鐵礦');
   ok('two ore and one coal on a lit stove smelt one 鐵', g.count('鐵') === 1 && g.count('鐵礦') === 0 && g.count('煤') === 1, bag());
   const f0 = w.stoveFuel(T().x, T().y); g.stoveFuel('煤');
-  ok('coal is strong fuel (+120)', Math.abs(w.stoveFuel(T().x, T().y) - f0 - 120) < 1 && g.count('煤') === 0, w.stoveFuel(T().x, T().y) - f0);
+  ok('coal is strong fuel (+150)', Math.abs(w.stoveFuel(T().x, T().y) - f0 - 150) < 1 && g.count('煤') === 0, w.stoveFuel(T().x, T().y) - f0);
   g.closeStove();
   w.set(T().x, T().y, '土'); hold('石劍'); p.hurtT = 0;
   // 鋼具與鎢鋼具：鐵二木一煤一鍛鋼具（140%）；鐵礦脈 1/30 出鎢礦；八煤成精煤；鎢礦一鐵礦二精煤一煉鎢鋼；鎢鋼具 150%／耐久 200%
@@ -723,10 +703,11 @@ const result = await page.evaluate(async () => {
   p.sta = 90; p.food = 90; p.san = 90; p.warm = 90; p.hp = 50; p.hurtT = 0; p.cour = 0; await until(() => p.hp > 50.3, 3000);
   ok('hp regenerates when food, warmth, sanity and stamina are at 75 or more', p.hp > 50.3, p.hp);
   // 瓶與酒
+  calm();   // 真時間裡夜裡的魄會把人吸到神志不清，手腳不聽使喚就取不了水
   g.addItem('沙', 3); face(0, 1); w.set(T().x, T().y, '灶'); w.addFuel(T().x, T().y, 300); g.pressPlace(); g.stoveCook('沙'); g.closeStove();
   ok('three sand on a lit stove make two bottles', g.count('玻璃瓶') === 2 && g.count('沙') === 0, bag());
   face(1, 0); w.set(T().x, T().y, '水'); hold('玻璃瓶'); g.pressGather();
-  ok('empty bottle takes seawater', g.count('海水瓶') === 1 && g.count('玻璃瓶') === 1);
+  ok('empty bottle takes seawater', g.count('海水瓶') === 1 && g.count('玻璃瓶') === 1, [g.count('海水瓶'), g.count('玻璃瓶'), g.msgText, !!g.action, g.canAct(), (g.ents.at(T().x, T().y) || {}).type, w.get(T().x, T().y), g.held() && g.held().n]);
   face(0, 1); g.pressPlace(); g.stoveCook('海水瓶'); g.closeStove();
   ok('seawater distils on the stove', g.count('淡水瓶') === 1 && g.count('海水瓶') === 0);
   hold('玻璃瓶'); const quan = w.places.find(x => x.id === 'quan'); goNextTo(quan.x, quan.y); g.pressGather();
@@ -807,12 +788,12 @@ const result = await page.evaluate(async () => {
   {
     p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; p.sailing = false; p.swimming = false; p.ship = null;
     trim(['木', '石', '石子', '草', '土', '磚']); for (const t of [...p.tools]) if (t.n !== '石劍') p.tools.splice(p.tools.indexOf(t), 1); p.tool = -1;
-    g.skullP = 1; let n0 = g.count('虎首骨'); g.kill(g.ents.add('虎', p.x + 4, p.y, {}));
+    const skull0 = g.skullP; g.skullP = 1; let n0 = g.count('虎首骨'); g.kill(g.ents.add('虎', p.x + 4, p.y, {}));
     const tk = g.count('虎首骨') - n0;
     ok('a slain tiger can leave one or two tiger skulls', tk >= 1 && tk <= 2, tk);
     g.kill(g.ents.add('狼', p.x + 4, p.y, {})); ok('so can a wolf (wolf skulls)', g.count('狼首骨') >= 1);
     g.skullP = 0; g.kill(g.ents.add('豹', p.x + 4, p.y, {})); ok('and no skull when the odds say no', g.count('豹首骨') === 0);
-    g.skullP = 0.35; g.removeItem('肉', 99);
+    ok('by default a tiger, leopard or wolf drops a skull 16% of the time', skull0 === 0.16, skull0); g.skullP = skull0; g.removeItem('肉', 99);
     const X = p.x, Y = p.y;
     for (let dx = -3; dx <= 5; dx++) for (let dy = -2; dy <= 2; dy++) w.set(X + dx, Y + dy, dx >= 1 ? '水' : '草');
     const ships0 = w.ships.size;   // 海上死亡的那場已經停了一艘
@@ -1279,11 +1260,11 @@ const result = await page.evaluate(async () => {
     g.addItem('布甲', 1); g.addItem('鐵甲', 1); g.addItem('鎢鋼盔', 1); g.addItem('鋼劍', 1); g.addItem('石刀', 1); const iron0 = g.count('鐵'), w0 = g.count('鎢鋼');
     g.pressPlace();
     const fuelBtn = document.querySelector('#stove-fuel button[data-fuel="布甲"]');
-    ok('an old cloth vest is listed as fuel worth 120 breaths', !!fuelBtn && fuelBtn.textContent.indexOf('+120 息') >= 0, fuelBtn && fuelBtn.textContent);
+    ok('an old cloth vest is listed as fuel worth 50 breaths', !!fuelBtn && fuelBtn.textContent.indexOf('+50 息') >= 0, fuelBtn && fuelBtn.textContent);
     const meltBefore = document.querySelector('#stove-cook button[data-melt="鐵甲"]');
     ok('iron armour is listed under 熔 but greyed while the stove is cold; a stone knife is not listed', !!meltBefore && meltBefore.disabled && !document.querySelector('#stove-cook button[data-melt="石刀"]'));
     fuelBtn.click();
-    ok('burning the vest lights the stove for 120 breaths and the vest is gone', w.stoveLit(sx, sy) && Math.abs(w.stoveFuel(sx, sy) - 120) < 1.5 && g.count('布甲') === 0, w.stoveFuel(sx, sy));
+    ok('burning the vest lights the stove for 50 breaths and the vest is gone', w.stoveLit(sx, sy) && Math.abs(w.stoveFuel(sx, sy) - 50) < 1.5 && g.count('布甲') === 0, w.stoveFuel(sx, sy));
     document.querySelector('#stove-cook button[data-melt="鐵甲"]').click();
     ok('melting 鐵甲 gives two iron (half of five, rounded down)', g.count('鐵') === iron0 + 2 && g.count('鐵甲') === 0);
     document.querySelector('#stove-cook button[data-melt="鋼劍"]').click();
@@ -1292,6 +1273,46 @@ const result = await page.evaluate(async () => {
     ok('a tungsten helm melts into one tungsten steel', g.count('鎢鋼') === w0 + 1 && g.count('鎢鋼盔') === 0);
     ok('nothing left to melt: the 熔 buttons are gone, the knife stays', !document.querySelector('#stove-cook button[data-melt]') && !!tool('石刀'));
     g.closeStove(); w.set(sx, sy, '草'); g.removeItem('鐵', 99); g.removeItem('鎢鋼', 99); p.tools = p.tools.filter(x => x.n !== '石刀'); p.tool = -1; g.barSig = ''; g.buildBag(); }
+  // ============ 新的燃料表、上限 999、灶的四格柴架（v0.21） ============
+  calm();
+  { face(0, 1); const sx = T().x, sy = T().y, key = sx + ',' + sy; w.set(sx, sy, '灶'); w.stoves.set(key, 0); w.shelves.delete(key);
+    ok('fuel values: coal 150, grass 30, fruit 45, wood 105, cotton 75, refined coal 900; hemp 70, bamboo 60, old cloth 50; stone burns not', g.fuelOf('煤') === 150 && g.fuelOf('草') === 30 && g.fuelOf('果') === 45 && g.fuelOf('木') === 105 && g.fuelOf('棉') === 75 && g.fuelOf('精煤') === 900 && g.fuelOf('麻') === 70 && g.fuelOf('竹') === 60 && g.fuelOf('布甲') === 50 && g.fuelOf('石') === 0);
+    g.removeItem('木', 999); g.removeItem('草', 999); g.removeItem('精煤', 99); g.removeItem('煤', 99); g.addItem('木', 70); g.addItem('草', 5); g.addItem('精煤', 2);
+    g.pressPlace();
+    ok('the stove panel shows four empty shelf slots', !hidden('stove') && document.querySelectorAll('#stove-shelf .shelfslot.empty').length === 4);
+    const shelf = () => w.shelf(sx, sy).map(x => x.n + x.c).join(',');
+    document.querySelector('#stove-fuel button[data-store="木"]').click();
+    ok('「存」 moves the whole stack of wood onto the shelf: 64 in one slot, 6 in the next', shelf() === '木64,木6' && g.count('木') === 0, shelf());
+    document.querySelector('#stove-fuel button[data-store="草"]').click(); document.querySelector('#stove-fuel button[data-store="精煤"]').click();
+    ok('four slots filled: wood, wood, grass, refined coal', shelf() === '木64,木6,草5,精煤2' && document.querySelectorAll('#stove-shelf button.shelfslot').length === 4, shelf());
+    g.addItem('煤', 3); g.buildStove(); g.msgText = ''; document.querySelector('#stove-fuel button[data-store="煤"]').click();
+    ok('a fifth kind does not fit on the shelf', g.count('煤') === 3 && g.msgText.indexOf('滿了') >= 0, g.msgText);
+    document.querySelector('#stove-shelf button[data-shelf="0"]').click();
+    ok('clicking a shelf slot burns one: +105, 63 wood left', Math.abs(w.stoveFuel(sx, sy) - 105) < 0.5 && shelf() === '木63,木6,草5,精煤2', [w.stoveFuel(sx, sy), shelf()]);
+    g.msgText = ''; document.querySelector('#stove-shelf button[data-shelf="3"]').click();
+    ok('refined coal (+900) on top of 105 would pass the 999 cap: refused, nothing wasted', Math.abs(w.stoveFuel(sx, sy) - 105) < 0.5 && shelf().indexOf('精煤2') >= 0 && g.msgText.indexOf('999') >= 0, [w.stoveFuel(sx, sy), g.msgText]);
+    w.stoves.set(key, 90); g.buildStove(); document.querySelector('#stove-shelf button[data-shelf="3"]').click();
+    ok('with room for it, it burns: 90 + 900 = 990', Math.abs(w.stoveFuel(sx, sy) - 990) < 0.5 && shelf().indexOf('精煤1') >= 0, [w.stoveFuel(sx, sy), shelf()]);
+    ok('coal from the bag is refused too when it would pass the cap', g.stoveFuel('煤') === false && g.count('煤') === 3);
+    w.addFuel(sx, sy, 500); ok('the fire never stores more than 999', w.stoveFuel(sx, sy) === 999, w.stoveFuel(sx, sy));
+    g.closeStove(); g.save(); const svs = JSON.parse(localStorage.getItem('xieyi.save.v5'));
+    ok('the save keeps the shelf', JSON.stringify(svs.world.shelves[key]) === JSON.stringify([['木', 63], ['木', 6], ['草', 5], ['精煤', 1]]), svs.world.shelves[key]);
+    w.shelves.delete(key); g.load(svs); ok('and loading brings it back', shelf() === '木63,木6,草5,精煤1', shelf());
+    hold('石鎬'); g.action = null; p.sta = 50; g.msgText = ''; g.pressGather();
+    ok('dismantling asks first and says the shelf goes with the stove', !hidden('takeask') && document.getElementById('takeask-text').textContent.indexOf('柴架上 4 格') >= 0, document.getElementById('takeask-text').textContent);
+    takeYes(); await until(() => !g.action, 4000);
+    const carried = p.bag.find(x => x.n === '灶' && x.store);
+    ok('the stove comes back carrying its shelf', w.get(sx, sy) !== '灶' && !!carried && carried.store.map(x => x.n + x.c).join(',') === '木63,木6,草5,精煤1' && !w.shelves.has(key), [w.get(sx, sy), carried && carried.store]);
+    p.sel = p.bag.indexOf(carried); g.pressPlace();
+    ok('placed again, the shelf is still there', w.get(sx, sy) === '灶' && shelf() === '木63,木6,草5,精煤1' && !p.bag.includes(carried), [w.get(sx, sy), shelf()]);
+    w.set(sx, sy, '草'); ok('when the stove is gone the shelf goes with it', !w.shelves.has(key));
+    g.removeItem('煤', 99); g.removeItem('木', 999); g.removeItem('灶', 9); }
+  // 飽暖力都九成以上：愜意慢慢回（v0.21）
+  { calm(); const m = g.mult(); p.food = 95; p.warm = 95; p.sta = p.staMax; p.san = 50; g.sanAcc = 0; g.updateStats(1);
+    ok('with food, warmth and stamina all at 90% or more, 愜意 creeps up (0.1 × the courage multiplier a second)', g.content() && Math.abs(p.san - (50 + 0.1 * m)) < 0.01, [p.san, m]);
+    p.food = 85; p.san = 50; g.sanAcc = 0; g.updateStats(1);
+    ok('one of them below 90% and it drains as usual', !g.content() && p.san < 50, p.san);
+    p.food = 100; p.warm = 100; p.san = 100; }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
   // —— 三格存檔：第一格沿用舊鍵；每格帶摘要

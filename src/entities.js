@@ -269,7 +269,7 @@
           else if (spring) { e.moveT = 2 + Math.random() * 3; }
           else { e.moveT = 0.7 + Math.random() * 1.6; if (Math.random() < 0.6) this.wander(e, night, '林木草竹棉麻'); }
         } else if (e.type === '魚') {
-          e.moveT = 0.5 + Math.random() * 1.2; if (Math.random() < 0.7) this.wander(e, night, null);
+          e.moveT = 0.5 + Math.random() * 1.2; if (Math.random() < 0.7) this.wander(e, night, '水');   // 魚愛在淺水游（v0.21，撒網撒得到）
         } else if (e.type === '虎' || e.type === '豹') {
           const scared = w.lightNear(e.x, e.y, 2) || w.lightNear(p.x, p.y, 2) || (g.hasLight() && night) || this.dragonNear(e.x, e.y, 4);
           const range = e.type === '豹' ? (night ? 9 : 6) : (night ? 8 : 4), speed = e.type === '豹' ? 0.22 : (night ? 0.24 : 0.3);

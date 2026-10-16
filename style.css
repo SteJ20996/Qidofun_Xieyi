@@ -217,6 +217,9 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 .stoverow button small { font: 12px var(--ui); opacity: .75; margin-left: 4px; }
 .stoverow button:disabled { opacity: .45; cursor: default; transform: none; }
 .stoverow button:disabled:hover { background: var(--ink); border-color: var(--ink); }
+.stoverow .fuelpair { display: inline-flex; gap: 4px; }
+.stoverow .shelfslot { min-width: 120px; }
+.stoverow span.shelfslot.empty { display: inline-flex; align-items: center; justify-content: center; border: 2px dashed rgba(28,26,23,.3); border-radius: 6px; padding: 6px 14px; color: var(--dim); font: 16px var(--font); }
 .panel.fogpanel h2 { margin: 0 0 8px; }
 .panel.fogpanel p { line-height: 1.8; }
 .overlay.soft { background: rgba(20,16,30,.45); backdrop-filter: blur(2px); pointer-events: none; }
