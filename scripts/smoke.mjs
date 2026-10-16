@@ -48,6 +48,7 @@ const result = await page.evaluate(async () => {
   g.ents.seaP = 0;   // 蜃也是：專門的海上測試自己開
   w.fogP = 0;   // 霧障是真隨機的，測試途中跳出彈窗會把遊戲停住；專門的霧障測試自己開
   g.warnEnabled = false; w.fogStep = 1e9;   // 數值提醒的彈窗與霧障的挪動也先關掉，各自的測試再開
+  g.ents.snuffP = 0; g.ents.dashT = 1e9;   // 魄吹燈與撲燈也是真隨機、真時間：專門的測試自己開
   // ============ A. 島與採集 ============
   ok('the island is twice the old area: radius 85, sea edge 113, deep water beyond', G.ISLAND_R === 85 && G.SEA_EDGE === 113 && w.get(0, G.ISLAND_R + 20) === '淼' && w.get(-(G.ISLAND_R + 25), 0) === '淼');
   ok('eight landmarks placed', w.places.length === 8, w.places.map(x => x.name).join(''));
@@ -177,9 +178,10 @@ const result = await page.evaluate(async () => {
   ok('zero stamina bleeds hp', p.hp < 100, p.hp); p.sta = 80;
   w.set(p.x + 5, p.y + 5, '磚');
   ok('ghost passes bricks, wolves do not', g.ents.canStand('魄', p.x + 5, p.y + 5, true) && !g.ents.canStand('狼', p.x + 5, p.y + 5, true));
-  // 手持火把：六格內煙滅
-  g.addItem('火把', 1); hold('火把'); await until(() => !g.ents.list.includes(gh), 4000);
-  ok('held torch dispels a ghost within six tiles', !g.ents.list.includes(gh) && g.hasLight());
+  // 手持火把：只把魄逼到六格外，不再煙滅（v0.20）
+  g.addItem('火把', 1); hold('火把'); gh.moveT = 0; await until(() => U.cheb(gh.x, gh.y, p.x, p.y) > 6, 5000);
+  ok('a held torch drives the ghost back beyond six tiles; it does not dissipate', g.ents.list.includes(gh) && !(gh.fade < 1) && U.cheb(gh.x, gh.y, p.x, p.y) > 6 && g.hasLight(), U.cheb(gh.x, gh.y, p.x, p.y));
+  g.ents.remove(gh);
   g.removeItem('火把', 9); hold('木'); g.addItem('燈帽', 1);
   ok('a lamp hat in the bag gives no light until worn', g.lightRadius() === 0);
   hold('燈帽'); g.pressPlace(); const hat = p.worn['帽'];
@@ -600,6 +602,67 @@ const result = await page.evaluate(async () => {
       }
       ok('with no light a fog drifts in several directions (slants included), keeps five connected cells on land, and changes shape now and then', dirs.size >= 3 && [...dirs].some(d => d.indexOf('0') < 0) && sizes && land && conn && morphs > 0, [[...dirs], sizes, land, conn, morphs]);
       w.removeFog(fog.id); }
+  }
+  // v0.20：魄加強——身上的光只逼得退、地上的光三格內才煙滅；撲燈、吹熄手裡的光、燈帽燒三倍；夜越深越多越快、蝕心更狠；屋外有魄而屋裡沒燈愜意緩掉
+  {
+    const tKeep = w.time, X = p.x, Y = p.y; w.time = DAY * 12 + DAY * 0.75;
+    for (const [k] of w.stoves) w.stoves.set(k, 0);
+    for (let dx = -12; dx <= 12; dx++) for (let dy = -12; dy <= 12; dy++) if (w.info(X + dx, Y + dy).light) w.set(X + dx, Y + dy, '白');
+    g.ents.list = g.ents.list.filter(e => '魄龍'.indexOf(e.type) < 0); if (p.worn['帽']) g.takeOff('帽'); p.snuffT = 0; p.san = 100; p.insane = false; p.ctrl = true;
+    const cheb = (e) => U.cheb(e.x, e.y, p.x, p.y), tick = () => g.ents.update(0.01, g);
+    g.ents.dashT = 99; g.addItem('火把', 2); hold('火把');
+    const ga = g.ents.add('魄', X + 3, Y, { moveT: 0 }); tick();
+    ok('a held torch no longer burns a 魄: it steps back instead', !(ga.fade < 1) && cheb(ga) === 4, [ga.fade, cheb(ga)]);
+    for (let i = 0; i < 6; i++) { ga.moveT = 0; tick(); }
+    ok('it backs off to the edge of the light, seven to nine tiles away', cheb(ga) >= 7 && cheb(ga) <= 9 && g.ents.list.includes(ga), cheb(ga));
+    let band = true; for (let i = 0; i < 12; i++) { ga.moveT = 0; tick(); if (cheb(ga) < 7 || cheb(ga) > 9) band = false; }
+    ok('while you hold the light it hovers in that band', band && g.ents.list.includes(ga), cheb(ga));
+    const sx = Math.sign(ga.x - X) || 1, lx = ga.x + 3 * sx, ly = ga.y, keepL = w.raw(lx, ly); w.set(lx, ly, '燈');
+    const gb = g.ents.add('魄', ga.x - sx, ga.y, { moveT: 99 }); tick();
+    ok('a lamp burns a 魄 within three tiles, not four', ga.fade < 1 && !(gb.fade < 1), [ga.fade, gb.fade]);
+    w.set(lx, ly, keepL); g.ents.remove(ga); g.ents.remove(gb);
+    g.ents.snuffP = 1; const gc = g.ents.add('魄', X + 2, Y, { moveT: 99 }); g.msgText = ''; tick();
+    ok('a 魄 within two tiles blows out the torch in your hand: no light for eight seconds', p.snuffT === 8 && !g.hasLight() && g.msgText.indexOf('吹熄') >= 0 && toasts().indexOf('吹燈') >= 0, [p.snuffT, g.hasLight(), g.msgText]);
+    g.ents.snuffP = 0; p.burn['火把'] = 0; g.updateStats(1);
+    ok('a blown-out torch does not burn down', (p.burn['火把'] || 0) === 0 && Math.abs(p.snuffT - 7) < 1e-9 && !g.hasLight(), [p.burn['火把'], p.snuffT]);
+    g.ents.remove(gc); p.snuffT = 0.5; g.msgText = ''; g.updateStats(1);
+    ok('after the eight seconds it lights again', p.snuffT === 0 && g.hasLight() && g.msgText.indexOf('又點著了') >= 0, [p.snuffT, g.msgText]);
+    hold('木'); g.addItem('燈帽', 1); hold('燈帽'); g.wearItem(p.sel); hold('木'); const hat = p.worn['帽']; hat.fuel = 300; p.san = 100;   // 手裡要空著光，燈帽才燒
+    const gd = g.ents.add('魄', X + 1, Y + 1, { moveT: 99 }); g.updateStats(1);
+    ok('a 魄 within two tiles makes the hat candle burn three times as fast', !!hat && Math.abs(hat.fuel - 297) < 1e-9, hat && hat.fuel);
+    g.ents.remove(gd); g.updateStats(1);
+    ok('without it the candle burns at the usual rate', Math.abs(hat.fuel - 296) < 1e-9, hat.fuel);
+    g.takeOff('帽'); g.removeItem('燈帽', 9);
+    hold('火把'); g.ents.dashT = 0; const ge = g.ents.add('魄', X + 8, Y, { moveT: 99 }); tick();
+    ok('every eight to fourteen seconds the nearest hovering 魄 dashes in at the light', ge.dash > 2 && cheb(ge) === 7 && g.ents.dashT >= 8 && g.ents.dashT <= 14, [ge.dash, cheb(ge), g.ents.dashT]);
+    for (let i = 0; i < 8; i++) { ge.moveT = 0; tick(); }
+    ok('the dash runs right up to you', cheb(ge) <= 1, cheb(ge));
+    ge.dash = 0; ge.moveT = 0; tick();
+    ok('when the dash is over it backs off again', cheb(ge) === 2, cheb(ge));
+    g.ents.remove(ge); g.ents.dashT = 1e9;
+    w.time = DAY * 12 + DAY * 0.75; const cap13 = g.ghostCap(); w.time = DAY * 32 + DAY * 0.75; const cap33 = g.ghostCap();
+    g.diff = XIEYI.DIFF.hard; w.time = DAY * 39 + DAY * 0.75; const capH = g.ghostCap(); g.diff = XIEYI.DIFF.normal;
+    ok('the deeper the nights the more 魄: two on night 13, up to eight (ten on hard)', cap13 === 2 && cap33 === 8 && capH === 10, [cap13, cap33, capH]);
+    const spAt = (n) => { w.time = DAY * (n - 1) + DAY * 0.75; return g.ghostSpeed(); };
+    ok('from night twenty they get a tenth faster every four nights, up to double', spAt(19) === 1 && Math.abs(spAt(20) - 1.1) < 1e-9 && Math.abs(spAt(23) - 1.1) < 1e-9 && Math.abs(spAt(24) - 1.2) < 1e-9 && spAt(200) === 2, [spAt(19), spAt(20), spAt(24), spAt(200)]);
+    w.time = DAY * 23 + DAY * 0.75; hold('木'); const gf = g.ents.add('魄', X + 5, Y, { moveT: 0 }); tick();
+    ok('on night twenty-four a chasing 魄 steps every 0.375 s (0.45 ÷ 1.2)', Math.abs(gf.moveT - 0.375) < 1e-9 && cheb(gf) === 4, [gf.moveT, cheb(gf)]);
+    g.ents.remove(gf);
+    w.time = DAY * 12 + DAY * 0.75; const gg = g.ents.add('魄', X + 3, Y, { moveT: 99 }); p.san = 80; p.sta = 80; g.updateStats(1); const dropN = 80 - p.san;
+    g.diff = XIEYI.DIFF.hard; p.san = 80; g.updateStats(1); const dropH = 80 - p.san; g.diff = XIEYI.DIFF.normal;
+    ok('a 魄 within four tiles eats four 愜意 a second (five on hard)', dropN > 4 && dropN < 4.2 && dropH > 5 && dropH < 5.2, [dropN, dropH]);
+    const lk = w.raw(X - 2, Y); w.set(X - 2, Y, '燈'); p.san = 80; g.updateStats(1);
+    ok('a lamp within three tiles of you counts as light: no drain', 80 - p.san < 0.1, 80 - p.san);
+    w.set(X - 2, Y, lk); g.ents.remove(gg);
+    const ring = []; for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) { const x = X + dx, y = Y + dy; ring.push([x, y, w.raw(x, y)]); w.set(x, y, Math.max(Math.abs(dx), Math.abs(dy)) === 2 ? '磚' : '草'); }
+    const gh2 = g.ents.add('魄', X + 6, Y, { moveT: 99 }); p.san = 80; g.updateStats(1); const dIn = 80 - p.san;
+    ok('indoors without a lamp, a 魄 circling within eight tiles makes 愜意 seep away (0.5 a second)', g.indoors() && dIn > 0.5 && dIn < 0.6 && toasts().indexOf('屋外有魄') >= 0, dIn);
+    w.set(X + 1, Y + 1, '燈'); p.san = 80; g.updateStats(1);
+    ok('a lamp in the room stops it', 80 - p.san < 0.1, 80 - p.san);
+    w.set(X - 1, Y, '床'); const dBefore = g.day(); g.msgText = ''; g.sleep(); await sleep(30);
+    ok('with a lamp within three tiles of the bed you can sleep even with a 魄 outside', g.day() === dBefore + 1, [g.day(), g.msgText]);
+    for (const [x, y, c] of ring) w.set(x, y, c); g.ents.remove(gh2);
+    g.removeItem('火把', 9); p.snuffT = 0; w.time = tKeep; calm();
   }
   for (let dx = 0; dx < 3; dx++) for (let dy = 0; dy < 3; dy++) w.set(nk.x + dx, nk.y + dy, w.base(nk.x + dx, nk.y + dy));   // 測試挖的深水還原，免得把出生點圍住
   // 煤與鐵：山裡有礦；礦二煤一入旺灶煉鐵；煤是好柴

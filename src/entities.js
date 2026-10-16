@@ -8,6 +8,10 @@
   const SCARED = '虎豹狼蛇蛛蟾';           // 稻草人擋得住的
   const HOSTILE = '虎豹狼蛇蛛蟾';          // 敵對獸：命翻倍、攻擊間隔放慢四分之一
   const FOREST = '林森竹';
+  // 魄（v0.20 加強）：玩家身上的光（手裡的火把蠟燭、頭上的燈帽）只把魄逼到 GHOST_KEEP 格外，在 GHOST_HOVER 格內徘徊；
+  // 地上的光（燈、火、旺灶）GHOST_BURN 格內、龍四格內才煙滅。玩家有光時每 GHOST_DASH_GAP 息，最近那隻撲上來 GHOST_DASH 息；
+  // 魄在兩格內（GHOST_SNUFF_R），手裡的光每息有 snuffP 的機會被吹熄（game.ghostTouch）
+  const GHOST_KEEP = 6, GHOST_HOVER = 9, GHOST_BURN = 3, GHOST_DASH = 2.5, GHOST_DASH_GAP = [8, 14], GHOST_DASH_STEP = 0.22, GHOST_SNUFF_R = 2;
 
   class Entities {
     constructor(world) {
@@ -16,6 +20,8 @@
       this.spawnAcc = 0;
       this.ghostAcc = 0;
       this.seaP = 1 / 160;       // 行船時每一點五息有這麼點機會浮上一頭蜃（平均約二百四十息一頭）
+      this.snuffP = 0.1;         // 魄兩格內，手裡的光每息被吹熄的機會
+      this.dashT = GHOST_DASH_GAP[0];   // 下一次撲燈還有幾息（玩家身上有光的夜裡才倒數）
     }
     at(x, y) { for (const e of this.list) if (e.x === x && e.y === y) return e; return null; }
     beastAt(x, y) { for (const e of this.list) if (e.x === x && e.y === y && DB[e.type].kind === 'beast' && e.type !== '魄' && e.type !== '龍' && !(e.type === '鷹' && e.tame)) return e; return null; }   // 龍與馴了的鷹不擋路
@@ -94,6 +100,14 @@
       }
       if (fallback && Math.random() < 0.3) { e.x = fallback[0]; e.y = fallback[1]; }
     }
+    hover(e, p, lo, hi) {   // 在玩家 lo–hi 格之間繞圈（魄在光的邊上徘徊）
+      for (const [dx, dy] of N8.slice().sort(() => Math.random() - 0.5)) {
+        const nx = e.x + dx, ny = e.y + dy, dd = U.cheb(nx, ny, p.x, p.y);
+        if (dd < lo || dd > hi || !this.canStand(e.type, nx, ny, true)) continue;
+        e.x = nx; e.y = ny; return true;
+      }
+      return false;
+    }
     nearestPlace(x, y, chars, maxD) {
       let best = null, bd = maxD;
       for (const pl of this.world.places) {
@@ -136,6 +150,16 @@
 
     update(dt, g) {
       const p = g.player, w = this.world, night = g.darkness() > 0.5;
+      // 魄撲燈：玩家身上有光的夜裡，每八到十四息，最近一隻徘徊的魄撲上來
+      if (night && g.hasLight()) {
+        this.dashT -= dt;
+        if (this.dashT <= 0) {
+          this.dashT = GHOST_DASH_GAP[0] + Math.random() * (GHOST_DASH_GAP[1] - GHOST_DASH_GAP[0]);
+          let best = null, bd = GHOST_HOVER + 2;
+          for (const o of this.list) if (o.type === '魄' && !o.frozen && !(o.fade < 1) && !(o.dash > 0)) { const dd = U.cheb(o.x, o.y, p.x, p.y); if (dd < bd) { bd = dd; best = o; } }
+          if (best) { best.dash = GHOST_DASH; best.moveT = 0; }
+        }
+      }
       const dayT = g.dayT(), dusk = dayT > 0.40 && dayT < 0.52;
       // —— 獸的刷新
       this.spawnAcc += dt;
@@ -181,14 +205,15 @@
         if (e.type === '狼' && g.daylight() > 0.5) { this.list.splice(i, 1); continue; }                 // 狼天亮散去
         if (e.fade !== undefined && e.fade < 1) { e.fade -= dt * 1.2; if (e.fade <= 0) this.list.splice(i, 1); continue; }   // 正在煙滅
         if (e.type === '魄') {
-          // 六格內有光即煙滅：地上的燈與火、玩家手裡的光、龍
-          const lit = w.lightNear(e.x, e.y, 6) || (g.hasLight() && d <= 6) || this.dragonNear(e.x, e.y, 4);   // 龍只驅四格
-          if (lit) { e.fade = 0.99; continue; }
+          // 地上的光（燈、火、旺灶）三格內、龍四格內即煙滅；玩家身上的光只逼得退（見下面的行動）
+          if (w.lightNear(e.x, e.y, GHOST_BURN) || this.dragonNear(e.x, e.y, 4)) { e.fade = 0.99; continue; }
           if (g.daylight() > 0.3) {
             if (FOREST.indexOf(w.get(e.x, e.y)) >= 0) { e.frozen = true; continue; }     // 白日藏於林中，不動
             e.fade = 0.99; continue;                                                          // 不在林裡，天亮煙滅
           }
           e.frozen = false;
+          if (e.dash > 0) e.dash = Math.max(0, e.dash - dt);
+          if (d <= GHOST_SNUFF_R) g.ghostTouch(e, dt);                                     // 近身：吹手裡的燈
         }
         if (e.type === '蜃') {          // 吞吐霧障：每隔一陣往玩家那邊吐一片海霧
           e.fogT = (e.fogT === undefined ? 6 : e.fogT) - dt;
@@ -225,8 +250,12 @@
           if (d > 4) { e.moveT = 0.22; this.stepTo(e, p.x, p.y, false, night); }
           else { e.moveT = 0.5 + Math.random() * 1.0; if (Math.random() < 0.5) this.wander(e, night, null); }
         } else if (e.type === '魄') {
-          if (d <= 14) { e.moveT = 0.45; if (d > 2) this.stepTo(e, p.x, p.y, false, true); }
-          else { e.moveT = 0.8 + Math.random(); this.wander(e, true, null); }
+          const sp = g.ghostSpeed(), lit = g.hasLight();   // 第廿夜起越來越快
+          if (e.dash > 0) { e.moveT = GHOST_DASH_STEP / sp; if (d > 1) this.stepTo(e, p.x, p.y, false, true); }                 // 撲燈：直衝過來
+          else if (lit && d <= GHOST_KEEP) { e.moveT = 0.45 / sp; this.stepTo(e, p.x, p.y, true, true); }                      // 身上有光：逼退到六格外
+          else if (lit && d <= GHOST_HOVER) { e.moveT = (0.8 + Math.random() * 0.6) / sp; this.hover(e, p, GHOST_KEEP + 1, GHOST_HOVER); }   // 在光的邊上徘徊
+          else if (d <= 14) { e.moveT = 0.45 / sp; if (d > 2) this.stepTo(e, p.x, p.y, false, true); }
+          else { e.moveT = (0.8 + Math.random()) / sp; this.wander(e, true, null); }
         } else if (e.type === '鳥') {
           const home = dusk ? this.nearestPlace(e.x, e.y, '塔寺燈', 60) : null;
           if (d <= 3) { e.moveT = 0.18; this.stepTo(e, p.x, p.y, true, night); }

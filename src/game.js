@@ -11,7 +11,8 @@
   const BASE_SLOTS = 16, STACK = 64, CHEST_SLOTS = 24, BASE_TOOLS = 6, MAX_POUCHES = 6, FERMENT_NIGHTS = 15, SHIP_LEVEL = 8, TOTEM_LEVEL = 16, DECAY_LEVEL = 31, DECAY_DAYS = 3;   // TOTEM_LEVEL：山海衣的門檻（v0.17 從十重改十六重，另要至少一件鎢鋼護具）
   // 難度：魄從第幾夜起、受傷與攻擊倍率、夜裡狼虎豹蛇的數量倍率
   // warn：數值不到四分之一要不要彈窗提醒（困難只閃不彈）；room／ghostRoom：牆與門圍起不超過幾格的小屋擋得住獸／魄（0 ＝ 牆擋不住魄，只有光）
-  const DIFF = { easy: { key: 'easy', name: '簡單', ghost: 21, taken: 0.9, dmg: 1.1, beasts: 1, warn: true, room: 28, ghostRoom: 18, lampP: 1 / 4500, cour: 1.4, god: { days: 4, floor: 28, sta: 0 } }, normal: { key: 'normal', name: '一般', ghost: 13, taken: 1, dmg: 1, beasts: 1, warn: true, room: 18, ghostRoom: 8, lampP: 1 / 2500, cour: 1.25, god: { days: 3, floor: 27, sta: 0 } }, hard: { key: 'hard', name: '困難', ghost: 9, taken: 1.1, dmg: 0.9, beasts: 1.5, warn: false, room: 10, ghostRoom: 0, lampP: 1 / 800, cour: 1.15, god: { days: 2, floor: 26, sta: 0.3 } } };
+  const DIFF = { easy: { key: 'easy', name: '簡單', ghost: 21, taken: 0.9, dmg: 1.1, beasts: 1, warn: true, room: 28, ghostRoom: 18, ghostMax: 8, ghostSan: 4, lampP: 1 / 4500, cour: 1.4, god: { days: 4, floor: 28, sta: 0 } }, normal: { key: 'normal', name: '一般', ghost: 13, taken: 1, dmg: 1, beasts: 1, warn: true, room: 18, ghostRoom: 8, ghostMax: 8, ghostSan: 4, lampP: 1 / 2500, cour: 1.25, god: { days: 3, floor: 27, sta: 0 } }, hard: { key: 'hard', name: '困難', ghost: 9, taken: 1.1, dmg: 0.9, beasts: 1.5, warn: false, room: 10, ghostRoom: 0, ghostMax: 10, ghostSan: 5, lampP: 1 / 800, cour: 1.15, god: { days: 2, floor: 26, sta: 0.3 } } };
+  // ghostMax：魄最多幾隻；ghostSan：魄四格內、身邊無光時每息蝕多少愜意（v0.20：一般簡單 4、困難 5，原本一律 3）
   // lampP：下雨時屋外每盞燈每息被澆壞的機率（v0.18 分難度：簡單 1/4500、一般 1/2500、困難 1/800）
   // cour：膽氣所有來源的加成（v0.19：簡單 ×1.4、一般 ×1.25、困難 ×1.15，乘完一次取整）
   // god：身上帶著神兵（九閽鳴雷、燭龍焚溟，兩件也只算一重減益）時膽氣幾日一減、下限幾重、每息另掉多少力（只有困難掉力）
@@ -29,6 +30,9 @@
   // 雪域（v0.18）：離雪 SNOW_R 格內待超過 SNOW_GRACE 息，暖開始多掉，越待掉越快（起步每息 SNOW_RATE，每多待一息再加 SNOW_RAMP，封頂 SNOW_MAX）；
   // 烤的東西下肚有熱氣：HEAT_PER_MEAL 息內凍不傷命，累積到 HEAT_CAP 為止
   const SNOW_R = 5, SNOW_GRACE = 5, SNOW_RATE = 1, SNOW_RAMP = 0.1, SNOW_MAX = 4, HEAT_PER_MEAL = 90, HEAT_CAP = 150;
+  // 魄（v0.20）：手裡的光被吹熄後 SNUFF_TIME 息才點得著；魄兩格內燈帽的蠟燭燒 HAT_GHOST_BURN 倍；
+  // 屋裡（covered）沒燈、ROOM_DREAD_R 格內有魄，愜意每息掉 ROOM_DREAD；第 GHOST_FAST_NIGHT 夜起每四夜魄快一成，最多快 GHOST_FAST_MAX 倍
+  const SNUFF_TIME = 8, HAT_GHOST_BURN = 3, ROOM_DREAD = 0.5, ROOM_DREAD_R = 8, GHOST_FAST_NIGHT = 20, GHOST_FAST_MAX = 2;
   const REGRIND_CAP = 8, MEND_STA = 3;   // 1、2、4、8 法則的上限：重磨的石子、加固漁網的棉麻（MEND_STA 是面向網按 F 加固的耗力）                      // 同一把工具重磨：第一次石子一、再來二、四、八，八為上限（rg 記在那把工具上）
   const CLOTH_FUEL = 120;                     // 舊布製品（內襯、布褲、布甲、布帽、布靴）丟進灶裡當柴：一件一百二十息
   const KILL_ONLY_LEVEL = 22, KILL_DAY = 0.8, KILL_NIGHT = 1.05;   // 廿二重起膽氣只從斃敵對生靈得來（製作採集讀碑都不長）；斃敵的膽氣白日八成、夜裡加半成（四捨五入）
@@ -64,7 +68,7 @@
         hp: 100, hpMax: 100, food: 100, warm: 100, sta: 100, staMax: 100, san: 100, cour: 0, pillsMade: 0, pillsEaten: 0,
         hurtT: 0, atkT: 0, bag: [], sel: 0, tools: [], tool: -1, worn: { '襯': null, '褲': null, '甲': null, '盔': null, '靴': null, '帽': null }, hitWin: { start: -99, n: 0 }, totemOff: false, craftLog: {}, pouches: 0, noGhostUntil: 0, inFog: 0, ship: null, swimming: false, swimT: 0, home: null, readSteles: [], places: {}, creatures: [], raftTaken: false, dragon: false, finished: false,
         deaths: 0, dead: false, warned: {}, warnLow: {}, burn: {}, lastDay: 1,
-        poisonT: 0, poisonPer: 0, heatT: 0, snowT: 0, biteN: 0, biteLast: -99, zeroSan: 0, insane: false, ctrl: true, ctrlT: 0, knock: 0, sailing: false, crossed: false, decayAt: 0 };
+        poisonT: 0, poisonPer: 0, heatT: 0, snowT: 0, snuffT: 0, biteN: 0, biteLast: -99, zeroSan: 0, insane: false, ctrl: true, ctrlT: 0, knock: 0, sailing: false, crossed: false, decayAt: 0 };
       this.stats = { gathered: 0, crafted: 0, kills: 0, read: 0, nights: 0, bites: 0 };
       this.keys = new Set();
       this.action = null;
@@ -112,7 +116,16 @@
     eagleHit(e, t) { this.fx.push({ type: 'float', x: t.x, y: t.y, text: '−20', color: G.INK.red, t: 0, dur: 0.7 }); }
     companionDied(e, killer) { this.ents.remove(e); this.toast('鷹死了', (killer ? '「' + killer.type + '」殺了你的鷹。' : '你的鷹死了。')); SFX.fail(); }
     gatherCompanions() { const p = this.player; for (const e of this.ents.tamed()) { const at = this.freeNear(p.x, p.y, true); e.x = e.rx = at.x; e.y = e.ry = at.y; } }
-    ghostCap() { return Math.min(6, 2 + Math.floor((this.nightNo() - this.diff.ghost) / 2)); }
+    ghostCap() { return Math.min(this.diff.ghostMax, 2 + Math.floor((this.nightNo() - this.diff.ghost) / 2)); }   // 一般簡單最多八隻、困難十隻（v0.20 前六隻）
+    ghostSpeed() { const n = this.nightNo(); return n < GHOST_FAST_NIGHT ? 1 : Math.min(GHOST_FAST_MAX, 1 + 0.1 * (Math.floor((n - GHOST_FAST_NIGHT) / 4) + 1)); }   // 第廿夜 1.1、廿四夜 1.2……最多兩倍
+    indoors() { const p = this.player, d = DB[this.world.get(p.x, p.y)]; return !!(d && d.shelter) || this.world.covered(p.x, p.y); }   // 屋裡：地標屋舍，或牆圍得住（跟雨淋不淋燈同一個判定）
+    ghostTouch(e, dt) {   // 魄兩格內：手裡的光每息有 ents.snuffP 的機會被吹熄，SNUFF_TIME 息後才點得著（燈帽吹不熄，蠟燭燒得快，見 updateStats）
+      const p = this.player, s = this.held(), it = s && ITEMS[s.n];
+      if (!it || !it.light || it.slot || p.snuffT > 0 || this.darkness() <= 0.5) return;
+      if (Math.random() >= 1 - Math.pow(1 - this.ents.snuffP, dt)) return;
+      p.snuffT = SNUFF_TIME; this.message('魄撲上來，吹熄了手裡的「' + s.n + '」。' + SNUFF_TIME + ' 息後才點得著。'); SFX.fail();
+      if (!p.warned.snuff) { p.warned.snuff = true; this.toast('吹燈', '魄會撲上來吹熄手裡的光，' + SNUFF_TIME + ' 息後才點得著。燈帽吹不熄，但魄近身時蠟燭燒三倍快；地上的燈、火、旺灶三格內才燒得死魄。', 7000); }
+    }
     shichen() { const hour = (6 + this.dayT() * 24) % 24; return SHICHEN[Math.floor(((hour + 1) % 24) / 2)] + '時'; }
     slots() { return BASE_SLOTS + 2 * this.player.pouches; }          // 錦囊：每個多兩格
     toolSlots() { return BASE_TOOLS + this.player.pouches; }           // 錦囊：每個多一格具欄
@@ -233,7 +246,7 @@
       this.toast('膽氣衰減', (this.hasGod() ? '身攜神兵，' + ['', '一', '二', '三', '四'][this.decayDays()] + '日一減' : '過了卅一重，三日一減') + '：現在第 ' + this.level() + ' 重。', 6000);
     }
     // 照明：手裡的火把或蠟燭、頭上的燈帽
-    heldLight() { const s = this.held(); const it = s && ITEMS[s.n]; return it && it.light ? it.light : 0; }
+    heldLight() { if (this.player.snuffT > 0) return 0; const s = this.held(); const it = s && ITEMS[s.n]; return it && it.light ? it.light : 0; }   // 被魄吹熄時手裡的光不算
     hat() { return this.player.worn['帽'] || null; }                                     // 戴在頭上的燈帽才亮
     anyHat() { return this.player.worn['帽'] || this.player.bag.find(s => s.n === '燈帽') || null; }
     hatLight() { const h = this.hat(); return h && h.fuel > 0 ? ITEMS['燈帽'].light : 0; }
@@ -329,13 +342,15 @@
       if (w.nearChar(p.x, p.y, '泉', 1)) { p.hp = Math.min(p.hpMax, p.hp + 2 * dt); p.warm = Math.min(100, p.warm + 1.5 * dt); }
       // 手裡的光會燒
       const hs = this.held(), hit = hs && ITEMS[hs.n];
-      if (dark > 0.5 && hit && hit.light && hit.life) {
+      if (p.snuffT > 0) { p.snuffT = Math.max(0, p.snuffT - dt); if (!p.snuffT && hit && hit.light) this.message('手裡的「' + hs.n + '」又點著了。'); }
+      if (dark > 0.5 && hit && hit.light && hit.life && !(p.snuffT > 0)) {
         p.burn[hs.n] = (p.burn[hs.n] || 0) + dt;
         if (p.burn[hs.n] >= hit.life) { p.burn[hs.n] = 0; this.removeItem(hs.n, 1); this.message('一支' + hs.n + '燃盡了。'); }
       }
       const hat = this.hat();
       const otherLight = w.lightNear(p.x, p.y, 3) || this.heldLight() > 0 || this.ents.dragonNear(p.x, p.y, 3);   // 三格內有別的光，燈帽先熄著
-      if (dark > 0.5 && hat && hat.fuel > 0 && !otherLight) { hat.fuel = Math.max(0, hat.fuel - dt); if (hat.fuel <= 0) { this.toast('燈帽暗了', '蠟燭燒完了。選中蠟燭按 V 續上。'); this.barSig = ''; } }
+      if (dark > 0.5 && hat && hat.fuel > 0 && !otherLight) { hat.fuel = Math.max(0, hat.fuel - dt * (this.ents.ghostNear(p.x, p.y, 2) ? HAT_GHOST_BURN : 1));   // 魄兩格內：蠟燭燒三倍快
+        if (hat.fuel <= 0) { this.toast('燈帽暗了', '蠟燭燒完了。選中蠟燭按 V 續上。'); this.barSig = ''; } }
       // 力：每兩息回一點；愜意：每十五息掉一點
       if (p.swimming) p.sta = Math.max(0, p.sta - 0.25 * SWIM_DRAIN * dt);       // 游泳：力不回，反而掉
       else p.sta = Math.min(p.staMax, p.sta + 0.5 * m * dt);
@@ -350,8 +365,13 @@
         if (w.nearChar(p.x, p.y, '淼', 8)) heard.push('海浪');
         if (heard.length) { p.san = Math.min(100, p.san + Math.round(heard.length * m)); this.fx.push({ type: 'float', x: p.x, y: p.y, text: heard.join(' ') + ' +' + heard.length, color: G.INK.water, t: 0, dur: 1.4 }); }
       }
-      // 魄：四格內無光，蝕心耗力
-      if (dark > 0.5 && !this.hasLight() && this.ents.ghostNear(p.x, p.y, 4)) { p.san = Math.max(0, p.san - 3 * dt); p.sta = Math.max(0, p.sta - 2 * dt * drain); if (!p.warned.drain) { p.warned.drain = true; this.toast('魄近身', '心裡發涼，手腳發軟。點亮火把或蠟燭。'); } }
+      // 魄：四格內、身上與三格內都無光，蝕心耗力（一般簡單每息 −4、困難 −5）；屋裡沒燈而八格內有魄繞著，愜意也緩緩掉
+      const unlit = dark > 0.5 && !this.hasLight() && !w.lightNear(p.x, p.y, 3);
+      if (unlit && !this.ents.ghostNear(p.x, p.y, 4) && this.ents.ghostNear(p.x, p.y, ROOM_DREAD_R) && this.indoors()) {
+        p.san = Math.max(0, p.san - ROOM_DREAD * dt);
+        if (!p.warned.dread) { p.warned.dread = true; this.toast('屋外有魄', '屋裡沒燈，心裡發毛，愜意慢慢掉。屋裡點一盞燈（三格內），魄就近不了。', 7000); }
+      }
+      if (unlit && this.ents.ghostNear(p.x, p.y, 4)) { p.san = Math.max(0, p.san - this.diff.ghostSan * dt); p.sta = Math.max(0, p.sta - 2 * dt * drain); if (!p.warned.drain) { p.warned.drain = true; this.toast('魄近身', '心裡發涼，手腳發軟。點亮火把或蠟燭。'); } }
       // 毒
       if (p.poisonT > 0) { p.poisonT -= dt; p.hp = Math.max(0, p.hp - p.poisonPer * dt); if (p.poisonT <= 0) { p.poisonPer = 0; this.message('毒勁過了。'); } }
       p.hurtT = Math.max(0, p.hurtT - dt); p.atkT = Math.max(0, p.atkT - dt);
@@ -378,7 +398,7 @@
       if (p.san >= 40) p.warned.san = false;
       const nn = this.nightNo();
       if (nn === this.diff.ghost - 1 && dark > 0.5 && !p.warned.eve) { p.warned.eve = true; this.toast('第 ' + nn + ' 夜', '明晚起，魄夜行。備好火把、蠟燭或燈帽。', 8000); }
-      if (this.ghostNight() && !p.warned['g' + nn]) { p.warned['g' + nn] = true; this.toast('第 ' + nn + ' 夜', '魄來了。穿牆，不怕磚；手裡有光六格內即煙滅。', 8000); }
+      if (this.ghostNight() && !p.warned['g' + nn]) { p.warned['g' + nn] = true; this.toast('第 ' + nn + ' 夜', '魄來了。穿牆，不怕磚；身上的光只逼得退，牠們會撲上來吹燈。燈、火、旺灶三格內才燒得死。', 8000); }
       // 衣甲：一百八十日勻速穿破；挨打那一輪過了十五息，加速便固定下來
       const win = p.hitWin;
       if (win.n && w.time - win.start > 15) { for (const s of this.wornList()) s.wm = Math.min(WEAR_CAP, (s.wm || 1) * HIT_MULT[win.n]); win.n = 0; }
@@ -1267,7 +1287,7 @@
       const p = this.player; if (!this.canAct()) return;
       if (!this.bedNear()) { this.message('要有床才能睡。六團棉、兩塊木。'); return; }
       if (this.dayT() <= 0.5) { this.message(this.dayT() < 0.1 ? '天已經亮了，睡不著。' : '白日不眠。'); return; }
-      if (this.ents.ghostNear(p.x, p.y, 8)) { this.message('附近有魄，睡不著。點亮火把把它們趕走。'); SFX.fail(); return; }
+      if (this.ents.ghostNear(p.x, p.y, 8) && !this.world.lightNear(p.x, p.y, 3)) { this.message('附近有魄，睡不著。床邊三格內點一盞燈，魄就近不了身。'); SFX.fail(); return; }
       const w = this.world, t = this.dayT();
       w.time += (1 - t) * DAY + 0.03 * DAY;
       for (let i = 0; i < 80; i++) w.step(p.x, p.y);
@@ -1680,7 +1700,7 @@
       else if (p.sailing) s = (p.ship ? this.shipText(p.ship) : '船上') + ' · 撞岸即靠岸' + (e && e.type === '魚' ? ' · <kbd>E</kbd> 捉魚' : e && e.type === '蜃' ? ' · <kbd>E</kbd> 打蜃' : '') + (hs && ITEMS[hs.n] && ITEMS[hs.n].ward ? ' · <kbd>V</kbd> 放上船頭' : hs && hs.n === '木板' ? ' · <kbd>V</kbd> 補船' : '');
       else if (plc) s = '「' + plc.name + '」 · <kbd>E</kbd> 讀' + (hs && hs.n === '玻璃瓶' && (ch === '泉' || ch === '井') ? '　<kbd>E</kbd> 取淡水' : '');
       else if (e && e.type === '龍') s = '你的龍。';
-      else if (e && e.type === '魄') s = '魄 · 無形。手裡有光六格內即煙滅';
+      else if (e && e.type === '魄') s = '魄 · 無形。身上的光只逼得退；燈、火、旺灶三格內才煙滅';
       else if (e && e.type === '鷹') s = '鷹' + (e.tame ? '（你的 · 命 ' + Math.round(e.hp) + ' 力 ' + Math.round(e.sta) + '）' : e.angry ? '（怒）' : '（半友好）') + (hs && hs.n === '魚' ? ' · <kbd>F</kbd> ' + (e.tame ? '餵魚（力 +40）' : '投魚馴服（' + Math.round(this.tameChance() * 100) + '%）') : ' · 手持魚按 F ' + (e.tame ? '餵' : '馴')) + ' · <kbd>E</kbd> 攻擊';
       else if (e) s = '「' + e.type + '」' + (e.type === '蟾' ? (e.venom ? '（有毒）' : '（無毒）') : '') + (e.hp > 1 ? '（' + e.hp + '）' : '') + ' · <kbd>E</kbd> ' + (e.type === '魚' ? '捉' : e.type === '鳥' ? '驚' : this.heldDmg() ? '攻擊（' + this.activeTool().n + '）' : '<i>徒手打不了，具欄裡選把刀劍</i>');
       else if (w.fogAt(t.x, t.y)) { const n = this.count('扇'); s = '霧障 · 走進去會問你要不要用扇子吹散' + (n ? '（囊中 ' + n + ' 把' + (hs && hs.n === '扇' ? '；<kbd>V</kbd> 現在就搧' : '') + '）' : '（沒有扇子：草四木一可紮一把）'); }
@@ -1789,7 +1809,7 @@
       for (let n = 1; n <= SAVE_SLOTS; n++) if (saves[n] && (!newest || (saves[n].savedAt || 0) > (saves[newest].savedAt || 0))) newest = n;
       slot = qs >= 1 && qs <= SAVE_SLOTS ? qs : last >= 1 && last <= SAVE_SLOTS ? last : newest || 1;
     }
-    const DESC = { easy: '第二十一夜起有魄；受傷九成、攻擊加一成。', normal: '第十三夜起有魄。', hard: '第九夜起有魄；受傷加一成、攻擊九成，夜裡狼虎豹蛇一倍半。' };
+    const DESC = { easy: '第二十一夜起有魄；受傷九成、攻擊加一成。', normal: '第十三夜起有魄。', hard: '第九夜起有魄，最多十隻、蝕心更狠；受傷加一成、攻擊九成，夜裡狼虎豹蛇一倍半。' };
     const pickDiff = (k) => { diff = k; document.querySelectorAll('.diffrow button').forEach(b => b.classList.toggle('on', b.dataset.diff === k)); $('diff-desc').textContent = DESC[k]; };
     document.querySelectorAll('.diffrow button').forEach(b => b.addEventListener('click', () => pickDiff(b.dataset.diff)));
     pickDiff(diff);
