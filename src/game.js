@@ -4,11 +4,11 @@
   const U = window.U, G = window.G, DB = G.DB, ITEMS = G.ITEMS;
   // 三格存檔：第一格沿用舊鍵 xieyi.save.v5（舊存檔照讀），第二、三格是 xieyi.save.v5.2、.3；xieyi.slot 記上次玩的是哪一格；xieyi.carry 是渡海帶走的膽氣（值@格）
   const SAVE_KEY = 'xieyi.save.v5', CARRY_KEY = 'xieyi.carry', SLOT_KEY = 'xieyi.slot', SAVE_SLOTS = 3, SLOT_NAMES = ['', '一', '二', '三'];
-  const DAY = 240;
+  const DAY = 300;   // 一晝夜（秒）；v0.17 從 240 加長四分之一，要跟 world.js 的 DAY 一致
   const SHICHEN = '子丑寅卯辰巳午未申酉戌亥';
   const DIRS = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] };
   const N8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
-  const BASE_SLOTS = 16, STACK = 64, CHEST_SLOTS = 24, BASE_TOOLS = 6, MAX_POUCHES = 4, FERMENT_NIGHTS = 15, SHIP_LEVEL = 8, TOTEM_LEVEL = 10, DECAY_LEVEL = 31, DECAY_DAYS = 3;
+  const BASE_SLOTS = 16, STACK = 64, CHEST_SLOTS = 24, BASE_TOOLS = 6, MAX_POUCHES = 4, FERMENT_NIGHTS = 15, SHIP_LEVEL = 8, TOTEM_LEVEL = 16, DECAY_LEVEL = 31, DECAY_DAYS = 3;   // TOTEM_LEVEL：山海衣的門檻（v0.17 從十重改十六重，另要至少一件鎢鋼護具）
   // 難度：魄從第幾夜起、受傷與攻擊倍率、夜裡狼虎豹蛇的數量倍率
   // warn：數值不到四分之一要不要彈窗提醒（困難只閃不彈）；room／ghostRoom：牆與門圍起不超過幾格的小屋擋得住獸／魄（0 ＝ 牆擋不住魄，只有光）
   const DIFF = { easy: { key: 'easy', name: '簡單', ghost: 21, taken: 0.9, dmg: 1.1, beasts: 1, warn: true, room: 28, ghostRoom: 18 }, normal: { key: 'normal', name: '一般', ghost: 13, taken: 1, dmg: 1, beasts: 1, warn: true, room: 18, ghostRoom: 8 }, hard: { key: 'hard', name: '困難', ghost: 9, taken: 1.1, dmg: 0.9, beasts: 1.5, warn: false, room: 10, ghostRoom: 0 } };
@@ -23,6 +23,8 @@
   const SLOT_ORDER = ['襯', '褲', '甲', '盔', '靴', '帽'], ARMOR_SLOTS = ['襯', '褲', '甲', '盔', '靴'], ARMOR_LIFE = 180 * DAY, HIT_MULT = [1, 1.05, 1.12, 1.2, 1.5];
   const FUEL = { '煤': 120, '精煤': 300 };   // 灶的好柴：一塊煤燒一百二十息，精煤三百息
   const TURTLE_SAN = 30;                      // 殺龜不祥：愜意掉三十
+  const REGRIND_CAP = 8;                      // 同一把工具重磨：第一次石子一、再來二、四、八，八為上限（rg 記在那把工具上）
+  const CLOTH_FUEL = 120;                     // 舊布製品（內襯、布褲、布甲、布帽、布靴）丟進灶裡當柴：一件一百二十息
   const KILL_ONLY_LEVEL = 22, KILL_DAY = 0.8, KILL_NIGHT = 1.05;   // 廿二重起膽氣只從斃敵對生靈得來（製作採集讀碑都不長）；斃敵的膽氣白日八成、夜裡加半成（四捨五入）
   const WARN_LIGHT = 0.5, WARN_POP = 0.25;    // 五條數值不到五成亮燈、不到四分之一彈窗提醒（回到五成以上才會再提醒）
   const WEAR_CAP = 6, REPAIR_WM = 1.5, HAT_FUEL = 400;
@@ -127,15 +129,16 @@
     ironAtk() { return 1 + 0.05 * this.ironCount() / 3; }                                        // 三件鐵攻擊加半成
     ironDrain() { return (1 + 0.08 * this.ironCount() / 3) * (this.player.swimming ? SWIM_DRAIN : 1); }   // 落水游泳時再翻倍                                      // 三件鐵飢愜力掉得快八分
     wornWarm() { return this.wornList().some(s => ITEMS[s.n].warm); }
-    // 山海衣：五件穿齊、十重膽氣，衣上浮出獸紋；脫下任何一件即隱
-    totemReady() { return this.level() >= TOTEM_LEVEL && this.wornFull(); }
+    // 山海衣：五件穿齊、至少一件鎢鋼護具、十六重膽氣，衣上浮出獸紋；脫下任何一件即隱
+    wornTung() { return ARMOR_SLOTS.some(k => { const s = this.player.worn[k]; return s && ITEMS[s.n] && ITEMS[s.n].tung; }); }   // 身上有沒有鎢鋼護具
+    totemReady() { return this.level() >= TOTEM_LEVEL && this.wornFull() && this.wornTung(); }   // 山海衣：十六重、五件穿齊、至少一件鎢鋼
     totemOn() { return this.totemReady() && !this.player.totemOff; }
     toggleTotem() {
       const p = this.player; p.totemOff = !p.totemOff; this.barSig = '';
-      if (!this.totemReady()) this.message(p.totemOff ? '開關撥到「關」。' : '開關撥到「開」，但要五件穿齊、膽氣十重，獸紋才會顯。');
+      if (!this.totemReady()) this.message(p.totemOff ? '開關撥到「關」。' : '開關撥到「開」，但要五件穿齊、其中至少一件鎢鋼、膽氣十六重，獸紋才會顯。');
       else this.message(p.totemOff ? '山海衣收起獸紋，暫作普通服。' : '山海衣獸紋再現。'); SFX.toggle(); SFX.toggle();
     }
-    ladder() { return this.totemOn() ? Math.floor((this.level() - TOTEM_LEVEL) / 7) : -1; }     // 十至十六重 0，十七重 1，二十四重 2……
+    ladder() { return this.totemOn() ? Math.floor((this.level() - TOTEM_LEVEL) / 7) : -1; }     // 十六至二十二重 0，二十三重 1，三十重 2……
     dmgMult() { const k = this.ladder(); return (k < 0 ? 1 : Math.pow(1.15, k + 1)) * this.ironAtk() * this.diff.dmg * (this.player.swimming ? SWIM_DMG : 1); }        // 造成的傷害
     takenMult() { const k = this.ladder(); return (k < 0 ? 1 : Math.pow(1.15, -k)) * (1 - this.armorRed()) * this.diff.taken; }  // 受到的傷害
     totemNear(x, y) { return this.totemOn() && U.cheb(x, y, this.player.x, this.player.y) <= 7; }
@@ -156,7 +159,7 @@
       if (p.sel >= p.bag.length) p.sel = Math.max(0, p.bag.length - 1);
       this.barSig = ''; this.buildBag(); SFX.write();
       this.message(it.light ? '戴上「' + piece.n + '」。' : '穿上「' + piece.n + '」' + (old ? '，脫下「' + old.n + '」' : '') + '。減傷 ' + Math.round(this.armorRed() * 100) + '%。');
-      if (this.totemOn() && !was) this.toast('山海衣', '五件穿齊，十重膽氣，衣上浮出山海經裡的獸紋。七格內的獸慢一倍卻狠三分之二；你的攻擊 ' + Math.round(this.dmgMult() * 100) + '%、受傷 ' + Math.round(this.takenMult() * 100) + '%。');
+      if (this.totemOn() && !was) this.toast('山海衣', '五件穿齊、一件鎢鋼、十六重膽氣，衣上浮出山海經裡的獸紋。七格內的獸慢一倍卻狠三分之二；你的攻擊 ' + Math.round(this.dmgMult() * 100) + '%、受傷 ' + Math.round(this.takenMult() * 100) + '%。');
       return true;
     }
     repairWorn(slot) {   // 布件用麻布一、鐵件用鐵一，力 4：壽命回滿，損耗從 1.5 倍重新起算；燈帽則是續蠟燭
@@ -199,7 +202,7 @@
       if (l > l0) {
         let extra = '';
         if (l === SHIP_LEVEL) extra = '可以造孤帆與方舟了。';
-        else if (l === TOTEM_LEVEL) extra = '五件衣甲穿齊，衣上便浮出山海衣的獸紋：七格內獸慢而狠，你的攻擊 ×1.15。';
+        else if (l === TOTEM_LEVEL) extra = '五件衣甲穿齊、其中至少一件鎢鋼，衣上便浮出山海衣的獸紋：七格內獸慢而狠，你的攻擊 ×1.15。';
         else if (l > TOTEM_LEVEL && (l - TOTEM_LEVEL) % 7 === 0) extra = '山海衣再深一層：攻擊再 ×1.15，受傷再 ÷1.15。';
         else if (l === KILL_ONLY_LEVEL) extra = '從此膽氣只從斃敵對的生靈得來：白日八成、夜裡加半成。';
         else if (l === DECAY_LEVEL + 1) extra = '過了卅一重，三日一減，不低於卅一重。';
@@ -498,7 +501,27 @@
     openStove(t) { this.stoveAt = U.key(t.x, t.y); $('stove').classList.remove('hidden'); this.keys.clear(); this.action = null; this.stoveSig = ''; this.buildStove(); }
     closeStove() { $('stove').classList.add('hidden'); this.stoveAt = null; }
     stovePos() { const [x, y] = U.unkey(this.stoveAt); return { x, y }; }
-    fuelOf(name) { return FUEL[name] || (DB[name] && DB[name].flam > 0 ? DB[name].s * 15 : 0); }   // 一件燒幾息：煤精煤照表，木類筆畫乘十五
+    fuelOf(name) { const it = ITEMS[name]; if (it && it.kind === 'wear' && !it.iron && !it.light) return CLOTH_FUEL; return FUEL[name] || (DB[name] && DB[name].flam > 0 ? DB[name].s * 15 : 0); }   // 一件燒幾息：煤精煤照表，木類筆畫乘十五，布衣一百二十
+    // 舊鐵製品熔回鐵：鐵甲盔靴回配方裡鐵的一半（至少一塊）、鋼具一塊；鎢鋼件同理熔回鎢鋼。石具與神兵不熔
+    meltYield(name) {
+      const it = ITEMS[name]; if (!it) return null;
+      if (it.kind === 'wear' && it.iron) { const m = it.tung ? '鎢鋼' : '鐵', r = G.RECIPES.find(x => x.out === name); return { out: m, n: r && r.need[m] ? Math.max(1, Math.floor(r.need[m] / 2)) : 1 }; }
+      if (it.kind === 'tool' && it.dur) { if (it.tung) return { out: '鎢鋼', n: 1 }; if (name.charAt(0) === '鋼') return { out: '鐵', n: 1 }; }
+      return null;
+    }
+    meltables() {   // 囊裡與具欄裡能熔的，各記在哪
+      const list = []; this.player.bag.forEach((s, i) => { if (this.meltYield(s.n)) list.push({ n: s.n, from: 'bag', i, s }); }); this.player.tools.forEach((s, i) => { if (this.meltYield(s.n)) list.push({ n: s.n, from: 'tools', i, s }); }); return list;
+    }
+    stoveMelt(name) {
+      if (!this.stoveAt) return false;
+      const t = this.stovePos(), w = this.world, y = this.meltYield(name), p = this.player; if (!y) return false;
+      if (!w.stoveLit(t.x, t.y)) { this.message('灶是冷的，先添些柴。'); SFX.fail(); return false; }
+      const m = this.meltables().find(x => x.n === name); if (!m) return false;
+      if (m.from === 'bag') { p.bag.splice(m.i, 1); if (p.sel >= p.bag.length) p.sel = Math.max(0, p.bag.length - 1); } else { p.tools.splice(m.i, 1); if (p.tool >= p.tools.length) p.tool = p.tools.length - 1; }
+      this.addItem(y.out, y.n); this.barSig = ''; this.message('熔了「' + name + '」，得' + y.out + ' ×' + y.n + '。'); SFX.fuse();
+      this.fx.push({ type: 'float', x: t.x, y: t.y, text: y.out, color: G.INK.red, t: 0, dur: 1 });
+      this.buildBag(); this.buildStove(); return true;
+    }
     stoveFuel(name) {
       if (!this.stoveAt) return false;
       const t = this.stovePos(), w = this.world, sec = this.fuelOf(name);
@@ -528,18 +551,21 @@
       const cooks = [];
       for (const n in G.COOK) { const c = this.count(n); if (c > 0) cooks.push({ n, c, ck: G.COOK[n] }); }
       const needText = (n, ck) => n + (ck.n > 1 ? ' ×' + ck.n : '') + Object.keys(ck.extra || {}).map(m => ' + ' + m + ' ×' + ck.extra[m]).join('');
-      $('stove-cook').innerHTML = cooks.length ? cooks.map(({ n, c, ck }) => {
+      const melts = []; for (const m of this.meltables()) if (!melts.some(x => x.n === m.n)) melts.push({ n: m.n, c: this.meltables().filter(x => x.n === m.n).length, y: this.meltYield(m.n) });
+      const cookHtml = cooks.map(({ n, c, ck }) => {
         const can = lit && c >= (ck.n || 1) && Object.keys(ck.extra || {}).every(m => this.count(m) >= ck.extra[m]);
         return '<button data-cook="' + n + '"' + (can ? '' : ' disabled') + '><span class="ch">' + n + '</span> ×' + c + ' <small>' + this.stoveVerb(ck) + '：' + needText(n, ck) + ' → ' + ck.out + (ck.k > 1 ? ' ×' + ck.k : '') + '</small></button>';
-      }).join('') : '<span class="dim">囊裡沒有能烤、燒、煉的東西。</span>';
+      }).join('');
+      const meltHtml = melts.map(({ n, c, y }) => '<button data-melt="' + n + '"' + (lit ? '' : ' disabled') + '><span class="ch">' + n + '</span> ×' + c + ' <small>熔：' + n + ' → ' + y.out + ' ×' + y.n + '</small></button>').join('');   // 舊鐵製品熔回鐵
+      $('stove-cook').innerHTML = (cookHtml || meltHtml) ? cookHtml + meltHtml : '<span class="dim">囊裡沒有能烤、燒、煉、熔的東西。</span>';
       $('stove-fuel').querySelectorAll('button').forEach(b => b.addEventListener('click', () => this.stoveFuel(b.dataset.fuel)));
-      $('stove-cook').querySelectorAll('button').forEach(b => b.addEventListener('click', () => this.stoveCook(b.dataset.cook)));
+      $('stove-cook').querySelectorAll('button').forEach(b => b.addEventListener('click', () => b.dataset.melt ? this.stoveMelt(b.dataset.melt) : this.stoveCook(b.dataset.cook)));
     }
     tickStove() {         // 界面開著時：灶被拆了就關；火滅了或囊變了就重畫；剩幾息每息更新
       if (!this.stoveAt) return;
       const t = this.stovePos(), w = this.world;
       if (w.get(t.x, t.y) !== '灶' || U.cheb(this.player.x, this.player.y, t.x, t.y) > 1) { this.closeStove(); return; }
-      const sig = (w.stoveLit(t.x, t.y) ? 1 : 0) + '|' + this.player.bag.map(s => s.n + s.c).join(',');
+      const sig = (w.stoveLit(t.x, t.y) ? 1 : 0) + '|' + this.player.bag.map(s => s.n + s.c).join(',') + '|' + this.player.tools.map(s => s.n).join(',');
       if (sig !== this.stoveSig) { this.stoveSig = sig; this.buildStove(); }
       else if (w.stoveLit(t.x, t.y)) { const left = Math.round(w.stoveFuel(t.x, t.y)); if (left !== this.stoveLeft) { this.stoveLeft = left; $('stove-fire').innerHTML = '<i class="fire">火旺，還能燒 ' + left + ' 息</i>'; } }
     }
@@ -1107,7 +1133,9 @@
       const el = $('craft'); el.classList.toggle('hidden'); this.keys.clear();
       if (!el.classList.contains('hidden')) this.buildCraft();
     }
-    canCraft(r) { for (const n in r.need) if (this.count(n) < r.need[n]) return false; return true; }
+    canCraft(r) { const need = this.needOf(r); for (const n in need) if (this.count(n) < need[n]) return false; return true; }
+    regrindCost(s) { return Math.min(REGRIND_CAP, Math.pow(2, (s && s.rg) || 0)); }   // 1、2、4、8、8……
+    needOf(r) { return r.regrind ? { '石子': this.regrindCost(this.activeTool()) } : r.need; }   // 重磨的料看手上那把磨過幾次
     visibleRecipes() { return this.craftCat === '全部' ? G.RECIPES : G.RECIPES.filter(r => r.cat === this.craftCat); }
     buildCraft() {
       const p = this.player, list = $('craft-list'); list.innerHTML = '';
@@ -1123,13 +1151,16 @@
       this.visibleRecipes().forEach((r, i) => {
         const locked = r.level && this.level() < r.level;
         const row = document.createElement('div'); row.className = 'recipe' + (this.canCraft(r) && p.sta >= r.sta && !locked ? '' : ' cant');
-        const needs = Object.keys(r.need).map(n => '<span class="' + (this.count(n) >= r.need[n] ? 'ok' : 'lack') + '">' + n + ' ' + this.count(n) + '/' + r.need[n] + '</span>').join(' ');
+        const need = this.needOf(r);
+        const needs = Object.keys(need).map(n => '<span class="' + (this.count(n) >= need[n] ? 'ok' : 'lack') + '">' + n + ' ' + this.count(n) + '/' + need[n] + '</span>').join(' ');
         const owned = r.out && ITEMS[r.out] && ITEMS[r.out].slot && this.ownedPiece(r.out);
-        const title = (r.out ? r.out + (r.n > 1 ? ' ×' + r.n : '') : (r.regrind ? '重磨' : '磨礪')) + (owned ? ' <i class="dim">已有</i>' : '');
+        const spent = r.id === 'pouch' && p.pouches >= MAX_POUCHES;   // 錦囊：四個都用了就標「已用完」，再造也沒用
+        if (spent) row.classList.add('cant');
+        const title = (r.out ? r.out + (r.n > 1 ? ' ×' + r.n : '') : (r.regrind ? '重磨' : '磨礪')) + (owned ? ' <i class="dim">已有</i>' : '') + (spent ? ' <i class="dim">已用完</i>' : '');
         let btns = '';
         if (r.choose) btns = r.choose.map(c => '<button data-r="' + r.id + '" data-c="' + c + '">' + c + '</button>').join('');
-        else btns = '<button data-r="' + r.id + '">' + (r.regrind ? '磨' : owned ? '翻新' : '造') + '</button>';
-        row.innerHTML = '<span class="num">' + (i + 1) + '</span><b>' + title + '</b><span class="needs">' + needs + '</span><span class="sta">力 ' + r.sta + (locked ? '<br><i>需' + r.level + '重</i>' : '') + '</span><span class="note">' + r.note + '</span><span class="btns">' + btns + '</span>';
+        else btns = '<button data-r="' + r.id + '"' + (spent ? ' disabled' : '') + '>' + (spent ? '已用完' : r.regrind ? '磨' : owned ? '翻新' : '造') + '</button>';
+        row.innerHTML = '<span class="num">' + (i + 1) + '</span><b>' + title + '</b><span class="needs">' + needs + '</span><span class="sta">力 ' + r.sta + (locked ? '<br><i>需' + r.level + '重</i>' : '') + '</span><span class="note">' + r.note + (r.regrind && this.activeTool() ? '（這把第 ' + (((this.activeTool().rg) || 0) + 1) + ' 次：石子 ' + this.regrindCost(this.activeTool()) + '）' : '') + '</span><span class="btns">' + btns + '</span>';
         list.appendChild(row);
       });
       list.querySelectorAll('button').forEach(b => b.addEventListener('click', (ev) => { ev.stopPropagation(); this.craft(b.dataset.r, b.dataset.c); }));
@@ -1138,6 +1169,7 @@
       const p = this.player, r = G.RECIPES.find(x => x.id === id); if (!r || !this.canAct()) return;
       if (p.swimming) { this.message('游泳時做不了東西，先上岸。'); return; }
       if (r.level && this.level() < r.level) { this.message('膽氣不夠：要第 ' + r.level + ' 重。'); SFX.fail(); return; }
+      if (r.id === 'pouch' && p.pouches >= MAX_POUCHES) { this.message('四個錦囊都用了，囊再大也背不動，不用再織。'); SFX.fail(); return; }
       if (!this.canCraft(r)) { this.message('材料不夠。'); SFX.fail(); return; }
       if (p.sta < r.sta) { this.message('力氣不夠，歇一歇。'); SFX.fail(); return; }
       let out = r.out, n = r.n || 1;
@@ -1148,8 +1180,8 @@
         const tung = !!ITEMS[s.n].tung, extraSta = tung ? 5 : 0, food = tung ? 10 : 0;   // 鎢鋼具重磨耗力八、飽十
         if (p.sta < r.sta + extraSta) { this.message('力氣不夠，歇一歇（鎢鋼具要力 ' + (r.sta + extraSta) + '）。'); SFX.fail(); return; }
         if (food && p.food < food) { this.message('太餓了，磨不動鎢鋼。'); SFX.fail(); return; }
-        for (const m in r.need) this.removeItem(m, r.need[m]);
-        p.sta -= r.sta + extraSta; if (food) p.food -= food; s.dur = ITEMS[s.n].dur; this.barSig = ''; this.afterCraft(r); this.message('「' + s.n + '」磨利了。'); SFX.fuse(); this.buildCraft(); this.buildBag(); return;
+        const cost = this.regrindCost(s); this.removeItem('石子', cost); s.rg = (s.rg || 0) + 1;
+        p.sta -= r.sta + extraSta; if (food) p.food -= food; s.dur = ITEMS[s.n].dur; this.barSig = ''; this.afterCraft(r); this.message('「' + s.n + '」磨利了，用了石子 ' + cost + '；下次要 ' + this.regrindCost(s) + '。'); SFX.fuse(); this.buildCraft(); this.buildBag(); return;
       }
       const def = ITEMS[out], owned = def && def.slot ? this.ownedPiece(out) : null;
       if (owned) {       // 同一類衣甲只留一件：再造只是翻新
@@ -1604,7 +1636,7 @@
         if (hs) {
           const it = G.item(hs.n), tl = ITEMS[hs.n] || {};
           if (tl.slot) s += ' · <kbd>F</kbd> ' + (tl.light ? '戴上' : '穿上');
-          else if (hs.n === '錦囊') s += ' · <kbd>V</kbd> 用掉（囊多兩格、具欄多一格）';
+          else if (hs.n === '錦囊') s += p.pouches >= MAX_POUCHES ? ' · <i class="dim">錦囊已用完四個</i>' : ' · <kbd>V</kbd> 用掉（囊多兩格、具欄多一格，已用 ' + p.pouches + '／' + MAX_POUCHES + '）';
           else if (tl.tool && tl.dur) s += ' · <kbd>F</kbd> 移進具欄';
           else if (ch === '鼎') s += (hs.n === '蟾蜍肉' || hs.n === '毒蟾肉') ? ' · <kbd>F</kbd> 煉丹' : (FUEL[hs.n] || (DB[hs.n] && DB[hs.n].flam > 0)) ? ' · <kbd>F</kbd> 添柴' : '';
           else if (ch === '灶') s += ' · <kbd>F</kbd> 開灶';
