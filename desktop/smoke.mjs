@@ -32,8 +32,10 @@ try {
   ({ app, page } = await launch());
   const back = await page.evaluate(() => ({ save: !!localStorage.getItem('xieyi.save.v5'), cards: document.getElementById('saves').textContent }));
   ok('after closing and opening again the save is still there', back.save && /島 #/.test(back.cards), back);
-  const rect = await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; return { b: w.getBounds(), menu: w.isMenuBarVisible() }; });
-  ok('a 1280×800 window without a menu bar', rect.b.width === 1280 && rect.b.height === 800 && !rect.menu, rect);
+  const rect = await app.evaluate(({ BrowserWindow, screen }) => { const w = BrowserWindow.getAllWindows()[0]; return { b: w.getBounds(), menu: w.isMenuBarVisible(), area: screen.getPrimaryDisplay().workAreaSize }; });
+  // 1280×800；螢幕比這小（GitHub 的 Windows 測試機是 1024×768）就由系統縮到可用範圍內
+  const fitW = Math.min(1280, rect.area.width), fitH = Math.min(800, rect.area.height);
+  ok('a 1280×800 window (or as much of it as the screen holds) without a menu bar', Math.abs(rect.b.width - fitW) <= 16 && Math.abs(rect.b.height - fitH) <= 48 && !rect.menu, rect);
   await app.close();
 } catch (e) { checks.push('CRASH ' + e.message); }
 fs.rmSync(userData, { recursive: true, force: true });
