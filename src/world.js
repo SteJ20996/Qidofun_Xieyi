@@ -5,7 +5,7 @@
   const U = root.U, G = root.G, DB = G.DB;
   const CH = 16;                 // 區塊邊長（格）
   const STEP = 0.5;              // 模擬步長（秒）
-  const DAY = 240;               // 一晝夜（秒），潮汐隨之起落
+  const DAY = 300;               // 一晝夜（秒），潮汐隨之起落；v0.17 從 240 加長四分之一，要跟 game.js 的 DAY 一致
   const N8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
   const N4 = [[0, -1], [-1, 0], [1, 0], [0, 1]];
   // 天氣：雨。一場雨下 RAIN_MIN–RAIN_MAX 秒，停後隔 RAIN_GAP_MIN–RAIN_GAP_MAX 秒再來（真隨機，不走種子）；

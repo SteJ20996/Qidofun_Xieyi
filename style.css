@@ -164,7 +164,8 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 /* 覆蓋層：開場與幫助 */
 .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(239,229,207,.55); backdrop-filter: blur(3px); z-index: 10; }
 .panel { background: var(--paper); border: 2px solid var(--ink); box-shadow: 8px 8px 0 rgba(28,26,23,.12), 0 20px 50px rgba(0,0,0,.2); padding: 28px 36px; max-width: 860px; width: calc(100vw - 40px); max-height: calc(100vh - 40px); overflow: auto; position: relative; }
-.panel::before { content: ""; position: absolute; inset: 6px; border: 1px solid rgba(28,26,23,.35); pointer-events: none; }
+/* 面板內側的細框：用 outline 畫在可見的框上，面板捲動時框不會跟著內容跑掉（以前用絕對定位的 ::before，捲下去字就像溢出框外） */
+.panel { outline: 1px solid rgba(28,26,23,.35); outline-offset: -8px; }
 .panel h1 { margin: 0; font: 88px/1 var(--font); letter-spacing: .1em; display: flex; gap: .15em; }
 .panel h1 span:first-child { color: var(--red); }
 .panel p.sub.motto { margin-top: -6px; opacity: .72; }

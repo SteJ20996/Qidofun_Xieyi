@@ -38,6 +38,7 @@ const result = await page.evaluate(async () => {
   const toasts = () => document.getElementById('toasts').textContent;
   const hidden = (id) => document.getElementById(id).classList.contains('hidden');
   const takeYes = () => { if (!hidden('takeask')) document.getElementById('takeask-yes').click(); };   // 拆人造的東西會先問，測試裡直接答「拆」
+  const calm = () => { p.san = 100; p.insane = false; p.ctrl = true; p.zeroSan = 0; p.hp = Math.max(p.hp, 60); p.knock = 0; setDay(0.3); g.ents.list = g.ents.list.filter(e => e.type !== '魄'); g.action = null; g.keys.clear(); };   // 測試裡真實時間會過，夜裡魄把愜意吸到零人就「手腳不聽使喚」；長等待之後先弄清醒
   const goNextTo = (x, y) => { w.set(x - 1, y, '草'); p.x = p.rx = x - 1; p.y = p.ry = y; face(1, 0); };
   const setDay = (frac) => { w.time = Math.floor(w.time / DAY) * DAY + DAY * frac; };
   const until = async (cond, ms) => { const t0 = performance.now(); while (!cond() && performance.now() - t0 < (ms || 8000)) await sleep(40); return cond(); };
@@ -270,25 +271,29 @@ const result = await page.evaluate(async () => {
   ok('a 孤帆 is craftable at level 8 for 8 planks, an oar and a sail', g.count('孤帆') === 1 && g.level() === 8 && g.count('木板') === 0, [g.count('孤帆'), g.level()]);
   g.addItem('木板', 36); g.addItem('船槳', 4); g.addItem('船帆', 3); g.addItem('鐵', 8); g.addItem('麻布', 6); g.addItem('鎢鋼', 2); p.sta = 100; g.craft('ark');
   ok('a 方舟 costs far more: 36 planks, 4 oars, 3 sails, 8 iron, 6 cloth, 2 tungsten steel', g.count('方舟') === 1 && g.count('木板') === 0 && g.count('鐵') === 0 && g.count('鎢鋼') === 0, [g.count('方舟'), g.count('木板')]);
-  // 衣甲與山海衣：五件穿齊、十重膽氣才有獸紋；脫下一件就是普通衣甲
-  p.cour = g.levelAt(10); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']);
-  g.addItem('內襯', 1); g.addItem('布褲', 1); g.addItem('布甲', 1); g.addItem('布帽', 1); g.addItem('布靴', 1);
+  // 衣甲與山海衣：五件穿齊、至少一件鎢鋼、十六重膽氣才有獸紋；脫下一件就是普通衣甲
+  p.cour = g.levelAt(16); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']);
+  g.addItem('內襯', 1); g.addItem('布褲', 1); g.addItem('布甲', 1); g.addItem('布帽', 1); g.addItem('布靴', 1); g.addItem('鎢鋼靴', 1);
   for (const n of ['內襯', '布褲', '布甲', '布帽']) { hold(n); g.pressPlace(); }
   ok('four cloth pieces worn: 9% less damage, no 山海衣 yet', Math.abs(g.armorRed() - 0.09) < 1e-9 && !g.totemOn() && g.wornList().length === 4 && g.dmgMult() === 1, g.armorRed());
   hold('布靴'); g.useItem();
-  ok('fifth piece at level 10 wakes the 山海衣: attack ×1.15, taken ×1 (×0.9 from cloth)', g.totemOn() && Math.abs(g.armorRed() - 0.10) < 1e-9 && Math.abs(g.dmgMult() - 1.15) < 1e-9 && Math.abs(g.takenMult() - 0.9) < 1e-9, [g.dmgMult(), g.takenMult()]);
+  ok('five cloth pieces at level 16 are still plain clothes: a tungsten piece is required', !g.totemOn() && !g.totemReady() && g.wornList().length === 5 && Math.abs(g.armorRed() - 0.10) < 1e-9 && g.dmgMult() === 1, g.armorRed());
+  hold('鎢鋼靴'); g.useItem();
+  ok('swapping in 鎢鋼靴 wakes the 山海衣: attack ×1.15 (and the iron piece its 1/60), taken ×0.83 (17% armour)', g.totemOn() && Math.abs(g.armorRed() - 0.17) < 1e-9 && Math.abs(g.dmgMult() - 1.15 * (1 + 0.05 / 3)) < 1e-9 && Math.abs(g.takenMult() - 0.83) < 1e-9 && g.has('布靴'), [g.dmgMult(), g.takenMult()]);
+  p.cour = g.levelAt(15); ok('at level 15 the same five pieces are plain clothes', !g.totemOn() && !g.totemReady() && Math.abs(g.dmgMult() - (1 + 0.05 / 3)) < 1e-9); p.cour = g.levelAt(16);
   document.getElementById('totemswitch').click();
-  ok('the switch turns the 山海衣 off into plain clothes', p.totemOff && !g.totemOn() && g.totemReady() && g.dmgMult() === 1 && Math.abs(g.takenMult() - 0.9) < 1e-9);
+  ok('the switch turns the 山海衣 off into plain clothes', p.totemOff && !g.totemOn() && g.totemReady() && Math.abs(g.dmgMult() - (1 + 0.05 / 3)) < 1e-9 && Math.abs(g.takenMult() - 0.83) < 1e-9);
   document.getElementById('totemswitch').click();
   ok('and back on', !p.totemOff && g.totemOn());
-  p.cour = g.levelAt(17); ok('level 17: attack ×1.15², taken ÷1.15', Math.abs(g.dmgMult() - 1.15 * 1.15) < 1e-9 && Math.abs(g.takenMult() - 0.9 / 1.15) < 1e-9);
-  p.cour = g.levelAt(24); ok('level 24: attack ×1.15³, taken ÷1.15²', Math.abs(g.dmgMult() - Math.pow(1.15, 3)) < 1e-9 && Math.abs(g.takenMult() - 0.9 / 1.15 / 1.15) < 1e-9);
-  p.cour = g.levelAt(10); p.hp = 100; p.hitWin = { start: -99, n: 0 }; g.hit({ type: '虎', x: p.x + 1, y: p.y }, 20);
-  ok('near the 山海衣 beasts hit 5/3 harder; cloth still takes a tenth off', Math.abs(p.hp - (100 - 20 * 5 / 3 * 0.9)) < 0.1, p.hp);
+  p.cour = g.levelAt(22); ok('level 22 is still the first step', Math.abs(g.dmgMult() - 1.15 * (1 + 0.05 / 3)) < 1e-9 && Math.abs(g.takenMult() - 0.83) < 1e-9);
+  p.cour = g.levelAt(23); ok('level 23: attack ×1.15², taken ÷1.15', Math.abs(g.dmgMult() - 1.15 * 1.15 * (1 + 0.05 / 3)) < 1e-9 && Math.abs(g.takenMult() - 0.83 / 1.15) < 1e-9);
+  p.cour = g.levelAt(30); ok('level 30: attack ×1.15³, taken ÷1.15²', Math.abs(g.dmgMult() - Math.pow(1.15, 3) * (1 + 0.05 / 3)) < 1e-9 && Math.abs(g.takenMult() - 0.83 / 1.15 / 1.15) < 1e-9);
+  p.cour = g.levelAt(16); p.hp = 100; p.hitWin = { start: -99, n: 0 }; g.hit({ type: '虎', x: p.x + 1, y: p.y }, 20);
+  ok('near the 山海衣 beasts hit 5/3 harder; the armour still takes 17% off (20 × 5/3 × 0.83 → 28)', p.hp === 100 - Math.round(20 * 5 / 3 * 0.83), p.hp);
   w.set(p.x + 3, p.y, '草'); const tt = g.ents.add('虎', p.x + 3, p.y, { moveT: 0, calm: 0, atk: 0 }); g.ents.update(0.01, g);
   ok('near the 山海衣 hostile beasts move at half speed', Math.abs(tt.moveT - 0.6) < 1e-6, tt.moveT); g.ents.remove(tt);
   g.takeOff('盔');
-  ok('taking one piece off turns it back into plain clothes', !g.totemOn() && g.dmgMult() === 1 && Math.abs(g.takenMult() - 0.92) < 1e-9 && g.has('布帽'), g.takenMult());
+  ok('taking one piece off turns it back into plain clothes', !g.totemOn() && Math.abs(g.dmgMult() - (1 + 0.05 / 3)) < 1e-9 && Math.abs(g.takenMult() - 0.85) < 1e-9 && g.has('布帽'), g.takenMult());
   hold('布帽'); g.pressPlace();
   // 衣甲損耗：一百八十日；十五息內挨打加速且累加；五下碎
   const vest = p.worn['甲']; ok('armor lasts 180 days', Math.round(vest.dur / DAY) === 180 && vest.wm === 1, vest.dur / DAY);
@@ -406,11 +411,11 @@ const result = await page.evaluate(async () => {
   ok('from the fifty-first pill each adds half, rounded to whole points (251, 251)', after51 === 251 && p.hpMax === 251 && p.pillsEaten === 52, [after51, p.hpMax]);
   p.hp = p.hpMax; await sleep(60);
   ok('hp bar and label follow the raised maximum', document.getElementById('hplabel').textContent.indexOf('251') >= 0, document.getElementById('hplabel').textContent);
-  p.cour = g.levelAt(10); g.addItem('內襯', 1); g.addItem('布褲', 1); g.addItem('布甲', 1); g.addItem('布帽', 1); g.addItem('布靴', 1); for (const n of ['內襯', '布褲', '布甲', '布帽', '布靴']) { hold(n); g.pressPlace(); }
+  p.cour = g.levelAt(16); g.addItem('內襯', 1); g.addItem('布褲', 1); g.addItem('布甲', 1); g.addItem('布帽', 1); g.addItem('鎢鋼靴', 1); for (const n of ['內襯', '布褲', '布甲', '布帽', '鎢鋼靴']) { hold(n); g.pressPlace(); }
   face(1, 0); w.set(T().x, T().y, '草'); const rt = g.ents.add('虎', T().x, T().y, { moveT: 99, calm: 99 }); hold('石劍'); p.atkT = 0; g.pressGather();
-  ok('damage dealt is a whole number (40 × 1.15 = 46)', rt.hp === 300 - 46 && Number.isInteger(rt.hp), rt.hp);
+  ok('damage dealt is a whole number (40 × 1.15 × (1 + 0.05/3) = 46.77 → 47)', rt.hp === 300 - 47 && Number.isInteger(rt.hp), rt.hp);
   p.hp = 100; g.hit({ type: '虎', x: p.x + 1, y: p.y }, 20);
-  ok('damage taken is a whole number (20 × 5/3 × 0.9 = 30)', p.hp === 70 && Number.isInteger(p.hp), p.hp);
+  ok('damage taken is a whole number (20 × 5/3 × 0.83 = 27.67 → 28)', p.hp === 72 && Number.isInteger(p.hp), p.hp);
   g.ents.remove(rt); for (const k of ['襯', '褲', '甲', '盔', '靴']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); p.cour = 0; p.hp = 100; p.hurtT = 0;
   p.hpMax = 100; p.hp = 100; p.pillsEaten = 0; p.pillsMade = 0; g.removeItem('丹', 9); g.removeItem('蟾蜍肉', 9); g.removeItem('毒蟾肉', 9); w.set(ding.x, ding.y, '土');
   // 龜：少見不咬人，命五十；龜甲卜之，吉則五日無魄
@@ -742,6 +747,7 @@ const result = await page.evaluate(async () => {
   }
 
   // ============ G. 地標、碑、問路、潮汐、存檔 ============
+  calm();
   const by = (id) => w.places.find(x => x.id === id);
   const ta = by('ta'); goNextTo(ta.x, ta.y); g.pressGather(); await sleep(30); await press('KeyE', 20);
   ok('塔 reveals the island', w.places.every(x => x.seen) && p.places.ta === 2);
@@ -790,6 +796,7 @@ const result = await page.evaluate(async () => {
     ok('true random helper and weather save fields exist', typeof U.trueRand() === 'number' && U.trueRand() < 1 && typeof sw.rainUntil === 'number' && typeof sw.nextRainAt === 'number');
     w.rainLampP = 1 / 1500; w.rainUntil = 0; }
   // ============ v0.14：神兵成類、小屋、霧障會動、數值燈與提醒 ============
+  calm();
   ok('god weapons have their own craft category 神兵', G.CRAFT_CATS.indexOf('神兵') > 0 && G.RECIPES.find(r => r.id === 'hammer').cat === '神兵' && G.RECIPES.find(r => r.id === 'seagod').cat === '神兵' && !G.RECIPES.some(r => r.cat === '工具' && (r.id === 'hammer' || r.id === 'seagod')));
   // —— 小屋：牆與門圍起的小空間擋獸、擋魄，多小才算看難度（獸／魄）：簡單 28／18、一般 18／8、困難 10／擋不住
   { const cx = p.x + 20, cy = p.y + 20, d0 = g.diff;
@@ -1016,6 +1023,7 @@ const result = await page.evaluate(async () => {
     driftPad.axes[1] = 0.2; await frames(3); ok('moving it up from there (0.9 → 0.2) walks north', g.keys.has('KeyW')); driftPad.axes[1] = 0.9; await frames(3);
     PAD.useStandard(); navigator.getGamepads = real; PAD.releaseAll(); PAD.seen = false; PAD.id = ''; PAD.index = -1; const kl = document.getElementById('keys'); if (PAD.keysHtml !== null) kl.innerHTML = PAD.keysHtml; await frames(2); g.keys.clear(); }
   // ============ 拆人造的東西先問一聲；烤肉烤蛇回血 ============
+  calm();
   { face(0, 1); w.set(T().x, T().y, '燈'); unarm(); g.action = null; const lampAt = T();
     g.keys.add('KeyE'); g.pressGather();
     ok('E on a placed lamp asks first: popup up, world paused, no gather started, held E dropped', !hidden('takeask') && g.paused && !!g.takeAsk && !g.action && !g.keys.has('KeyE') && document.getElementById('takeask-text').textContent.indexOf('燈') >= 0);
@@ -1032,7 +1040,50 @@ const result = await page.evaluate(async () => {
     p.hp = hp0; g.addItem('烤蛇', 1); hold('烤蛇'); g.useItem();
     ok('烤蛇 heals 8', Math.round(p.hp) === hp0 + 8, p.hp);
     p.hp = p.hpMax - 3; g.addItem('烤肉', 1); hold('烤肉'); g.useItem();
-    ok('healing never passes the max', Math.round(p.hp) === p.hpMax); p.hp = p.hpMax; }
+    ok('healing never passes the max', Math.round(p.hp) === p.hpMax); p.hp = p.hpMax;
+    // 錦囊用滿四個：製作欄標「已用完」、鈕灰掉、再造被拒
+    const pch0 = p.pouches; p.pouches = 4; g.craftCat = '全部'; g.buildCraft();
+    const prow = [...document.querySelectorAll('#craft-list .recipe')].find(r => r.textContent.indexOf('錦囊') >= 0);
+    ok('with four pouches used the craft row says 已用完 and its button is disabled', !!prow && prow.textContent.indexOf('已用完') >= 0 && prow.classList.contains('cant') && prow.querySelector('button').disabled, prow && prow.textContent.slice(0, 40));
+    g.addItem('麻布', 3); g.addItem('棉', 2); p.sta = 100; const pc0 = g.count('錦囊'); g.craft('pouch');
+    ok('crafting a fifth pouch is refused', g.count('錦囊') === pc0 && g.count('麻布') >= 3 && g.msgText.indexOf('都用了') >= 0);
+    g.addItem('錦囊', 1); hold('錦囊'); g.msgText = ''; g.msgUntil = 0; g.hudSig = ''; g.updateHUD();   // 清掉剛才的回饋訊息，提示列才會寫面前與手上的東西
+    ok('the hint for a pouch in hand says they are all used', document.getElementById('msg').textContent.indexOf('已用完四個') >= 0, document.getElementById('msg').textContent.slice(0, 80));
+    p.pouches = 1; g.buildCraft(); const prow2 = [...document.querySelectorAll('#craft-list .recipe')].find(r => r.textContent.indexOf('錦囊') >= 0);
+    ok('with fewer used the row is craftable again', !!prow2 && prow2.textContent.indexOf('已用完') < 0 && !prow2.querySelector('button').disabled);
+    p.pouches = pch0; g.removeItem('錦囊', 9); g.removeItem('麻布', 9); g.removeItem('棉', 9); g.barSig = ''; g.buildBag();
+    // 重磨遞增：同一把 1、2、4、8、8；換一把從 1 起
+    g.addItem('石劍', 1); const rsw = tool('石劍'); rsw.rg = 0; hold('石劍'); g.removeItem('石子', 99); g.addItem('石子', 30); p.sta = 100; p.food = 100;
+    const costs = []; for (let i = 0; i < 5; i++) { const c0 = g.count('石子'); rsw.dur = 3; g.craft('regrind'); costs.push(c0 - g.count('石子')); }
+    ok('regrinding the same tool costs 1, 2, 4, 8, 8 pebbles', costs.join(',') === '1,2,4,8,8' && rsw.rg === 5 && rsw.dur === 40, costs);
+    g.buildCraft(); const rrow = [...document.querySelectorAll('#craft-list .recipe')].find(r => r.textContent.indexOf('重磨') >= 0);
+    ok('the craft row shows the next cost for the tool in hand (6th: 8)', !!rrow && rrow.textContent.indexOf('第 6 次：石子 8') >= 0 && rrow.textContent.indexOf('石子 7/8') >= 0, rrow && rrow.textContent.slice(0, 80));
+    g.removeItem('石子', 99); g.addItem('石子', 7); rsw.dur = 3; g.craft('regrind');
+    ok('seven pebbles are not enough for an eight-pebble regrind', rsw.dur === 3 && g.count('石子') === 7 && g.msgText.indexOf('材料不夠') >= 0);
+    g.addItem('石鎬', 1); const rpk = tool('石鎬'); rpk.rg = 0; hold('石鎬'); rpk.dur = 3; g.craft('regrind');
+    ok('another tool starts at one pebble again', rpk.dur === 40 && g.count('石子') === 6 && rpk.rg === 1);
+    g.save(); const svr = JSON.parse(localStorage.getItem('xieyi.save.v5')); const savedSword = (svr.player.tools || []).concat(svr.player.bag || []).find(x => x.n === '石劍');
+    ok('the regrind count is saved with the tool', !!savedSword && savedSword.rg === 5);
+    g.removeItem('石子', 99); p.tools = p.tools.filter(x => x !== rsw && x !== rpk); p.tool = -1; g.barSig = ''; g.buildBag(); }
+  // ============ 舊布當柴、舊鐵熔回鐵 ============
+  calm();
+  { face(0, 1); w.set(T().x, T().y, '灶'); for (const [k] of w.stoves) w.stoves.set(k, 0); const sx = T().x, sy = T().y;
+    g.addItem('布甲', 1); g.addItem('鐵甲', 1); g.addItem('鎢鋼盔', 1); g.addItem('鋼劍', 1); g.addItem('石刀', 1); const iron0 = g.count('鐵'), w0 = g.count('鎢鋼');
+    g.pressPlace();
+    const fuelBtn = document.querySelector('#stove-fuel button[data-fuel="布甲"]');
+    ok('an old cloth vest is listed as fuel worth 120 breaths', !!fuelBtn && fuelBtn.textContent.indexOf('+120 息') >= 0, fuelBtn && fuelBtn.textContent);
+    const meltBefore = document.querySelector('#stove-cook button[data-melt="鐵甲"]');
+    ok('iron armour is listed under 熔 but greyed while the stove is cold; a stone knife is not listed', !!meltBefore && meltBefore.disabled && !document.querySelector('#stove-cook button[data-melt="石刀"]'));
+    fuelBtn.click();
+    ok('burning the vest lights the stove for 120 breaths and the vest is gone', w.stoveLit(sx, sy) && Math.abs(w.stoveFuel(sx, sy) - 120) < 1.5 && g.count('布甲') === 0, w.stoveFuel(sx, sy));
+    document.querySelector('#stove-cook button[data-melt="鐵甲"]').click();
+    ok('melting 鐵甲 gives two iron (half of five, rounded down)', g.count('鐵') === iron0 + 2 && g.count('鐵甲') === 0);
+    document.querySelector('#stove-cook button[data-melt="鋼劍"]').click();
+    ok('a steel sword from the tool bar melts into one iron', g.count('鐵') === iron0 + 3 && !tool('鋼劍'));
+    document.querySelector('#stove-cook button[data-melt="鎢鋼盔"]').click();
+    ok('a tungsten helm melts into one tungsten steel', g.count('鎢鋼') === w0 + 1 && g.count('鎢鋼盔') === 0);
+    ok('nothing left to melt: the 熔 buttons are gone, the knife stays', !document.querySelector('#stove-cook button[data-melt]') && !!tool('石刀'));
+    g.closeStove(); w.set(sx, sy, '草'); g.removeItem('鐵', 99); g.removeItem('鎢鋼', 99); p.tools = p.tools.filter(x => x.n !== '石刀'); p.tool = -1; g.barSig = ''; g.buildBag(); }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
   // —— 三格存檔：第一格沿用舊鍵；每格帶摘要
