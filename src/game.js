@@ -1361,7 +1361,7 @@
           ev.preventDefault(); return;
         }
         if (!$('voyage').classList.contains('hidden')) return;
-        if (this.userPaused) { if (ev.code === 'Escape') { this.togglePause(); ev.preventDefault(); } return; }
+        if (this.userPaused) { if (ev.code === 'Escape') { if (!$('help').classList.contains('hidden')) $('help').classList.add('hidden'); else this.togglePause(); ev.preventDefault(); } return; }   // 暫停時開著幫助：Esc 先關幫助
         if (this.player.knock > 0) { ev.preventDefault(); return; }
         if (!$('read').classList.contains('hidden')) { if (['KeyE', 'Enter', 'Space', 'Escape'].indexOf(ev.code) >= 0) { this.closeRead(); ev.preventDefault(); } return; }
         if (this.chestAt) { if (['KeyE', 'Escape'].indexOf(ev.code) >= 0) { this.closeChest(); ev.preventDefault(); } return; }
@@ -1425,6 +1425,8 @@
       $('btn-pause').addEventListener('click', () => this.togglePause());
       $('totemswitch').addEventListener('click', () => { if (!this.player.dead) this.toggleTotem(); });
       $('pause-resume').addEventListener('click', () => this.togglePause());
+      $('pause-help').addEventListener('click', () => $('help').classList.toggle('hidden'));
+      $('pause-home').addEventListener('click', () => { this.save(); location.reload(); });   // 回到主頁：先存檔，再回起始頁
       $('btn-map').addEventListener('click', () => { if (this.userPaused || this.player.dead || this.player.knock > 0) return; $('journal').classList.add('hidden'); $('craft').classList.add('hidden'); this.toggleMap(); });
       $('minimap').addEventListener('click', () => $('btn-map').click());
       $('seaask-go').addEventListener('click', () => this.seaGo());
