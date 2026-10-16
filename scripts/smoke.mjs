@@ -876,43 +876,52 @@ const result = await page.evaluate(async () => {
     p.food = 100; p.san = 100; p.warnLow = {}; const d0 = g.diff; g.diff = XIEYI.DIFF.hard; p.warm = 10; g.hudSig = ''; g.updateHUD(); await sleep(250);
     ok('hard mode: the outline flashes but there is no popup', bar('warm').classList.contains('low') && hidden('warn') && !g.paused && XIEYI.DIFF.hard.warn === false && XIEYI.DIFF.normal.warn === true);
     g.diff = d0; p.warm = 100; p.warnLow = {}; g.warnEnabled = false; g.hudSig = ''; g.updateHUD(); }
-  // ============ 手柄：Gamepad API，灌一支假手柄進去 ============
-  { const fake = { id: 'Fake Pro (STANDARD GAMEPAD Vendor: 057e Product: 2009)', index: 0, connected: true, mapping: 'standard', buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0, touched: false })), axes: [0, 0, 0, 0], timestamp: 0 };
+  // ============ 手柄：Gamepad API，灌假手柄進去 ============
+  { const mkPad = (id, mapping, nb, na) => ({ id, index: 0, connected: true, mapping, buttons: Array.from({ length: nb }, () => ({ pressed: false, value: 0, touched: false })), axes: Array.from({ length: na }, () => 0), timestamp: 0 });
+    const fake = mkPad('Fake Pro (STANDARD GAMEPAD Vendor: 057e Product: 2009)', 'standard', 17, 4);
     const real = navigator.getGamepads; navigator.getGamepads = () => [fake];
-    const pressBtn = (i, on) => { fake.buttons[i].pressed = on; fake.buttons[i].value = on ? 1 : 0; };
+    const pressBtn = (pad, i, on) => { pad.buttons[i].pressed = on; pad.buttons[i].value = on ? 1 : 0; };
     const frames = (n) => new Promise((res) => { let k = 0; const f = () => { if (++k >= n) res(); else requestAnimationFrame(f); }; requestAnimationFrame(f); });
-    ok('pad layer is loaded, nothing seen yet', !!window.PAD && !PAD.seen && PAD.enabled);
+    const keysLine = () => document.getElementById('keys').textContent;
+    ok('pad layer is loaded, nothing seen yet, the keys line still describes the keyboard', !!window.PAD && !PAD.seen && PAD.enabled && keysLine().indexOf('WASD') === 0);
     for (const id of ['craft', 'map', 'journal', 'help', 'chest', 'stove', 'warn', 'read']) document.getElementById(id).classList.add('hidden'); g.closeStove(); g.chestAt = null; g.keys.clear();
-    pressBtn(1, true); await frames(3);
-    ok('pressing A on a standard pad: the pad is recognised and E is held (gather/attack)', PAD.seen && PAD.standard && g.keys.has('KeyE') && toasts().indexOf('手柄已連上') >= 0);
-    pressBtn(1, false); await frames(3);
+    pressBtn(fake, 1, true); await frames(3);
+    ok('pressing A on a standard pad: the pad is recognised, E is held, the keys line now describes the pad', PAD.seen && PAD.standard && g.keys.has('KeyE') && toasts().indexOf('手柄已連上') >= 0 && keysLine().indexOf('手柄') === 0);
+    pressBtn(fake, 1, false); await frames(3);
     ok('letting go of A releases E', !g.keys.has('KeyE'));
-    fake.axes[0] = 0.9; await frames(3);
+    for (let i = 1; i <= 4; i++) { w.set(p.x + i, p.y, '草'); const e = g.ents.at(p.x + i, p.y); if (e) g.ents.remove(e); }
+    const x0 = p.x; fake.axes[0] = 0.9; await frames(3);
     ok('left stick to the right holds D', g.keys.has('KeyD'));
+    await until(() => p.x > x0, 2000);
+    ok('and the character actually walks east', p.x > x0, [x0, p.x]);
     fake.axes[0] = 0; await frames(3); ok('stick back to centre releases D', !g.keys.has('KeyD'));
-    pressBtn(12, true); await frames(3); ok('d-pad up holds W', g.keys.has('KeyW')); pressBtn(12, false); await frames(3);
+    pressBtn(fake, 12, true); await frames(3); ok('d-pad up holds W', g.keys.has('KeyW')); pressBtn(fake, 12, false); await frames(3);
     const sel0 = p.sel; fake.axes[2] = 0.9; await frames(3); fake.axes[2] = 0; await frames(2);
     ok('right stick to the right moves the bag selection one slot', p.bag.length < 2 || p.sel === (sel0 + 1) % p.bag.length, [sel0, p.sel, p.bag.length]);
-    pressBtn(9, true); await frames(3); pressBtn(9, false); await frames(3);
+    pressBtn(fake, 9, true); await frames(3); pressBtn(fake, 9, false); await frames(3);
     ok('＋ opens the craft panel and the focus lands inside it', !hidden('craft') && !!document.querySelector('#craft .padfocus'));
-    const f0 = document.querySelector('#craft .padfocus'); pressBtn(13, true); await frames(3); pressBtn(13, false); await frames(2);
+    const f0 = document.querySelector('#craft .padfocus'); pressBtn(fake, 13, true); await frames(3); pressBtn(fake, 13, false); await frames(2);
     ok('d-pad down moves the focus to another control in the panel', document.querySelector('#craft .padfocus') !== f0 && !!document.querySelector('#craft .padfocus'));
-    pressBtn(0, true); await frames(3); pressBtn(0, false); await frames(3);
+    pressBtn(fake, 0, true); await frames(3); pressBtn(fake, 0, false); await frames(3);
     ok('B closes the panel and clears the focus', hidden('craft') && !document.querySelector('.padfocus'));
+    pressBtn(fake, 0, true); await frames(3); pressBtn(fake, 0, false); await frames(3);
+    ok('B with nothing open pauses; the pause panel has 回到主頁 and 手柄對應 and the focus sits in it', !hidden('pause') && g.userPaused && !!document.getElementById('pause-home') && !!document.getElementById('pause-pad') && !!document.querySelector('#pause .padfocus'));
+    pressBtn(fake, 0, true); await frames(3); pressBtn(fake, 0, false); await frames(3);
+    ok('B again resumes', hidden('pause') && !g.userPaused);
     face(0, 1); w.set(T().x, T().y, '灶'); for (const [k] of w.stoves) w.stoves.set(k, 0); g.addItem('木', 2); g.pressPlace(); await frames(3);
     const fb = document.querySelector('#stove .padfocus');
     ok('the stove panel gets a focus on its first button (a fuel)', !!fb && !!fb.dataset.fuel, fb && fb.outerHTML.slice(0, 60));
-    pressBtn(1, true); await frames(3); pressBtn(1, false); await frames(3);
+    pressBtn(fake, 1, true); await frames(3); pressBtn(fake, 1, false); await frames(3);
     ok('A on the focused button fuels the stove', w.stoveLit(T().x, T().y));
-    pressBtn(0, true); await frames(3); pressBtn(0, false); await frames(3); ok('B leaves the stove', hidden('stove'));
+    pressBtn(fake, 0, true); await frames(3); pressBtn(fake, 0, false); await frames(3); ok('B leaves the stove', hidden('stove'));
     w.set(T().x, T().y, '草');
     g.warnEnabled = true; p.warnLow = {}; p.hp = p.hpMax * 0.1; await until(() => !hidden('warn'), 2000);
-    pressBtn(1, true); await frames(3); pressBtn(1, false); await frames(3);
+    pressBtn(fake, 1, true); await frames(3); pressBtn(fake, 1, false); await frames(3);
     ok('A closes the low-stat popup like Enter', hidden('warn') && !g.paused); g.warnEnabled = false; p.hp = p.hpMax; p.warnLow = {};
     PAD.learn(); await frames(2);
-    ok('the mapping wizard opens on step 1', !hidden('padmap') && document.getElementById('padmap-text').textContent.indexOf('第 1／20 步') >= 0);
+    ok('the mapping wizard opens on step 1 with a live readout of what the browser sees', !hidden('padmap') && document.getElementById('padmap-text').textContent.indexOf('第 1／20 步') >= 0 && document.getElementById('padmap-live').textContent.indexOf('17 鍵 4 軸') >= 0);
     const order = [5, 4, 7, 6, 1, 0, 3, 2, 9, 8, 11, 10, 15, 14, 13, 12];   // A B X Y L R ZL ZR － ＋ L3 R3 上下左右 要按的實體鍵，全部錯位
-    for (const i of order) { pressBtn(i, true); await frames(3); pressBtn(i, false); await frames(3); }
+    for (const i of order) { pressBtn(fake, i, true); await frames(3); pressBtn(fake, i, false); await frames(3); }
     ok('after sixteen buttons the wizard asks for the left stick', !hidden('padmap') && document.getElementById('padmap-text').textContent.indexOf('左搖桿往右') >= 0, document.getElementById('padmap-text').textContent.slice(0, 30));
     fake.axes[2] = -0.9; await frames(3); fake.axes[2] = 0; await frames(3);   // 這支手柄把左搖桿往右推成軸 2 的負值
     fake.axes[3] = 0.9; await frames(3); fake.axes[3] = 0; await frames(3);
@@ -920,11 +929,33 @@ const result = await page.evaluate(async () => {
     fake.axes[1] = 0.9; await frames(3); fake.axes[1] = 0; await frames(3);
     const saved = (JSON.parse(localStorage.getItem('xieyi.pad') || '{}'))[fake.id];
     ok('the learned mapping is saved per pad id: A is now button 5, up is 15, left stick x is axis 2 inverted', hidden('padmap') && PAD.custom && PAD.map.A === 5 && PAD.map.UP === 15 && PAD.axes.lx[0] === 2 && PAD.axes.lx[1] === -1 && !!saved && saved.buttons.A === 5, saved);
-    pressBtn(5, true); await frames(3);
-    ok('with the learned mapping, physical button 5 is A: E is held', g.keys.has('KeyE')); pressBtn(5, false); await frames(3);
+    pressBtn(fake, 5, true); await frames(3);
+    ok('with the learned mapping, physical button 5 is A: E is held', g.keys.has('KeyE')); pressBtn(fake, 5, false); await frames(3);
     fake.axes[2] = -0.9; await frames(3); ok('and pushing the learned left stick right holds D', g.keys.has('KeyD')); fake.axes[2] = 0; await frames(3);
     PAD.useStandard(); ok('back to the standard mapping, the custom one is forgotten', !PAD.custom && PAD.map.A === 1 && !(JSON.parse(localStorage.getItem('xieyi.pad') || '{}'))[fake.id]);
-    navigator.getGamepads = real; PAD.releaseAll(); PAD.seen = false; await frames(2); g.keys.clear(); }
+    // —— 第三方手柄：對應不是標準的，十字鍵是一根閒置 3.29 的帽子軸，搖桿閒置偏一點
+    navigator.getGamepads = () => []; await until(() => !PAD.seen, 9000);
+    ok('when the pad goes away the keys line goes back to the keyboard', !PAD.seen && keysLine().indexOf('WASD') === 0 && toasts().indexOf('手柄斷了') >= 0);
+    const hat = mkPad('Afterglow-like (Vendor: 20d6 Product: a719)', '', 12, 10); hat.axes[9] = 3.2857; hat.axes[0] = 0.12; navigator.getGamepads = () => [hat];
+    await frames(4);
+    ok('an idle hat axis at 3.29 and a slightly off-centre stick do not count as activity', !PAD.seen);
+    pressBtn(hat, 2, true); await frames(3); pressBtn(hat, 2, false); await frames(3);
+    ok('first press on a non-standard pad opens the wizard by itself and the readout says so', PAD.seen && !PAD.standard && !hidden('padmap') && document.getElementById('padmap-live').textContent.indexOf('非標準') >= 0 && document.getElementById('padmap-live').textContent.indexOf('12 鍵 10 軸') >= 0);
+    for (const i of [2, 1, 3, 0, 4, 5, 6, 7, 8, 9, 10, 11]) { pressBtn(hat, i, true); await frames(3); pressBtn(hat, i, false); await frames(3); }   // A B X Y L R ZL ZR － ＋ L3 R3
+    ok('twelve buttons learned, now the d-pad', document.getElementById('padmap-text').textContent.indexOf('十字鍵上') >= 0, document.getElementById('padmap-text').textContent.slice(0, 40));
+    for (const v of [-1, 0.1429, 0.7143, -0.4286]) { hat.axes[9] = v; await frames(3); hat.axes[9] = 3.2857; await frames(3); }   // 帽子軸：上、下、左、右
+    ok('the four d-pad directions are learned as positions on the hat axis', document.getElementById('padmap-text').textContent.indexOf('左搖桿往右') >= 0 && document.getElementById('padmap-text').textContent.indexOf('上＝帽 9') >= 0, document.getElementById('padmap-text').textContent.slice(0, 80));
+    for (const i of [0, 1, 2, 3]) { hat.axes[i] = 0.95; await frames(3); hat.axes[i] = i === 0 ? 0.12 : 0; await frames(3); }
+    const hs = (JSON.parse(localStorage.getItem('xieyi.pad') || '{}'))[hat.id];
+    ok('hat mapping saved: up is {ax 9, at −1}, A is button 2, the stick rest values are kept', hidden('padmap') && PAD.custom && PAD.map.UP && PAD.map.UP.ax === 9 && PAD.map.UP.at === -1 && PAD.map.A === 2 && !!hs && hs.rest && Math.abs(hs.rest[9] - 3.2857) < 1e-6 && Math.abs(hs.rest[0] - 0.12) < 1e-6, hs);
+    hat.axes[9] = -1; await frames(3); ok('hat up holds W', g.keys.has('KeyW'));
+    hat.axes[9] = -0.7143; await frames(3); ok('hat up-right still counts as up', g.keys.has('KeyW') && !g.keys.has('KeyD'));
+    hat.axes[9] = -0.4286; await frames(3); ok('hat right holds D and lets go of W', g.keys.has('KeyD') && !g.keys.has('KeyW'));
+    hat.axes[9] = 3.2857; await frames(3); ok('hat back to idle releases everything', !g.keys.has('KeyD') && !g.keys.has('KeyW'));
+    hat.axes[0] = 0.4; await frames(3); const drift = !g.keys.has('KeyD'); hat.axes[0] = 0.95; await frames(3);
+    ok('stick is read relative to its rest: 0.4 from a 0.12 rest is dead zone, 0.95 walks', drift && g.keys.has('KeyD')); hat.axes[0] = 0.12; await frames(3);
+    pressBtn(hat, 2, true); await frames(3); ok('learned A (button 2) holds E', g.keys.has('KeyE')); pressBtn(hat, 2, false); await frames(3);
+    PAD.useStandard(); navigator.getGamepads = real; PAD.releaseAll(); PAD.seen = false; PAD.id = ''; PAD.index = -1; const kl = document.getElementById('keys'); if (PAD.keysHtml !== null) kl.innerHTML = PAD.keysHtml; await frames(2); g.keys.clear(); }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
   // —— 三格存檔：第一格沿用舊鍵；每格帶摘要
@@ -1002,6 +1033,14 @@ try {
     return { before, focusedSlot: focused && focused.dataset.slot, after: document.querySelector('.save-card.on').dataset.slot, started: !!window.XIEYI, hint: document.getElementById('new-hint').textContent };
   });
   ok2('on the start screen the d-pad moves the focus to the next save card (even an empty one) and A picks it', padStart.before === '2' && padStart.focusedSlot === '3' && padStart.after === '3' && !padStart.started, padStart);
+  await page.evaluate(() => { navigator.getGamepads = () => []; });
+  await page.goto(base, { waitUntil: 'load' }); await page.click('#btn-pad'); await page.waitForTimeout(100);
+  ok2('the start page has a 手柄對應 button; without a pad it explains to press a button first', /還沒看到手柄/.test(await page.$eval('#new-hint', e => e.textContent)));
+  const wiz = await page.evaluate(async () => { const f = { id: 'Fake Pro', index: 0, connected: true, mapping: 'standard', buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })), axes: [0, 0, 0, 0] }; navigator.getGamepads = () => [f];
+    const frames = (n) => new Promise((res) => { let k = 0; const t = () => { if (++k >= n) res(); else requestAnimationFrame(t); }; requestAnimationFrame(t); });
+    f.buttons[1].pressed = true; await frames(3); f.buttons[1].pressed = false; await frames(3); document.getElementById('btn-pad').click(); await frames(2);
+    return { open: !document.getElementById('padmap').classList.contains('hidden'), text: document.getElementById('padmap-text').textContent.slice(0, 20) }; });
+  ok2('with a pad seen, the start-page button opens the wizard', wiz.open && /第 1／20 步/.test(wiz.text), wiz);
 } catch (e) { checks2.push('CRASH start page: ' + e.message); }
 result.checks.push(...checks2); result.failed = result.checks.filter(c => c.startsWith('FAIL') || c.startsWith('CRASH')).length;
 console.log(result.checks.join('\n'));

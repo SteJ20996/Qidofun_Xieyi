@@ -159,7 +159,8 @@
   <div class="panel fogpanel">
     <h2>手柄對應</h2>
     <p id="padmap-text"></p>
-    <p class="dim small">照提示一顆一顆按，按完放開再按下一顆；搖桿推到底再回中。沒有那顆鍵就按「略過」。</p>
+    <p class="dim small">照提示一顆一顆按，按完放開再按下一顆；搖桿推到底再回中。沒有那顆鍵就按「略過」。十字鍵是「帽子軸」、扳機是軸的手柄也認得。</p>
+    <p id="padmap-live" class="dim small"></p>
     <div class="row"><button id="padmap-skip" class="ghost">略過這顆（空白鍵）</button><button id="padmap-std" class="ghost">用標準對應</button><button id="padmap-cancel" class="ghost">取消（Esc）</button></div>
   </div>
 </div>
@@ -208,7 +209,8 @@
   <div class="panel title">
     <h1><span>暫</span><span>停</span></h1>
     <p class="dim small">島上的一切都停了。按 <kbd>Esc</kbd> 或點「繼續」回去。</p>
-    <div class="row"><button id="pause-resume">繼續</button></div>
+    <div class="row"><button id="pause-resume">繼續</button><button id="pause-help" class="ghost">造字之法</button><button id="pause-pad" class="ghost">手柄對應</button><button id="pause-home" class="ghost">回到主頁</button></div>
+    <p class="dim small">回到主頁會先存檔，再回起始頁的三格存檔。</p>
   </div>
 </div>
 
@@ -232,6 +234,7 @@
       <label>世界種子 <input id="seed" type="text" maxlength="12"></label>
       <button id="btn-new">落筆</button>
       <button id="btn-help" class="ghost">造字之法</button>
+      <button id="btn-pad" class="ghost" title="接上手柄、按一下任一鍵，再點這裡：一顆一顆重新檢測每個鍵">手柄對應</button>
       <span id="new-hint" class="dim small"></span>
     </div>
     <p class="dim small">WASD 走 · E 取 · F 放 · C 製作 · R 睡 · H 幫助</p>
