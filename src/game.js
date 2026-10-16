@@ -66,6 +66,7 @@
       this.msgText = ''; this.hudSig = ''; this.barSig = ''; this.courSig = '';
       this.chestAt = null; this.userPaused = false; this.craftCat = '全部'; this.fogAsk = null; this.seaAsk = null; this.skullP = SKULL_P;
       this.stoveAt = null; this.stoveSig = ''; this.warnOpen = false; this.warnEnabled = true;   // warnEnabled：煙霧測試關掉，免得途中彈窗把遊戲停住
+      this.takeAsk = null; this.takeOk = false;   // 拆人造的東西先問一聲：takeAsk 是正在問的那格，takeOk 是問過了、這次照拆
       this.spawn = this.world.findSpawn();
       if (save) this.load(save);
       else {
@@ -480,6 +481,19 @@
       $('fogask').classList.remove('hidden');
     }
     closeFog() { $('fogask').classList.add('hidden'); this.fogAsk = null; this.paused = false; }
+    // ---------- 拆人造的東西先問一聲（磚、門、床、燈、灶、鼎、櫃、橋、魚梁、漁網、稻草人） ----------
+    askTake(t, ch, onYes) {
+      const w = this.world, k = U.key(t.x, t.y);
+      const why = { '櫃': () => { const n = (w.chests.get(k) || []).length; return n ? '裡面 ' + n + ' 樣東西會跟著櫃一起回到囊裡。' : '櫃是空的。'; }, '偶': () => '拆下重放要重計日數。', '燈': () => '夜裡就少一盞光，魄也近得來。', '床': () => '沒有床，夜裡就睡不成。', '門': () => '牆上開了口，獸就進得來。', '磚': () => '牆上開了口，獸就進得來。', '灶': () => '灶火會熄，添過的柴不退。', '鼎': () => '鼎下的火會熄，添過的柴不退。', '橋': () => '橋拆了，這段水就過不去。', '漁': () => '魚梁拆了，魚就不來了。' };
+      const name = DB[ch] && DB[ch].net ? (DB[ch].net === 1 ? '漁網' : DB[ch].net === 2 ? '中漁網' : '大漁網') : ch;
+      this.takeAsk = { x: t.x, y: t.y, ch, onYes }; this.paused = true; this.keys.clear(); this.action = null;
+      $('takeask-text').innerHTML = '面前是自己放的「<b>' + name + '</b>」。' + (why[ch] ? why[ch]() : (DB[ch] && DB[ch].net ? '空網收回來就是一張網。' : '拆下來會回到囊裡。')) + '<br>真的拆？';
+      $('takeask').classList.remove('hidden');
+    }
+    closeTake() { $('takeask').classList.add('hidden'); this.takeAsk = null; this.paused = false; }
+    takeYes() { const a = this.takeAsk; if (!a) return; this.closeTake(); a.onYes(); }
+    takeNo() { if (!this.takeAsk) return; this.closeTake(); this.message('留著。'); }
+    confirmed(fn) { this.takeOk = true; try { fn(); } finally { this.takeOk = false; } }
     // ---------- 灶：面向灶按 F 開界面，在界面裡添柴、烤、燒、煉；世界照常走，火照常燒 ----------
     openStove(t) { this.stoveAt = U.key(t.x, t.y); $('stove').classList.remove('hidden'); this.keys.clear(); this.action = null; this.stoveSig = ''; this.buildStove(); }
     closeStove() { $('stove').classList.add('hidden'); this.stoveAt = null; }
@@ -786,6 +800,7 @@
       if (d.need && tool !== d.need) { if (!silent) this.message('「' + ch + '」要用' + G.TOOL_NAMES[d.need] + '。'); return; }
       for (const n in d.yield) if (!this.canAdd(n, d.yield[n])) { if (!silent) this.message('囊已滿。'); return; }
       if (p.sta < 1) { if (!silent) this.message('力氣不夠，歇一歇。'); return; }
+      if (d.kind === 'object' && d.place && !this.takeOk) { this.askTake(t, ch, () => this.confirmed(() => this.pressGather(false))); return; }   // 人造的東西：拆之前問一聲
       let time = d.time;
       const useTool = (d.fast && tool === d.fast) || (d.need && tool === d.need);
       if (useTool) time /= 2;
@@ -997,6 +1012,7 @@
         rec.fish -= take; if (rec.fish <= 0) rec.t = w.time; this.addCourage(1); this.message('網裡得魚 ' + take + ' 條' + (rec.fish ? '，還剩 ' + rec.fish + ' 條' : '') + '。'); SFX.absorb(); return;
       }
       if (!this.canAdd(name, 1)) { this.message('囊已滿。'); return; }
+      if (!this.takeOk) { this.askTake(t, w.get(t.x, t.y), () => this.confirmed(() => this.useNet(t))); return; }
       w.removeNet(rec); this.addItem(name, 1); this.message('收回了' + name + '。'); SFX.absorb();
     }
 
@@ -1187,6 +1203,7 @@
       const box = this.world.chests.get(k) || [], p = this.player;
       if (box.length ? p.bag.length >= this.slots() : !this.canAdd('櫃', 1)) { this.message('囊已滿。'); SFX.fail(); return; }
       const [x, y] = U.unkey(k);
+      if (!this.takeOk) { this.askTake({ x, y }, '櫃', () => this.confirmed(() => this.takeChest())); return; }
       this.world.set(x, y, '白'); this.world.chests.delete(k);
       if (box.length) this.addItem('櫃', 1, { store: box }); else this.addItem('櫃', 1);
       this.closeChest(); this.buildBag(); this.message(box.length ? '拆下了櫃，裡面 ' + box.length + ' 樣東西還在櫃裡。' : '拆下了櫃。'); SFX.absorb();
@@ -1355,6 +1372,7 @@
           ev.preventDefault(); return;
         }
         if (this.warnOpen) { if (['Enter', 'Escape', 'Space', 'KeyE'].indexOf(ev.code) >= 0) this.closeWarn(); ev.preventDefault(); return; }
+        if (this.takeAsk) { if (ev.code === 'KeyY' || ev.code === 'Enter') this.takeYes(); else if (ev.code === 'KeyN' || ev.code === 'Escape') this.takeNo(); ev.preventDefault(); return; }
         if (this.fogAsk) {
           if (ev.code === 'KeyY' || ev.code === 'Enter') { if (this.count('扇')) this.fogUseFan(); else this.fogRefuse(); }
           else if (ev.code === 'KeyN' || ev.code === 'Escape') this.fogRefuse();
@@ -1421,6 +1439,8 @@
       $('chest-close').addEventListener('click', () => this.closeChest());
       $('stove-close').addEventListener('click', () => this.closeStove());
       $('warn-ok').addEventListener('click', () => this.closeWarn());
+      $('takeask-yes').addEventListener('click', () => this.takeYes());
+      $('takeask-no').addEventListener('click', () => this.takeNo());
       $('chest-take').addEventListener('click', () => this.takeChest());
       $('btn-pause').addEventListener('click', () => this.togglePause());
       $('totemswitch').addEventListener('click', () => { if (!this.player.dead) this.toggleTotem(); });
@@ -1438,7 +1458,7 @@
     }
     cycle(d) { const p = this.player; if (p.bag.length) p.sel = (p.sel + d + p.bag.length) % p.bag.length; this.buildBag(); }
     togglePause() {
-      if (this.player.dead || this.fogAsk || this.seaAsk || this.warnOpen || !$('start').classList.contains('hidden') || !$('voyage').classList.contains('hidden')) return;
+      if (this.player.dead || this.fogAsk || this.seaAsk || this.warnOpen || this.takeAsk || !$('start').classList.contains('hidden') || !$('voyage').classList.contains('hidden')) return;
       this.userPaused = !this.userPaused; this.paused = this.userPaused;
       $('pause').classList.toggle('hidden', !this.userPaused); this.keys.clear(); this.action = null;
     }

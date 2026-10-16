@@ -37,6 +37,7 @@ const result = await page.evaluate(async () => {
   const trim = (keep) => { p.bag = p.bag.filter(s => keep.indexOf(s.n) >= 0); p.sel = 0; g.barSig = ''; };
   const toasts = () => document.getElementById('toasts').textContent;
   const hidden = (id) => document.getElementById(id).classList.contains('hidden');
+  const takeYes = () => { if (!hidden('takeask')) document.getElementById('takeask-yes').click(); };   // 拆人造的東西會先問，測試裡直接答「拆」
   const goNextTo = (x, y) => { w.set(x - 1, y, '草'); p.x = p.rx = x - 1; p.y = p.ry = y; face(1, 0); };
   const setDay = (frac) => { w.time = Math.floor(w.time / DAY) * DAY + DAY * frac; };
   const until = async (cond, ms) => { const t0 = performance.now(); while (!cond() && performance.now() - t0 < (ms || 8000)) await sleep(40); return cond(); };
@@ -309,9 +310,9 @@ const result = await page.evaluate(async () => {
   ok('repairing with 麻布 restores 180 days and restarts wear at ×1.5', Math.round(p.worn['盔'].dur / DAY) === 180 && p.worn['盔'].wm === 1.5 && g.count('麻布') === 0 && p.sta === 46, [p.worn['盔'].wm, g.count('麻布')]);
   p.hp = 100; p.hurtT = 0; g.takeOff('盔'); g.takeOff('靴'); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']);
   // 拆回自己放的東西不長膽氣；稻草人拆得回來
-  p.cour = 0; face(0, -1); w.set(T().x, T().y, '土'); g.addItem('磚', 1); hold('磚'); g.pressPlace(); g.addItem('石鎬', 1); hold('石鎬'); g.action = null; g.pressGather(); await until(() => !g.action, 12000);
+  p.cour = 0; face(0, -1); w.set(T().x, T().y, '土'); g.addItem('磚', 1); hold('磚'); g.pressPlace(); g.addItem('石鎬', 1); hold('石鎬'); g.action = null; g.pressGather(); takeYes(); await until(() => !g.action, 12000);
   ok('taking back a placed brick gives no courage', g.count('磚') >= 1 && p.cour === 0 && w.get(T().x, T().y) === '白', [p.cour, w.get(T().x, T().y)]);
-  w.set(T().x, T().y, '土'); g.addItem('偶', 1); hold('偶'); g.pressPlace(); const sck = T().x + ',' + T().y; g.action = null; g.pressGather(); await until(() => !g.action, 4000);
+  w.set(T().x, T().y, '土'); g.addItem('偶', 1); hold('偶'); g.pressPlace(); const sck = T().x + ',' + T().y; g.action = null; g.pressGather(); takeYes(); await until(() => !g.action, 4000);
   ok('scarecrow can be taken down', w.get(T().x, T().y) === '白' && !w.scarecrows.has(sck) && g.count('偶') === 1 && p.cour === 0, [w.get(T().x, T().y), g.count('偶')]);
   g.removeItem('偶', 9); w.set(T().x, T().y, '土');
   // 鐵甲：減傷三成、毒不侵、慢四分之一、攻擊加半成、飢愜力掉得快八分
@@ -438,7 +439,7 @@ const result = await page.evaluate(async () => {
   ok('a small net sits on shallow water', w.get(nk.x, nk.y) === '網' && !!w.netAt(nk.x, nk.y) && g.count('漁網') === 0);
   w.time += 200; g.action = null; g.pressGather();
   ok('after 200 s it holds two fish (one per 90 s, at most 3)', g.count('魚') === fish0 + 2, g.count('魚') - fish0);
-  g.pressGather();
+  g.pressGather(); takeYes();
   ok('an empty net is taken back with E', w.get(nk.x, nk.y) === '水' && g.count('漁網') === 1 && !w.netAt(nk.x, nk.y));
   w.set(nk.x, nk.y, '淼'); g.pressPlace();
   ok('a small net refuses deep water', w.get(nk.x, nk.y) === '淼' && g.count('漁網') === 1);
@@ -447,7 +448,7 @@ const result = await page.evaluate(async () => {
   ok('a big net covers three by three of deep water', w.get(nk.x + 2, nk.y + 2) === '罾' && w.netAt(nk.x + 2, nk.y + 2) === w.netAt(nk.x, nk.y) && g.count('大漁網') === 1);
   w.time += 1000; g.pressGather();
   ok('a big net stores up to twenty fish, one every 10 s', g.count('魚') === fish0 + 22, g.count('魚') - fish0);
-  g.pressGather();
+  g.pressGather(); takeYes();
   ok('taking a big net back clears all nine cells', g.count('大漁網') === 2 && w.get(nk.x + 1, nk.y + 1) === '淼' && !w.netAt(nk.x + 2, nk.y + 2));
   g.removeItem('魚', 99); g.removeItem('大漁網', 9); g.removeItem('漁網', 9);
   for (let dx = 0; dx < 3; dx++) for (let dy = 0; dy < 3; dy++) w.set(nk.x + dx, nk.y + dy, w.base(nk.x + dx, nk.y + dy));   // 測試挖的深水還原，免得把出生點圍住
@@ -538,13 +539,13 @@ const result = await page.evaluate(async () => {
   g.removeItem('果', 99); g.addItem('果', 2, { d: g.day() - 7 }); g.moveStack('bag', p.bag.findIndex(s => s.n === '果')); const inChest = w.chests.get(g.chestAt)[0]; g.moveStack('chest', 0);
   ok('fruit keeps each piece\'s age through a chest', inChest.n === '果' && g.count('果') === 2 && p.bag.find(s => s.n === '果').ds.every(d => d === g.day() - 7), JSON.stringify(p.bag.find(s => s.n === '果')));
   g.removeItem('果', 99);
-  g.addItem('石', 1); g.moveStack('bag', p.bag.findIndex(x => x.n === '石')); const ck2 = g.chestAt, inside2 = w.chests.get(ck2).length; document.getElementById('chest-take').click();
+  g.addItem('石', 1); g.moveStack('bag', p.bag.findIndex(x => x.n === '石')); const ck2 = g.chestAt, inside2 = w.chests.get(ck2).length; document.getElementById('chest-take').click(); takeYes();
   const boxItem = p.bag.find(x => x.n === '櫃' && x.store);
   ok('a chest with things inside can be taken down and keeps them', hidden('chest') && !w.chests.has(ck2) && inside2 === 1 && !!boxItem && boxItem.store.length === 1 && boxItem.store[0].n === '石' && w.get(...ck2.split(',').map(Number)) === '白', boxItem && boxItem.store);
   g.addItem('櫃', 1); ok('a plain chest does not stack onto one that holds things', p.bag.filter(x => x.n === '櫃').length === 2 && boxItem.c === 1);
   p.sel = p.bag.indexOf(boxItem); face(0, -1); w.set(T().x, T().y, '土'); g.pressPlace();
   ok('placing it again puts the things back inside', w.get(T().x, T().y) === '櫃' && (w.chests.get(T().x + ',' + T().y) || []).length === 1 && w.chests.get(T().x + ',' + T().y)[0].n === '石' && !p.bag.includes(boxItem) && g.count('櫃') === 1);
-  g.pressGather(); g.moveStack('chest', 0); document.getElementById('chest-take').click(); g.removeItem('石', 99);
+  g.pressGather(); g.moveStack('chest', 0); document.getElementById('chest-take').click(); takeYes(); g.removeItem('石', 99);
   ok('an empty chest comes back as a plain chest', g.count('櫃') === 2 && !p.bag.some(x => x.n === '櫃' && x.store));
   // 船：放在淺水，上船，渡深水，到海邊渡海（先離開泉邊，免得面前是地標）
   p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; g.closeRead();
@@ -577,7 +578,7 @@ const result = await page.evaluate(async () => {
     g.removeItem('漁', 9);
     g.addItem('橋', 1); hold('橋'); g.pressPlace();
     const bridged = w.get(beach[0], beach[1]) === '橋'; setDay(0.25); const lowWalk = w.walkable(beach[0], beach[1]); setDay(0.6);
-    g.action = null; g.pressGather(); await until(() => !g.action, 4000);
+    g.action = null; g.pressGather(); takeYes(); await until(() => !g.action, 4000);
     ok('a bridge may be built on the causeway, walkable at both tides, and taking it back leaves the causeway', bridged && lowWalk && w.raw(beach[0], beach[1]) === '灘' && g.count('橋') === 1, [bridged, lowWalk, w.raw(beach[0], beach[1]), g.count('橋'), g.msgText]);
     g.removeItem('橋', 9); p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y;
   }
@@ -1014,6 +1015,24 @@ const result = await page.evaluate(async () => {
     ok('a standard pad whose y axis rests at 0.9 does not walk south by itself', PAD.seen && !g.keys.has('KeyS') && Math.abs(PAD.rest[1] - 0.9) < 1e-6);
     driftPad.axes[1] = 0.2; await frames(3); ok('moving it up from there (0.9 → 0.2) walks north', g.keys.has('KeyW')); driftPad.axes[1] = 0.9; await frames(3);
     PAD.useStandard(); navigator.getGamepads = real; PAD.releaseAll(); PAD.seen = false; PAD.id = ''; PAD.index = -1; const kl = document.getElementById('keys'); if (PAD.keysHtml !== null) kl.innerHTML = PAD.keysHtml; await frames(2); g.keys.clear(); }
+  // ============ 拆人造的東西先問一聲；烤肉烤蛇回血 ============
+  { face(0, 1); w.set(T().x, T().y, '燈'); unarm(); g.action = null; const lampAt = T();
+    g.keys.add('KeyE'); g.pressGather();
+    ok('E on a placed lamp asks first: popup up, world paused, no gather started, held E dropped', !hidden('takeask') && g.paused && !!g.takeAsk && !g.action && !g.keys.has('KeyE') && document.getElementById('takeask-text').textContent.indexOf('燈') >= 0);
+    await press('KeyN', 20);
+    ok('N keeps it: popup closed, lamp still there, world running', hidden('takeask') && !g.paused && w.get(lampAt.x, lampAt.y) === '燈');
+    g.pressGather(); await press('KeyY', 20); await until(() => !g.action, 4000);
+    ok('Y takes it down', w.get(lampAt.x, lampAt.y) === '白' && g.count('燈') >= 1, [w.get(lampAt.x, lampAt.y), g.count('燈')]);
+    w.set(T().x, T().y, '木'); g.action = null; g.pressGather();
+    ok('a tree is not man-made: no question, gathering starts at once', hidden('takeask') && !!g.action); g.action = null; w.set(T().x, T().y, '草');
+    w.set(T().x, T().y, '偶'); g.pressGather(); const sText = document.getElementById('takeask-text').textContent; document.getElementById('takeask-no').click();
+    ok('the scarecrow question mentions losing its days; the button says no', sText.indexOf('重計') >= 0 && hidden('takeask') && w.get(T().x, T().y) === '偶'); w.set(T().x, T().y, '草');
+    const hp0 = 50; p.hp = hp0; g.addItem('烤肉', 1); hold('烤肉'); g.useItem();
+    ok('烤肉 heals 10', Math.round(p.hp) === hp0 + 10, p.hp);
+    p.hp = hp0; g.addItem('烤蛇', 1); hold('烤蛇'); g.useItem();
+    ok('烤蛇 heals 8', Math.round(p.hp) === hp0 + 8, p.hp);
+    p.hp = p.hpMax - 3; g.addItem('烤肉', 1); hold('烤肉'); g.useItem();
+    ok('healing never passes the max', Math.round(p.hp) === p.hpMax); p.hp = p.hpMax; }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
   // —— 三格存檔：第一格沿用舊鍵；每格帶摘要
