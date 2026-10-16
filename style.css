@@ -210,6 +210,20 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 .panel button.small { font-size: 15px; padding: 4px 10px; }
 #pause-rec { width: 100%; box-sizing: border-box; font: 12px/1.4 var(--ui); background: #fff8ea; border: 1px solid var(--ink-2); padding: 6px 8px; margin-top: 6px; }
 #pause-live { word-break: break-all; }
+.padstate { font-size: 15px; color: var(--red, #b4392a); margin: 2px 0 6px; min-height: 1.2em; }
+.padbars { margin: 6px 0; font: 12px/1.3 var(--ui); }
+.padaxes { display: grid; gap: 3px; }
+.padax { display: flex; align-items: center; gap: 6px; }
+.padax .padlab { width: 34px; color: var(--dim); }
+.padax .padtrack { position: relative; flex: 1; min-width: 120px; height: 10px; border: 1px solid rgba(28,26,23,.35); border-radius: 5px; background: rgba(255,255,255,.35); }
+.padax .padrest { position: absolute; top: -3px; width: 2px; height: 14px; margin-left: -1px; background: rgba(28,26,23,.45); }
+.padax .padnow { position: absolute; top: 1px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #b4392a; }
+.padax .padval { width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+.padax.moving .padlab, .padax.moving .padval { color: #b4392a; font-weight: bold; }
+.padax button.small { font-size: 12px; padding: 1px 6px; }
+.padbtns { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 6px; }
+.padbtn { min-width: 20px; padding: 1px 4px; text-align: center; border: 1px solid rgba(28,26,23,.35); border-radius: 4px; color: var(--dim); }
+.padbtn.on { background: #b4392a; border-color: #b4392a; color: #fff; }
 .panel.stovepanel { max-width: 640px; }
 .panel.stovepanel #stove-fire { font-size: 16px; }
 .stoverow { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
