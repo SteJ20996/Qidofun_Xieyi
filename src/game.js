@@ -10,7 +10,8 @@
   const N8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
   const BASE_SLOTS = 16, STACK = 64, CHEST_SLOTS = 24, BASE_TOOLS = 6, MAX_POUCHES = 4, FERMENT_NIGHTS = 15, SHIP_LEVEL = 8, TOTEM_LEVEL = 10, DECAY_LEVEL = 31, DECAY_DAYS = 3;
   // 難度：魄從第幾夜起、受傷與攻擊倍率、夜裡狼虎豹蛇的數量倍率
-  const DIFF = { easy: { key: 'easy', name: '簡單', ghost: 21, taken: 0.9, dmg: 1.1, beasts: 1, warn: true }, normal: { key: 'normal', name: '一般', ghost: 13, taken: 1, dmg: 1, beasts: 1, warn: true }, hard: { key: 'hard', name: '困難', ghost: 9, taken: 1.1, dmg: 0.9, beasts: 1.5, warn: false } };   // warn：數值不到四分之一要不要彈窗提醒（困難只亮燈）
+  // warn：數值不到四分之一要不要彈窗提醒（困難只閃不彈）；room／ghostRoom：牆與門圍起不超過幾格的小屋擋得住獸／魄（0 ＝ 牆擋不住魄，只有光）
+  const DIFF = { easy: { key: 'easy', name: '簡單', ghost: 21, taken: 0.9, dmg: 1.1, beasts: 1, warn: true, room: 28, ghostRoom: 18 }, normal: { key: 'normal', name: '一般', ghost: 13, taken: 1, dmg: 1, beasts: 1, warn: true, room: 18, ghostRoom: 8 }, hard: { key: 'hard', name: '困難', ghost: 9, taken: 1.1, dmg: 0.9, beasts: 1.5, warn: false, room: 10, ghostRoom: 0 } };
   // 九閽鳴雷：卅一重方可造、可掄；三格內諸獸同受其傷；隨身則膽氣二日一減、下限廿五重
   const HAMMER = '九閽鳴雷', HAMMER_LEVEL = 31, HAMMER_RANGE = 3, HAMMER_FLOOR = 25, HAMMER_DECAY_DAYS = 2;
   const TAME_CHANCE = [0.35, 0.25, 0.10], EAGLE_FEED = 40, TURTLE_PEACE_DAYS = 5;   // 馴鷹的機率看已經跟著幾隻；餵魚回力；龜卜吉兆幾日無魄
@@ -22,6 +23,7 @@
   const SLOT_ORDER = ['襯', '褲', '甲', '盔', '靴', '帽'], ARMOR_SLOTS = ['襯', '褲', '甲', '盔', '靴'], ARMOR_LIFE = 180 * DAY, HIT_MULT = [1, 1.05, 1.12, 1.2, 1.5];
   const FUEL = { '煤': 120, '精煤': 300 };   // 灶的好柴：一塊煤燒一百二十息，精煤三百息
   const TURTLE_SAN = 30;                      // 殺龜不祥：愜意掉三十
+  const KILL_ONLY_LEVEL = 22, KILL_DAY = 0.8, KILL_NIGHT = 1.05;   // 廿二重起膽氣只從斃敵對生靈得來（製作採集讀碑都不長）；斃敵的膽氣白日八成、夜裡加半成（四捨五入）
   const WARN_LIGHT = 0.5, WARN_POP = 0.25;    // 五條數值不到五成亮燈、不到四分之一彈窗提醒（回到五成以上才會再提醒）
   const WEAR_CAP = 6, REPAIR_WM = 1.5, HAT_FUEL = 400;
   const FOG_TOLL = 0.1, FAN_REACH = 3;
@@ -42,6 +44,7 @@
       this.world = new World(this.seed);
       this.ents = new Entities(this.world);
       this.world.playerLit = () => this.hasLight();   // 霧障躲光：玩家手裡或帽上的光也算
+      this.world.roomLimitFor = (type) => type === '魄' ? this.diff.ghostRoom : this.diff.room;   // 小屋多小才擋得住，看難度
       this.world.onDiscover = (pl) => this.discover(pl);
       this.world.onWeather = (on) => { if (on) this.toast('下雨了', '雨會澆壞屋外的燈，四面有牆的屋裡不怕。'); else this.message('雨停了。'); };
       this.world.onFog = (f) => { const c = this.world.fogCenter(f), p = this.player, dx = c.x - p.x, dy = c.y - p.y; this.toast('起霧了', this.dirName(dx, dy) + '約 ' + Math.round(Math.hypot(dx, dy)) + ' 步起了一片霧障（' + f.cells.size + ' 格）。走進去，命飽暖力愜意各掉一成；帶著扇子可以吹散。'); };
@@ -187,14 +190,17 @@
         if (gone.length) { this.toast('衣甲碎了', '十五息內挨了五下，' + gone.join('、') + '都碎了。'); SFX.fail(); }
       }
     }
-    addCourage(n) {
-      const p = this.player, l0 = this.level(); p.cour += n;
+    addCourage(n, src) {   // src 'kill'：斃敵對生靈；其餘（製作、採集、讀碑、捕魚、煉丹）廿二重起就不長了
+      const p = this.player, l0 = this.level();
+      if (src !== 'kill' && l0 >= KILL_ONLY_LEVEL) { if (n > 0 && !this.killOnlyHinted) { this.killOnlyHinted = true; this.toast('膽氣不長了', '廿二重起，膽氣只從斃敵對的生靈得來：白日八成、夜裡加半成。'); } return; }
+      p.cour += n;
       const l = this.level();
       if (l > l0) {
         let extra = '';
         if (l === SHIP_LEVEL) extra = '可以造孤帆與方舟了。';
         else if (l === TOTEM_LEVEL) extra = '五件衣甲穿齊，衣上便浮出山海衣的獸紋：七格內獸慢而狠，你的攻擊 ×1.15。';
         else if (l > TOTEM_LEVEL && (l - TOTEM_LEVEL) % 7 === 0) extra = '山海衣再深一層：攻擊再 ×1.15，受傷再 ÷1.15。';
+        else if (l === KILL_ONLY_LEVEL) extra = '從此膽氣只從斃敵對的生靈得來：白日八成、夜裡加半成。';
         else if (l === DECAY_LEVEL + 1) extra = '過了卅一重，三日一減，不低於卅一重。';
         this.toast('膽氣長了一重', '第 ' + l + ' 重：回復 ' + Math.round(this.mult() * 100) + '%。' + extra); SFX.learn();
         this.barSig = '';
@@ -580,8 +586,8 @@
       return null;
     }
     freeNear(x, y, outside) {   // outside：找給生靈站的格子，不能在小屋裡
-      for (const [dx, dy] of N8) if (this.world.walkable(x + dx, y + dy) && !(outside && this.world.sheltered(x + dx, y + dy))) return { x: x + dx, y: y + dy };
-      if (outside) for (let r = 2; r <= 8; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if ((Math.abs(dx) === r || Math.abs(dy) === r) && this.world.walkable(x + dx, y + dy) && !this.world.sheltered(x + dx, y + dy)) return { x: x + dx, y: y + dy };
+      for (const [dx, dy] of N8) if (this.world.walkable(x + dx, y + dy) && !(outside && this.world.sheltered(x + dx, y + dy, '鷹'))) return { x: x + dx, y: y + dy };
+      if (outside) for (let r = 2; r <= 8; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if ((Math.abs(dx) === r || Math.abs(dy) === r) && this.world.walkable(x + dx, y + dy) && !this.world.sheltered(x + dx, y + dy, '鷹')) return { x: x + dx, y: y + dy };
       return this.spawn;
     }
 
@@ -596,7 +602,7 @@
     }
     addItem(n, c, extra) {
       const bag = this.player.bag, it = G.item(n);
-      if ((it && (it.dur || it.single)) || (extra && extra.dur !== undefined)) {     // 工具、穿過的衣甲、燈帽各佔一格
+      if ((it && (it.dur || it.single)) || (extra && (extra.dur !== undefined || extra.store))) {     // 工具、穿過的衣甲、燈帽、裝著東西的櫃各佔一格
         const tools = this.player.tools, isTool = this.isTool(n);
         while (c > 0 && isTool && tools.length < this.toolSlots()) { tools.push(Object.assign({ n, c: 1, dur: it.dur }, extra || {})); if (this.player.tool < 0) this.player.tool = tools.length - 1; c--; }
         while (c > 0 && bag.length < this.slots()) { bag.push(Object.assign({ n, c: 1 }, it && it.dur ? { dur: it.dur } : {}, it && it.single && it.fuel !== undefined ? { fuel: it.fuel } : {}, extra || {})); c--; }
@@ -606,7 +612,7 @@
       let days = null;
       if (n === '果') { days = extra && extra.ds ? extra.ds.slice().sort((a, b) => a - b) : []; while (days.length < c) days.push(extra && extra.d !== undefined ? extra.d : this.day()); }
       for (const s of bag) {
-        if (s.n !== n || s.dur !== undefined || s.c >= STACK) continue;
+        if (s.n !== n || s.dur !== undefined || s.store || s.c >= STACK) continue;
         const k = Math.min(c, STACK - s.c);
         if (days) { this.fruitDays(s); s.ds.push(...days.splice(0, k)); s.ds.sort((a, b) => a - b); }
         s.c += k; c -= k; if (!c) break;
@@ -876,7 +882,8 @@
     kill(e) {
       const drops = { '鹿': ['肉', 2], '虎': ['肉', 3], '豹': ['肉', 2], '狼': ['肉', 2], '蛇': ['蛇肉', 1], '蟾': [e.venom ? '毒蟾肉' : '蟾蜍肉', 1], '龜': ['龜甲', 1] }[e.type];
       const cour = { '鹿': 3, '虎': 15, '豹': 10, '狼': 10, '蛇': 5, '蛛': 5, '蟾': 3, '鷹': 5, '龜': 3, '蜃': 40 }[e.type] || 2;
-      this.ents.remove(e); this.stats.kills++; this.addCourage(cour);
+      const hostile = e.type !== '鹿' && e.type !== '龜', gain = hostile ? Math.round(cour * (this.isNight() ? KILL_NIGHT : KILL_DAY)) : cour;   // 敵對的：白日八成、夜裡加半成
+      this.ents.remove(e); this.stats.kills++; this.addCourage(gain, hostile ? 'kill' : 'other');
       if (drops) this.addItem(drops[0], drops[1]);
       if (e.type === '龜') { const p = this.player; p.san = Math.max(0, p.san - TURTLE_SAN); this.toast('殺龜不祥', '龜是靈物，殺之心裡不安：愜意減 ' + TURTLE_SAN + '。留下龜甲。'); SFX.fuse(); return; }
       if ('虎豹狼'.indexOf(e.type) >= 0 && Math.random() < this.skullP) {      // 獸首骨：一個或兩個
@@ -887,7 +894,7 @@
         for (const f of [...this.world.fogs.values()]) if (f.sea) this.world.removeFog(f.id);
         this.toast('蜃斃', '海上的霧收了。膽氣 +40。'); SFX.fuse(); return;
       }
-      this.message(({ '鹿': '獵得一鹿，得肉二。', '虎': '虎斃，得肉三。', '豹': '豹斃，得肉二。', '狼': '狼斃，得肉二。', '蛇': '蛇斃，留下屍身。', '蛛': '蜘蛛死了，什麼也沒留下。', '蟾': '蟾蜍死了。', '鷹': '鷹落了下來。', '龜': '龜死了，留下龜甲。' })[e.type] || '斃。');
+      this.message((({ '鹿': '獵得一鹿，得肉二。', '虎': '虎斃，得肉三。', '豹': '豹斃，得肉二。', '狼': '狼斃，得肉二。', '蛇': '蛇斃，留下屍身。', '蛛': '蜘蛛死了，什麼也沒留下。', '蟾': '蟾蜍死了。', '鷹': '鷹落了下來。', '龜': '龜死了，留下龜甲。' })[e.type] || '斃。') + (hostile ? '膽氣 +' + gain + (this.isNight() ? '（夜裡加半成）' : '（白日八成）') : ''));
       if (e.type !== '鹿') SFX.fuse();
     }
     // 獸的撲咬與毒咬（由實體呼叫）
@@ -957,10 +964,11 @@
         if (!(bd.kind === 'ground' || bd.kind === 'blank')) { this.message('這裡放不下，先把地上的東西取走。'); fail(); return; }
         if (this.ents.beastAt(t.x, t.y)) { this.message('有東西擋著。'); fail(); return; }
       }
-      w.set(t.x, t.y, tileName); this.removeItem(name, 1);
+      w.set(t.x, t.y, tileName);
+      if (s.store) { p.bag.splice(p.bag.indexOf(s), 1); if (p.sel >= p.bag.length) p.sel = Math.max(0, p.bag.length - 1); this.barSig = ''; } else this.removeItem(name, 1);   // 裝著東西的櫃：拿掉的是手上這一個
       if (tileName === '床') { p.home = { x: t.x, y: t.y }; this.toast('床放好了', '夜裡面向它按 R，一覺到天明。'); this.save(); }
       else if (tileName === '偶') { w.addScarecrow(t.x, t.y); this.toast('稻草人立起來了', '三十天內獸不近身：前半十格、後半七格。'); }
-      else if (tileName === '櫃') { w.chests.set(U.key(t.x, t.y), []); this.message('櫃放好了。面向它按 E 開。'); }
+      else if (tileName === '櫃') { w.chests.set(U.key(t.x, t.y), s.store || []); this.message(s.store ? '櫃放好了，裡面 ' + s.store.length + ' 樣東西都在。面向它按 E 開。' : '櫃放好了。面向它按 E 開。'); }
       else this.message('放下「' + name + '」。');
       SFX.write();
       this.fx.push({ type: 'write', x: t.x, y: t.y, ch: tileName, color: DB[tileName].ink, t: 0, dur: 0.35 });
@@ -1174,13 +1182,14 @@
       $('chest').classList.remove('hidden'); this.keys.clear(); this.buildChest();
     }
     closeChest() { $('chest').classList.add('hidden'); this.chestAt = null; }
-    takeChest() {        // 櫃空了才拆得下來，拆回不長膽氣
+    takeChest() {        // 連裡面的東西一起拆下（東西記在囊裡那個「櫃」上，重放回去就還在）；拆回不長膽氣
       const k = this.chestAt; if (!k) return;
-      const box = this.world.chests.get(k) || [];
-      if (box.length) { this.message('櫃裡還有東西，先搬空。'); SFX.fail(); return; }
-      if (!this.canAdd('櫃', 1)) { this.message('囊已滿。'); SFX.fail(); return; }
+      const box = this.world.chests.get(k) || [], p = this.player;
+      if (box.length ? p.bag.length >= this.slots() : !this.canAdd('櫃', 1)) { this.message('囊已滿。'); SFX.fail(); return; }
       const [x, y] = U.unkey(k);
-      this.world.set(x, y, '白'); this.addItem('櫃', 1); this.closeChest(); this.buildBag(); this.message('拆下了櫃。'); SFX.absorb();
+      this.world.set(x, y, '白'); this.world.chests.delete(k);
+      if (box.length) this.addItem('櫃', 1, { store: box }); else this.addItem('櫃', 1);
+      this.closeChest(); this.buildBag(); this.message(box.length ? '拆下了櫃，裡面 ' + box.length + ' 樣東西還在櫃裡。' : '拆下了櫃。'); SFX.absorb();
     }
     buildChest() {
       const box = this.world.chests.get(this.chestAt) || [], p = this.player;
@@ -1203,6 +1212,7 @@
         if (left > 0) { s.c = left; if (ds) s.ds = ds.slice(ds.length - left); this.message('囊裡放不下這麼多。'); } else box.splice(i, 1);
       } else {
         const s = p.bag[i]; if (!s) return;
+        if (s.store && s.store.length) { this.message('裝著東西的櫃放不進櫃裡，先放到地上。'); return; }
         if (box.length >= CHEST_SLOTS) { this.message('櫃滿了。'); return; }
         box.push(s); p.bag.splice(i, 1); if (p.sel >= p.bag.length) p.sel = Math.max(0, p.bag.length - 1); this.barSig = '';
       }
@@ -1455,10 +1465,11 @@
           if (s.dur !== undefined) sub = this.durText(s);
           else if (s.fuel !== undefined) sub = s.fuel > 0 ? Math.ceil(s.fuel) + '息' : '滅';
           else if (s.n === '果') { const age = this.day() - this.fruitDays(s)[0]; sub = '×' + s.c + (age >= FERMENT_NIGHTS - 3 ? ' 將醉' : age >= 1 ? ' ' + age + '夜' : ''); }
+          else if (s.store) sub = s.store.length + '樣';
           el.innerHTML = '<span class="num">' + (i < 9 ? i + 1 : '') + '</span><span class="ch' + (s.n.length > 1 ? ' word' : '') + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">' + sub + '</span>';
           if (s.dur !== undefined) { const pct = Math.round(100 * s.dur / (it.dur || this.lifeOf(s))); el.classList.add('ringed'); el.innerHTML += '<i class="ring' + (pct <= 25 ? ' low' : '') + '" style="--p:' + pct + '%"></i>'; }   // 耐久：一圈環包著格子
           else if (s.fuel !== undefined) el.innerHTML += '<i class="dur" style="width:' + Math.round(100 * s.fuel / HAT_FUEL) + '%"></i>';
-          el.title = it.flavor + (s.n === '果' ? '\n' + this.fruitNote(s) : '');
+          el.title = it.flavor + (s.n === '果' ? '\n' + this.fruitNote(s) : '') + (s.store ? '\n裡面：' + s.store.map(x => x.n + '×' + x.c).join('、') : '');
         }
         el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; if (this.isTool(s.n) && this.equipFromBag(i)) return; p.sel = i; this.buildBag(); });
         bar.appendChild(el);
@@ -1619,6 +1630,7 @@
       // 舊存檔裡已經不存在的東西丟掉，身上的衣甲要對得上格子
       const known = (s) => !!(s && G.item(s.n));
       p.bag = (p.bag || []).filter(known); p.tools = (p.tools || []).filter(known);
+      for (const s of p.bag) if (s.store) { s.store = s.store.filter(known); if (!s.store.length) delete s.store; }   // 拆下來的櫃裡的東西也要是還存在的
       if (p.tool >= p.tools.length) p.tool = p.tools.length - 1;
       const worn = {}; for (const k of SLOT_ORDER) { const s = p.worn && p.worn[k]; worn[k] = known(s) && ITEMS[s.n].slot === k ? s : null; } p.worn = worn;
       if (!p.hitWin || typeof p.hitWin.n !== 'number') p.hitWin = { start: -99, n: 0 };

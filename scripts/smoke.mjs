@@ -538,8 +538,14 @@ const result = await page.evaluate(async () => {
   g.removeItem('果', 99); g.addItem('果', 2, { d: g.day() - 7 }); g.moveStack('bag', p.bag.findIndex(s => s.n === '果')); const inChest = w.chests.get(g.chestAt)[0]; g.moveStack('chest', 0);
   ok('fruit keeps each piece\'s age through a chest', inChest.n === '果' && g.count('果') === 2 && p.bag.find(s => s.n === '果').ds.every(d => d === g.day() - 7), JSON.stringify(p.bag.find(s => s.n === '果')));
   g.removeItem('果', 99);
-  const ck2 = g.chestAt; document.getElementById('chest-take').click();
-  ok('an empty chest can be taken down', hidden('chest') && !w.chests.has(ck2) && g.count('櫃') === 1 && w.get(...ck2.split(',').map(Number)) === '白');
+  g.addItem('石', 1); g.moveStack('bag', p.bag.findIndex(x => x.n === '石')); const ck2 = g.chestAt, inside2 = w.chests.get(ck2).length; document.getElementById('chest-take').click();
+  const boxItem = p.bag.find(x => x.n === '櫃' && x.store);
+  ok('a chest with things inside can be taken down and keeps them', hidden('chest') && !w.chests.has(ck2) && inside2 === 1 && !!boxItem && boxItem.store.length === 1 && boxItem.store[0].n === '石' && w.get(...ck2.split(',').map(Number)) === '白', boxItem && boxItem.store);
+  g.addItem('櫃', 1); ok('a plain chest does not stack onto one that holds things', p.bag.filter(x => x.n === '櫃').length === 2 && boxItem.c === 1);
+  p.sel = p.bag.indexOf(boxItem); face(0, -1); w.set(T().x, T().y, '土'); g.pressPlace();
+  ok('placing it again puts the things back inside', w.get(T().x, T().y) === '櫃' && (w.chests.get(T().x + ',' + T().y) || []).length === 1 && w.chests.get(T().x + ',' + T().y)[0].n === '石' && !p.bag.includes(boxItem) && g.count('櫃') === 1);
+  g.pressGather(); g.moveStack('chest', 0); document.getElementById('chest-take').click(); g.removeItem('石', 99);
+  ok('an empty chest comes back as a plain chest', g.count('櫃') === 2 && !p.bag.some(x => x.n === '櫃' && x.store));
   // 船：放在淺水，上船，渡深水，到海邊渡海（先離開泉邊，免得面前是地標）
   p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; g.closeRead();
   face(1, 0); for (let dy = -1; dy <= 2; dy++) for (let dx = 0; dx <= 2; dx++) w.set(T().x + dx, T().y + dy, '水'); hold('孤帆'); g.pressPlace();
@@ -784,24 +790,52 @@ const result = await page.evaluate(async () => {
     w.rainLampP = 1 / 1500; w.rainUntil = 0; }
   // ============ v0.14：神兵成類、小屋、霧障會動、數值燈與提醒 ============
   ok('god weapons have their own craft category 神兵', G.CRAFT_CATS.indexOf('神兵') > 0 && G.RECIPES.find(r => r.id === 'hammer').cat === '神兵' && G.RECIPES.find(r => r.id === 'seagod').cat === '神兵' && !G.RECIPES.some(r => r.cat === '工具' && (r.id === 'hammer' || r.id === 'seagod')));
-  // —— 小屋：牆與門圍起不超過 45 格，裡面不生生靈、生靈不進
-  { const cx = p.x + 20, cy = p.y + 20;
-    for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++) w.set(cx + dx, cy + dy, '土');
-    for (let d = -2; d <= 2; d++) { w.set(cx + d, cy - 2, '磚'); w.set(cx + d, cy + 2, '磚'); w.set(cx - 2, cy + d, '磚'); w.set(cx + 2, cy + d, '磚'); }
-    w.set(cx, cy + 2, '門');
-    ok('a 3×3 room walled with bricks and a door is a small room (9 cells); the door and outside are not', w.sheltered(cx, cy) && w.sheltered(cx + 1, cy - 1) && !w.sheltered(cx, cy + 3) && !w.sheltered(cx, cy + 2));
-    ok('nothing spawns inside a small room and no creature can step in: beasts, eagles, the dragon, even a 魄', !g.ents.habitat('魄', cx, cy, true) && !g.ents.habitat('鹿', cx, cy, false) && !g.ents.canStand('狼', cx, cy, true) && !g.ents.canStand('鷹', cx, cy, true) && !g.ents.canStand('龍', cx, cy, true) && !g.ents.canStand('魄', cx, cy, true) && g.ents.canStand('魄', cx, cy + 3, true));
-    const gh = g.ents.add('魄', cx, cy + 3, { moveT: 99 }); let inside = false; for (let i = 0; i < 12; i++) { g.ents.stepTo(gh, cx, cy, false, true); if (w.sheltered(gh.x, gh.y)) inside = true; } g.ents.remove(gh);
-    ok('a 魄 chasing the player never gets into the small room', !inside, [gh.x - cx, gh.y - cy]);
-    w.set(cx + 2, cy, '土');
-    ok('knock out a wall and the room opens: not sheltered any more (the cache is cleared on every change)', !w.sheltered(cx, cy));
-    w.set(cx + 2, cy, '磚');
+  // —— 小屋：牆與門圍起的小空間擋獸、擋魄，多小才算看難度（獸／魄）：簡單 28／18、一般 18／8、困難 10／擋不住
+  { const cx = p.x + 20, cy = p.y + 20, d0 = g.diff;
     const box = (x0, y0, iw, ih) => { for (let dx = -1; dx <= iw; dx++) for (let dy = -1; dy <= ih; dy++) w.set(x0 + dx, y0 + dy, (dx < 0 || dy < 0 || dx === iw || dy === ih) ? '磚' : '土'); };
-    box(cx + 10, cy - 10, 5, 9); box(cx + 20, cy - 12, 2, 23);
-    ok('45 enclosed cells still count as a small room, 46 do not', w.sheltered(cx + 12, cy - 6) && !w.sheltered(cx + 20, cy));
-    ok('tamed companions and the dragon are placed outside the room', (() => { const at = g.freeNear(cx, cy, true); return !w.sheltered(at.x, at.y); })());
-    for (let dx = -1; dx <= 5; dx++) for (let dy = -1; dy <= 9; dy++) w.set(cx + 10 + dx, cy - 10 + dy, '草'); for (let dx = -1; dx <= 2; dx++) for (let dy = -1; dy <= 23; dy++) w.set(cx + 20 + dx, cy - 12 + dy, '草');
-    for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++) w.set(cx + dx, cy + dy, '草'); }
+    const clear = (x0, y0, iw, ih) => { for (let dx = -1; dx <= iw; dx++) for (let dy = -1; dy <= ih; dy++) w.set(x0 + dx, y0 + dy, '草'); };
+    ok('room thresholds per difficulty: easy 28/18, normal 18/8, hard 10/0', XIEYI.DIFF.easy.room === 28 && XIEYI.DIFF.easy.ghostRoom === 18 && XIEYI.DIFF.normal.room === 18 && XIEYI.DIFF.normal.ghostRoom === 8 && XIEYI.DIFF.hard.room === 10 && XIEYI.DIFF.hard.ghostRoom === 0);
+    box(cx, cy, 2, 4); w.set(cx, cy + 4, '門');   // 2×4 ＝ 8 格，南牆開一扇門
+    ok('an 8-cell room counts 8 from any cell inside; the door and the outside are no room', w.roomSize(cx, cy) === 8 && w.roomSize(cx + 1, cy + 3) === 8 && !isFinite(w.roomSize(cx, cy + 4)) && w.roomSize(cx, cy + 6) > 28);
+    g.diff = XIEYI.DIFF.normal;
+    ok('normal: 8 cells keep out beasts, eagles, the dragon and the 魄; nothing spawns inside', !g.ents.habitat('魄', cx, cy, true) && !g.ents.habitat('鹿', cx, cy, false) && !g.ents.canStand('狼', cx, cy, true) && !g.ents.canStand('鷹', cx, cy, true) && !g.ents.canStand('龍', cx, cy, true) && !g.ents.canStand('魄', cx, cy, true) && g.ents.canStand('魄', cx, cy + 6, true));
+    const gh = g.ents.add('魄', cx, cy + 6, { moveT: 99 }); let inside = false; for (let i = 0; i < 12; i++) { g.ents.stepTo(gh, cx, cy, false, true); if (w.sheltered(gh.x, gh.y, '魄')) inside = true; } g.ents.remove(gh);
+    ok('a 魄 chasing the player never gets into the room', !inside, [gh.x - cx, gh.y - cy]);
+    ok('tamed companions and the dragon are placed outside the room', (() => { const at = g.freeNear(cx, cy, true); return !w.sheltered(at.x, at.y, '鷹'); })());
+    w.set(cx + 2, cy, '土');
+    ok('knock out a wall and the room opens (the cache is cleared on every change)', !w.sheltered(cx, cy, '狼') && w.roomSize(cx, cy) > 28);
+    clear(cx, cy, 2, 4);
+    // 八間屋：8、9、10、11、18、19、28、29 格
+    const rooms = { 8: [cx, cy, 2, 4], 9: [cx + 6, cy, 3, 3], 10: [cx + 12, cy, 2, 5], 11: [cx + 18, cy, 1, 11], 18: [cx + 22, cy, 3, 6], 19: [cx + 28, cy, 1, 19], 28: [cx + 32, cy, 4, 7], 29: [cx + 38, cy, 1, 29] };
+    for (const r of Object.values(rooms)) box(...r);
+    const at = (n, type) => w.sheltered(rooms[n][0], rooms[n][1], type);
+    ok('rooms of 8…29 cells are counted right', Object.keys(rooms).every(n => w.roomSize(rooms[n][0], rooms[n][1]) === +n), Object.keys(rooms).map(n => w.roomSize(rooms[n][0], rooms[n][1])));
+    g.diff = XIEYI.DIFF.normal;
+    ok('normal: beasts stop at 18 cells, not 19; the 魄 stops at 8, not 9', at(18, '狼') && !at(19, '狼') && at(8, '魄') && !at(9, '魄'));
+    g.diff = XIEYI.DIFF.hard;
+    ok('hard: beasts stop at 10 cells, not 11; nothing but light stops the 魄', at(10, '狼') && !at(11, '狼') && !at(8, '魄') && !at(9, '鷹') === false && !g.ents.canStand('虎', rooms[10][0], rooms[10][1], true) && g.ents.canStand('魄', rooms[8][0], rooms[8][1], true));
+    g.diff = XIEYI.DIFF.easy;
+    ok('easy: beasts stop at 28 cells, not 29; the 魄 stops at 18, not 19', at(28, '狼') && !at(29, '狼') && at(18, '魄') && !at(19, '魄'));
+    g.diff = d0;
+    for (const r of Object.values(rooms)) clear(...r); }
+  // —— 廿二重起只靠斃敵長膽氣；斃敵白日八成、夜裡加半成
+  { const t0 = w.time, c0 = p.cour; trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']);
+    p.cour = g.levelAt(21); g.addItem('土', 2); g.addItem('草', 1); p.sta = 50; g.craft('brick');
+    ok('below level 22 crafting still gives courage', p.cour === g.levelAt(21) + 3, p.cour - g.levelAt(21));
+    p.cour = g.levelAt(22); g.killOnlyHinted = false; g.addItem('土', 2); g.addItem('草', 1); p.sta = 50; g.craft('brick');
+    ok('from level 22 crafting gives none (the brick is still made)', p.cour === g.levelAt(22) && g.count('磚') >= 2 && toasts().indexOf('膽氣不長了') >= 0);
+    g.addCourage(5, 'other'); ok('nor do gathering, reading or fishing', p.cour === g.levelAt(22));
+    setDay(0.3); face(1, 0); w.set(T().x, T().y, '草'); g.kill(g.ents.add('鹿', T().x, T().y, { moveT: 99 }));
+    ok('a deer is not hostile: no courage at 22', p.cour === g.levelAt(22) && !g.isNight());
+    g.kill(g.ents.add('虎', T().x, T().y, { moveT: 99 }));
+    ok('a tiger by day: 15 × 0.8 = 12', p.cour === g.levelAt(22) + 12, p.cour - g.levelAt(22));
+    setDay(0.7); p.cour = g.levelAt(22); g.kill(g.ents.add('虎', T().x, T().y, { moveT: 99 }));
+    ok('a tiger by night: 15 × 1.05 = 16', g.isNight() && p.cour === g.levelAt(22) + 16, p.cour - g.levelAt(22));
+    p.cour = 0; g.kill(g.ents.add('狼', T().x, T().y, { moveT: 99 }));
+    ok('the day/night factor applies at any level: a wolf by night gives 11', p.cour === 11, p.cour);
+    setDay(0.3); p.cour = 0; g.kill(g.ents.add('鹿', T().x, T().y, { moveT: 99 }));
+    ok('below 22 a deer still gives its 3, no day factor', p.cour === 3, p.cour);
+    w.time = t0; p.cour = c0; for (const n of ['肉', '磚', '虎首骨', '狼首骨']) g.removeItem(n, 99); }
   // —— 霧障會動：慢慢挪，躲著光；沒光就亂飄
   { const X = p.x, Y = p.y; for (const id of [...w.fogs.keys()]) w.removeFog(id);
     for (let dx = 0; dx <= 14; dx++) for (let dy = -2; dy <= 2; dy++) w.set(X + dx, Y + dy, '草');
@@ -826,11 +860,11 @@ const result = await page.evaluate(async () => {
   // —— 數值燈與提醒：不到五成亮燈，不到四分之一彈窗；困難只亮燈
   { const bar = (k) => document.getElementById(k + 'fill').parentNode, title = () => document.getElementById('warn-title').textContent;
     g.warnEnabled = true; p.warnLow = {}; p.hp = p.hpMax; p.food = 100; p.warm = 100; p.sta = p.staMax; p.san = 100; g.hudSig = ''; g.updateHUD(); await sleep(80);
-    ok('all five full: no lamp lit, no popup', !bar('hp').classList.contains('warn') && !bar('san').classList.contains('warn') && hidden('warn'));
+    ok('all five full: nothing flashes, no popup; the old lamp dots are gone', !bar('hp').classList.contains('warn') && !bar('san').classList.contains('warn') && hidden('warn') && document.querySelectorAll('.bar .lamp').length === 0 && getComputedStyle(bar('hp')).animationName === 'none');
     p.hp = p.hpMax * 0.4; g.hudSig = ''; g.updateHUD(); await sleep(120);
-    ok('命 at 40%: the lamp above the bar lights (warn), not red, no popup yet', bar('hp').classList.contains('warn') && !bar('hp').classList.contains('low') && hidden('warn'));
+    ok('命 at 40%: the bar\'s outline flashes once every two seconds (yellow), no popup yet', bar('hp').classList.contains('warn') && !bar('hp').classList.contains('low') && hidden('warn') && getComputedStyle(bar('hp')).animationName === 'warn-flash' && getComputedStyle(bar('hp')).animationDuration === '2s');
     p.hp = p.hpMax * 0.2; g.hudSig = ''; g.updateHUD(); await until(() => !hidden('warn'), 2000);
-    ok('命 at 20%: red lamp and a popup that pauses the game and names 命', bar('hp').classList.contains('low') && !hidden('warn') && g.paused && g.warnOpen && title().indexOf('命') >= 0, title());
+    ok('命 at 20%: the outline flashes every second (red) and a popup pauses the game and names 命', bar('hp').classList.contains('low') && getComputedStyle(bar('hp')).animationName === 'low-flash' && getComputedStyle(bar('hp')).animationDuration === '1s' && !hidden('warn') && g.paused && g.warnOpen && title().indexOf('命') >= 0, title());
     await press('Enter', 20); await sleep(80);
     ok('Enter closes the popup and the game runs on', hidden('warn') && !g.paused && !g.warnOpen);
     p.hp = p.hpMax * 0.15; await sleep(200);
@@ -840,7 +874,7 @@ const result = await page.evaluate(async () => {
     p.hp = p.hpMax; p.food = 20; p.san = 20; p.warnLow = {}; await until(() => !hidden('warn'), 2000);
     ok('two stats at once: one popup naming both', title().indexOf('飽') >= 0 && title().indexOf('愜意') >= 0, title()); g.closeWarn();
     p.food = 100; p.san = 100; p.warnLow = {}; const d0 = g.diff; g.diff = XIEYI.DIFF.hard; p.warm = 10; g.hudSig = ''; g.updateHUD(); await sleep(250);
-    ok('hard mode: the lamp lights but there is no popup', bar('warm').classList.contains('low') && hidden('warn') && !g.paused && XIEYI.DIFF.hard.warn === false && XIEYI.DIFF.normal.warn === true);
+    ok('hard mode: the outline flashes but there is no popup', bar('warm').classList.contains('low') && hidden('warn') && !g.paused && XIEYI.DIFF.hard.warn === false && XIEYI.DIFF.normal.warn === true);
     g.diff = d0; p.warm = 100; p.warnLow = {}; g.warnEnabled = false; g.hudSig = ''; g.updateHUD(); }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);

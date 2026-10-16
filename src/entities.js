@@ -47,7 +47,7 @@
       if (SCARED.indexOf(type) >= 0 && this.world.scared(x, y)) return false;
       if (type === '鳥') return d.kind === 'plant' || d.kind === 'ground';
       if (type === '魚') return d.kind === 'water';
-      if (this.world.sheltered(x, y)) return false;                        // 小屋裡不生生靈
+      if (this.world.sheltered(x, y, type)) return false;                  // 小屋裡不生生靈（多小才算看難度，魄另一個門檻）
       if (type === '蜃') return ch === '淼';                                // 蜃只從深海浮上來
       if (type === '鹿') return '林木草竹棉麻果'.indexOf(ch) >= 0;
       if (type === '虎') return ch === '森' || (night && ch === '林');
@@ -62,7 +62,7 @@
     // 能不能站上去：獸進不了屋、過不了門、穿不過磚、不近稻草人；魄無形，什麼都穿
     canStand(type, x, y, night) {
       const ch = this.world.get(x, y), d = DB[ch];
-      if (this.world.sheltered(x, y)) return false;                        // 小屋裡除了玩家誰也進不去，魄也不行
+      if (this.world.sheltered(x, y, type)) return false;                  // 小屋裡除了玩家誰也進不去；魄看難度（困難擋不住）
       if (type === '魄') return d.kind !== 'fire';
       if (type === '鳥' || type === '龍' || type === '鷹') return d.kind !== 'fire';
       if (type === '魚' || type === '蜃') return d.kind === 'water';

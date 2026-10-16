@@ -40,13 +40,11 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 .bar.warm > div { background: linear-gradient(180deg, #e08a3c, #a8521a); }
 .bar.sta > div { background: linear-gradient(180deg, #5a8a6a, #2f5a40); }
 .bar.san > div { background: linear-gradient(180deg, #6a7ab0, #3a4a80); }
-.bar.low { animation: low-pulse 1s ease-in-out infinite; }
-/* 數值條上方的燈：不到五成亮黃，不到四分之一轉紅閃 */
-.bar .lamp { position: absolute; left: 50%; top: -15px; width: 9px; height: 9px; margin-left: -5.5px; border-radius: 50%; border: 1px solid rgba(28,26,23,.45); background: rgba(239,229,207,.6); transition: background .2s, box-shadow .2s; }
-.bar.warn .lamp { background: #e0a23c; border-color: #a8721a; box-shadow: 0 0 6px 2px rgba(224,162,60,.75); }
-.bar.low .lamp { background: var(--red); border-color: var(--red-2); box-shadow: 0 0 7px 3px rgba(180,57,42,.75); animation: lamp-blink .8s steps(2, start) infinite; }
-@keyframes lamp-blink { 50% { opacity: .35; } }
-@keyframes low-pulse { 50% { box-shadow: 0 0 0 3px rgba(180,57,42,.45); } }
+/* 數值條的外框閃：不到五成兩秒閃一下（黃），不到四分之一一秒閃一下（紅） */
+.bar.warn { animation: warn-flash 2s linear infinite; }
+.bar.low { animation: low-flash 1s linear infinite; }
+@keyframes warn-flash { 0%, 100% { box-shadow: none; border-color: rgba(28,26,23,.75); } 6%, 26% { box-shadow: 0 0 0 3px rgba(224,162,60,.8), 0 0 12px 4px rgba(224,162,60,.55); border-color: #c9892a; } 40% { box-shadow: none; border-color: rgba(28,26,23,.75); } }
+@keyframes low-flash { 0%, 100% { box-shadow: none; border-color: rgba(28,26,23,.75); } 10%, 42% { box-shadow: 0 0 0 3px rgba(180,57,42,.85), 0 0 14px 5px rgba(180,57,42,.6); border-color: var(--red); } 60% { box-shadow: none; border-color: rgba(28,26,23,.75); } }
 
 #topright { position: absolute; right: calc(18px + env(safe-area-inset-right, 0px)); top: calc(16px + env(safe-area-inset-top, 0px)); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 #status { font: 16px var(--font); color: var(--ink-2); background: rgba(239,229,207,.75); padding: 6px 12px; border: 1px solid rgba(28,26,23,.35); border-radius: 4px; }
