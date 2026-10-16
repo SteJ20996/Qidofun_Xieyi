@@ -1240,6 +1240,8 @@ const result = await page.evaluate(async () => {
     const sp = mkPad('Setter (STANDARD GAMEPAD)', 'standard', 17, 4); navigator.getGamepads = () => [sp];
     pressBtn(sp, 1, true); await frames(3); pressBtn(sp, 1, false); await frames(3);
     PAD.openPadset(); await frames(2);
+    const ptop = () => { const e = document.elementFromPoint(innerWidth / 2, innerHeight / 2); return e && e.closest('.overlay') && e.closest('.overlay').id; };
+    ok('opening 手柄設定 in the game pauses it and the page is the one on top', g.paused && g.userPaused && hidden('pause') && !hidden('padset') && ptop() === 'padset' && !hidden('padset-close') && !hidden('padset-home'), ptop());
     const prow = (n) => document.querySelector('#padset-rows tr[data-n="' + n + '"]'), pcur = (n) => prow(n).querySelector('.cur').textContent;
     ok('the 手柄設定 page lists twenty entries with what each does and what it is bound to now', !hidden('padset') && document.querySelectorAll('#padset-rows tr').length === 20 && pcur('A') === '鍵 1' && prow('A').querySelector('.does').textContent.indexOf('取') >= 0 && pcur('lx') === '軸 0' && pcur('ry') === '軸 3' && /標準對應/.test(document.getElementById('padset-status').textContent) && !prow('A').querySelector('button').disabled, [pcur('A'), pcur('lx')]);
     ok('the page shows the bars too', document.querySelectorAll('#padset-bars .padax').length === 4 && document.querySelectorAll('#padset-bars .padbtn').length === 17);
@@ -1253,14 +1255,23 @@ const result = await page.evaluate(async () => {
     prow('ly').querySelector('button').click(); await frames(1); await ready(); sp.axes[2] = -0.97; await frames(3); sp.axes[2] = 0; await frames(3);
     ok('setting 左搖桿上下 by pushing axis 2 the wrong way: ly = axis 2 inverted, 右搖桿左右 (axis 2) becomes 無', !PAD.learning && PAD.axes.ly[0] === 2 && PAD.axes.ly[1] === -1 && PAD.axes.rx === null && pcur('ly') === '軸 2（反向）' && pcur('rx') === '無', [PAD.axes.ly, PAD.axes.rx]);
     sp.axes[2] = 0.9; ok('and that axis now reads as up', PAD.axis(sp, 'ly') < -0.5 && PAD.axis(sp, 'rx') === 0, [PAD.axis(sp, 'ly'), PAD.axis(sp, 'rx')]); sp.axes[2] = 0; await frames(3);
-    prow('ZL').querySelector('button').click(); await frames(1); window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true, cancelable: true })); await frames(2);
+    prow('ZL').querySelector('button').click(); await frames(1); document.body.dispatchEvent(new KeyboardEvent('keydown', { code: 'Space', key: ' ', bubbles: true, cancelable: true })); await frames(2);
     ok('Space while listening sets the entry to 無', !PAD.learning && PAD.map.ZL === -1 && pcur('ZL') === '無');
-    prow('X').querySelector('button').click(); await frames(1); window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true, cancelable: true })); await frames(2);
+    prow('X').querySelector('button').click(); await frames(1); document.body.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true, cancelable: true })); await frames(2);
     ok('Escape while listening cancels and keeps the old binding; the page stays open', !PAD.learning && PAD.map.X === 3 && pcur('X') === '鍵 3' && !hidden('padset'));
     document.getElementById('padset-std').click(); await frames(2);
     ok('全部改回標準 restores every entry', PAD.map.A === 1 && PAD.map.R === 5 && PAD.map.ZL === 6 && PAD.axes.rx[0] === 2 && PAD.axes.ly[0] === 1 && pcur('A') === '鍵 1' && pcur('rx') === '軸 2' && !PAD.custom && !(JSON.parse(localStorage.getItem('xieyi.pad') || '{}'))[sp.id]);
-    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true, cancelable: true })); await frames(2);
-    ok('Escape closes the page', hidden('padset'));
+    const px0 = g.player.x; document.body.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyD', key: 'd', bubbles: true, cancelable: true })); await frames(2); document.body.dispatchEvent(new KeyboardEvent('keyup', { code: 'KeyD', key: 'd', bubbles: true }));
+    ok('while the page is open the game does not get the keys', !g.keys.has('KeyD') && g.player.x === px0, [g.keys.has('KeyD'), px0, g.player.x, [...g.keys].join(), g.userPaused, g.paused]);
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true, cancelable: true })); await frames(2);
+    ok('Escape (返回) goes back to the pause panel it came from, still paused', hidden('padset') && !hidden('pause') && g.userPaused && ptop() === 'pause');
+    document.getElementById('pause-help').click(); await frames(1);
+    ok('the help opened from the pause panel is on top of it', !hidden('help') && ptop() === 'help', ptop());
+    document.getElementById('help-pad').click(); await frames(1);
+    ok('手柄設定 from that help switches to the page; 返回 puts the pause panel and the help back', !hidden('padset') && hidden('help') && hidden('pause') && ptop() === 'padset' && (document.getElementById('padset-close').click(), !hidden('pause') && !hidden('help') && hidden('padset')));
+    document.getElementById('help-pad').click(); await frames(1); pressBtn(sp, 0, true); await frames(3); pressBtn(sp, 0, false); await frames(3);
+    ok('B on the pad goes back as well and the game stays paused', hidden('padset') && !hidden('pause') && g.userPaused && g.paused);
+    document.getElementById('help').classList.add('hidden'); g.togglePause(); await frames(1);
     PAD.useStandard(); navigator.getGamepads = real; PAD.releaseAll(); PAD.seen = false; PAD.id = ''; PAD.index = -1; const kl = document.getElementById('keys'); if (PAD.keysHtml !== null) kl.innerHTML = PAD.keysHtml; await frames(2); g.keys.clear(); }
   // ============ 拆人造的東西先問一聲；烤肉烤蛇回血 ============
   calm();
@@ -1542,16 +1553,30 @@ try {
   ok2('on the start screen the d-pad moves the focus to the next save card (even an empty one) and A picks it', padStart.before === '2' && padStart.focusedSlot === '3' && padStart.after === '3' && !padStart.started, padStart);
   await page.evaluate(() => { navigator.getGamepads = () => []; });
   await page.goto(base, { waitUntil: 'load' }); await page.click('#btn-pad'); await page.waitForTimeout(100);
-  const ps0 = await page.evaluate(() => ({ open: !document.getElementById('padset').classList.contains('hidden'), rows: document.querySelectorAll('#padset-rows tr').length, status: document.getElementById('padset-status').textContent, dis: document.querySelector('#padset-rows button').disabled, label: document.getElementById('btn-pad').textContent }));
-  ok2('the start page has a 手柄設定 button that opens the twenty-entry page; without a pad it says to press a button first', ps0.open && ps0.rows === 20 && /還沒看到手柄/.test(ps0.status) && ps0.dis && ps0.label === '手柄設定', ps0);
+  const ptop = () => page.evaluate(() => { const e = document.elementFromPoint(innerWidth / 2, innerHeight / 2); return e && e.closest('.overlay') && e.closest('.overlay').id; });
+  const ps0 = await page.evaluate(() => ({ open: !document.getElementById('padset').classList.contains('hidden'), start: !document.getElementById('start').classList.contains('hidden'), rows: document.querySelectorAll('#padset-rows tr').length, status: document.getElementById('padset-status').textContent, dis: document.querySelector('#padset-rows button').disabled, label: document.getElementById('btn-pad').textContent, home: !document.getElementById('padset-home').classList.contains('hidden'), back: !document.getElementById('padset-close').classList.contains('hidden') }));
+  ps0.top = await ptop();
+  ok2('the start page 手柄設定 button switches to the twenty-entry page (the start page is put away); without a pad it says to press a button first', ps0.open && !ps0.start && ps0.top === 'padset' && ps0.rows === 20 && /還沒看到手柄/.test(ps0.status) && ps0.dis && ps0.label === '手柄設定' && ps0.home && !ps0.back, ps0);
+  await page.keyboard.press('Enter'); await page.waitForTimeout(80);
+  ok2('Enter on the page does not start a game behind it', await page.evaluate(() => !window.XIEYI && !document.getElementById('padset').classList.contains('hidden')));
+  await page.click('#padset-home'); await page.waitForTimeout(80);
+  ok2('回到主頁 goes back to the start page', await page.evaluate(() => document.getElementById('padset').classList.contains('hidden') && !document.getElementById('start').classList.contains('hidden')) && await ptop() === 'start');
+  await page.click('#btn-help'); await page.waitForTimeout(80);
+  ok2('生存之道 on the start page shows on top of it', await ptop() === 'help', await ptop());
+  await page.click('#help-pad'); await page.waitForTimeout(80);
+  ok2('手柄設定 from that help switches to the page; Esc goes back to the help over the start page', await ptop() === 'padset' && (await page.keyboard.press('Escape'), await page.waitForTimeout(80), await ptop()) === 'help' && await page.evaluate(() => !document.getElementById('start').classList.contains('hidden')));
+  await page.click('#help-close'); await page.waitForTimeout(50);
   const wiz = await page.evaluate(async () => { const f = { id: 'Fake Pro', index: 0, connected: true, mapping: 'standard', buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })), axes: [0, 0, 0, 0] }; navigator.getGamepads = () => [f];
     const frames = (n) => new Promise((res) => { let k = 0; const t = () => { if (++k >= n) res(); else requestAnimationFrame(t); }; requestAnimationFrame(t); });
-    document.getElementById('padset-close').click();   // 上一項把頁開著了：先關，免得 A 按到焦點上的「設定」
+    const top = () => { const e = document.elementFromPoint(innerWidth / 2, innerHeight / 2); return e && e.closest('.overlay') && e.closest('.overlay').id; };
     f.buttons[1].pressed = true; await frames(3); f.buttons[1].pressed = false; await frames(3); document.getElementById('btn-pad').click(); await frames(2);
     const st = document.getElementById('padset-status').textContent, a = document.querySelector('#padset-rows tr[data-n="A"] .cur').textContent;
     document.getElementById('padset-wizard').click(); await frames(2);
-    return { st, a, closed: document.getElementById('padset').classList.contains('hidden'), open: !document.getElementById('padmap').classList.contains('hidden'), text: document.getElementById('padmap-text').textContent.slice(0, 20) }; });
-  ok2('with a pad seen, the page names it and its bindings; 照順序全部學一遍 opens the wizard', /Fake Pro/.test(wiz.st) && wiz.a === '鍵 1' && wiz.closed && wiz.open && /第 1／20 步/.test(wiz.text), wiz);
+    const r = { st, a, closed: document.getElementById('padset').classList.contains('hidden'), open: !document.getElementById('padmap').classList.contains('hidden'), top: top(), text: document.getElementById('padmap-text').textContent.slice(0, 20) };
+    window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Escape', key: 'Escape', bubbles: true, cancelable: true })); await frames(2);
+    r.back = !document.getElementById('padset').classList.contains('hidden') && document.getElementById('padmap').classList.contains('hidden') && top() === 'padset';
+    document.getElementById('padset-home').click(); await frames(2); r.home = top() === 'start'; return r; });
+  ok2('with a pad seen, the page names it and its bindings; 照順序全部學一遍 brings the wizard on top, Esc comes back to the page, 回到主頁 to the start page', /Fake Pro/.test(wiz.st) && wiz.a === '鍵 1' && wiz.closed && wiz.open && wiz.top === 'padmap' && /第 1／20 步/.test(wiz.text) && wiz.back && wiz.home, wiz);
   // 起始頁的文字選項：點简体整頁轉簡體，重開仍是簡體；點繁體轉回來
   await page.goto(base, { waitUntil: 'load' }); await page.click('[data-lang="hans"]'); await page.waitForTimeout(80);
   const hz = await page.evaluate(() => ({ sub: document.querySelector('#start .sub').textContent, diff: document.querySelector('.diffrow').textContent, stored: localStorage.getItem('xieyi.lang') }));
