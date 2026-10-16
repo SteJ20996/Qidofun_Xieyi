@@ -448,14 +448,98 @@ const result = await page.evaluate(async () => {
   ok('an empty net is taken back with E', w.get(nk.x, nk.y) === '水' && g.count('漁網') === 1 && !w.netAt(nk.x, nk.y));
   w.set(nk.x, nk.y, '淼'); g.pressPlace();
   ok('a small net refuses deep water', w.get(nk.x, nk.y) === '淼' && g.count('漁網') === 1);
-  for (let dx = 0; dx < 3; dx++) for (let dy = 0; dy < 3; dy++) w.set(nk.x + dx, nk.y + dy, '淼');
+  for (let dx = 0; dx < 3; dx++) for (let dy = -1; dy < 2; dy++) w.set(nk.x + dx, nk.y + dy, '淼');
   hold('大漁網'); g.pressPlace();
-  ok('a big net covers three by three of deep water', w.get(nk.x + 2, nk.y + 2) === '罾' && w.netAt(nk.x + 2, nk.y + 2) === w.netAt(nk.x, nk.y) && g.count('大漁網') === 1);
+  ok('a big net spreads away from you and centred: three by three of deep water', w.get(nk.x + 2, nk.y + 1) === '罾' && w.get(nk.x + 2, nk.y - 1) === '罾' && w.netAt(nk.x + 2, nk.y + 1) === w.netAt(nk.x, nk.y) && w.get(p.x, p.y) !== '罾' && g.count('大漁網') === 1);
+  ok('a fresh big net has 240 durability and is not on the flats', w.netAt(nk.x, nk.y).dur === 240 && !w.netAt(nk.x, nk.y).tidal, w.netAt(nk.x, nk.y));
   w.time += 1000; g.pressGather();
   ok('a big net stores up to twenty fish, one every 10 s', g.count('魚') === fish0 + 22, g.count('魚') - fish0);
+  ok('taking twenty fish wears the net by twenty', w.netAt(nk.x, nk.y).dur === 220, w.netAt(nk.x, nk.y).dur);
   g.pressGather(); takeYes();
-  ok('taking a big net back clears all nine cells', g.count('大漁網') === 2 && w.get(nk.x + 1, nk.y + 1) === '淼' && !w.netAt(nk.x + 2, nk.y + 2));
-  g.removeItem('魚', 99); g.removeItem('大漁網', 9); g.removeItem('漁網', 9);
+  ok('taking a big net back clears all nine cells', g.count('大漁網') === 2 && w.get(nk.x + 1, nk.y + 1) === '淼' && !w.netAt(nk.x + 2, nk.y - 1));
+  const usedBig = p.bag.find(x => x.n === '大漁網' && x.dur === 220);
+  ok('the used big net keeps its durability in the bag as its own stack', !!usedBig && usedBig.c === 1 && g.count('大漁網') === 2 && g.durText(usedBig) === '耐 220', bag());
+  // 水邊：面前是灘也放得（魚慢三成）；中網從岸上朝北放，網往外伸、不壓到自己
+  for (let dx = 0; dx < 3; dx++) for (let dy = -1; dy < 2; dy++) w.set(nk.x + dx, nk.y + dy, '水');
+  w.set(nk.x, nk.y, '灘'); setDay(0.6); hold('漁網'); g.pressPlace();
+  ok('a small net goes down on the tidal flats at high tide', w.get(nk.x, nk.y) === '網' && w.netAt(nk.x, nk.y).tidal && w.netRule(1, true).every === 129, w.netAt(nk.x, nk.y));
+  g.action = null; g.pressGather(); takeYes();
+  setDay(0.3); hold('漁網'); g.pressPlace();
+  ok('and at low tide too, when the flats read as sand', w.tideLow() && w.get(nk.x, nk.y) === '網' && w.netAt(nk.x, nk.y).tidal, w.get(nk.x, nk.y));
+  const trec = w.netAt(nk.x, nk.y), f1 = g.count('魚'), nd1 = trec.dur; w.time += 129 * 2; g.pressGather();   // 這張網前面已取過兩條（耐 28），再放耐久跟著走
+  ok('on the flats a small net takes 129 s per fish, and the net it was placed with was already worn (28)', g.count('魚') === f1 + 2 && nd1 === 28 && trec.dur === 26, [g.count('魚') - f1, nd1, trec.dur]);
+  g.pressGather(); takeYes(); w.set(nk.x, nk.y, '水');
+  ok('taking the net back from the flats restores the flats', w.raw(nk.x, nk.y) === '水' && p.bag.some(x => x.n === '漁網' && x.dur === 26), bag());
+  face(0, -1); const mn = { x: p.x, y: p.y - 1 }; for (const [x, y] of [[mn.x, mn.y], [mn.x + 1, mn.y], [mn.x, mn.y - 1], [mn.x + 1, mn.y - 1]]) w.set(x, y, '水');
+  g.addItem('中漁網', 1); hold('中漁網'); g.pressPlace();
+  ok('a medium net placed facing north from the shore spreads north, not over your feet', w.get(mn.x + 1, mn.y - 1) === '罟' && w.netAt(mn.x + 1, mn.y - 1) === w.netAt(mn.x, mn.y) && w.get(p.x, p.y) !== '罟' && g.count('中漁網') === 0, [w.get(mn.x, mn.y), w.get(mn.x + 1, mn.y - 1)]);
+  g.action = null; g.pressGather(); takeYes(); for (const [x, y] of [[mn.x, mn.y], [mn.x + 1, mn.y], [mn.x, mn.y - 1], [mn.x + 1, mn.y - 1]]) w.set(x, y, '土');
+  ok('and comes back as a medium net', g.count('中漁網') === 1 && !w.netAt(mn.x, mn.y));
+  // 耐久：取完就破，不再進魚；面向按 F 用棉麻加固，同一張 1、2、4、8、8；囊裡的破網在製作欄「加固」
+  face(1, 0); w.set(nk.x, nk.y, '水'); const worn = p.bag.find(x => x.n === '漁網' && x.dur === 26); p.sel = p.bag.indexOf(worn); worn.dur = 2; g.pressPlace();
+  const rec2 = w.netAt(nk.x, nk.y);
+  ok('a worn net placed again keeps its durability', !!rec2 && rec2.dur === 2 && !p.bag.includes(worn), rec2 && rec2.dur);
+  const f2 = g.count('魚'); w.time += 300; g.msgText = ''; g.pressGather();
+  ok('taking three fish with two durability left tears the net (durability 0)', rec2.dur === 0 && g.count('魚') === f2 + 3 && g.msgText.indexOf('網破了') >= 0, [rec2.dur, g.msgText]);
+  w.time += 300;
+  ok('a torn net catches nothing more', w.netFish(rec2, w.time) === 0 && rec2.fish === 0);
+  g.msgText = ''; g.msgUntil = 0; g.updateHUD(); ok('the hint says the net is torn and offers mending for one cotton and one hemp', document.getElementById('msg').innerHTML.indexOf('破了') >= 0 && document.getElementById('msg').innerHTML.indexOf('加固（棉麻各 1）') >= 0, document.getElementById('msg').textContent);
+  g.removeItem('棉', 99); g.removeItem('麻', 99); g.msgText = ''; g.pressPlace();
+  ok('mending needs cotton and hemp in the bag', rec2.dur === 0 && g.msgText.indexOf('棉 1 麻 1') >= 0, g.msgText);
+  g.addItem('棉', 20); g.addItem('麻', 20); p.sta = 50; g.pressPlace();
+  ok('F facing the torn net mends it: one cotton, one hemp, durability back to 30, stamina −3', rec2.dur === 30 && rec2.rf === 1 && g.count('棉') === 19 && g.count('麻') === 19 && p.sta === 47, [rec2.dur, rec2.rf, g.count('棉')]);
+  const f3 = g.count('魚'); w.time += 100; g.pressGather();
+  ok('a mended net fishes again from the moment it was mended', g.count('魚') === f3 + 1 && rec2.dur === 29, [g.count('魚') - fish0, rec2.dur]);
+  g.msgText = ''; g.pressPlace();
+  ok('a net that is nearly whole is still mendable (not refused)', rec2.dur === 30 && rec2.rf === 2 && g.count('棉') === 17, [rec2.dur, rec2.rf, g.count('棉')]);
+  rec2.dur = 1; g.pressPlace(); ok('the third mend costs four of each (when it had worn)', rec2.rf === 3 && g.count('棉') === 13, [rec2.rf, g.count('棉')]);
+  rec2.dur = 1; g.pressPlace(); ok('the fourth costs eight', rec2.rf === 4 && g.count('棉') === 5, [rec2.rf, g.count('棉')]);
+  rec2.dur = 1; g.addItem('棉', 10); g.addItem('麻', 10); g.pressPlace(); ok('and eight stays the cap', rec2.rf === 5 && g.count('棉') === 7 && g.count('麻') === 7, [rec2.rf, g.count('棉')]);
+  g.msgText = ''; g.pressPlace(); ok('a whole net is not mended again', rec2.rf === 5 && g.msgText.indexOf('不用加固') >= 0, g.msgText);
+  rec2.dur = 3; g.pressGather(); takeYes();
+  const back = p.bag.find(x => x.n === '漁網' && x.dur === 3);
+  ok('the net comes back with durability 3 and five mends on it', !!back && back.rf === 5, back);
+  p.sel = p.bag.indexOf(back); g.craftCat = '全部'; g.buildCraft();
+  const mrow = Array.from(document.querySelectorAll('#craft-list .recipe')).find(r => r.textContent.indexOf('加固') >= 0);
+  ok('the craft panel has an 加固 row that reads this net as its sixth mend at eight each', !!mrow && mrow.textContent.indexOf('第 6 次：棉麻各 8') >= 0, mrow && mrow.textContent);
+  g.addItem('棉', 1); g.addItem('麻', 1); p.sta = 50; g.craft('mendnet');
+  ok('mending from the craft panel: eight cotton, eight hemp, durability 30, six mends', back.dur === 30 && back.rf === 6 && g.count('棉') === 0 && g.count('麻') === 0, [back.dur, back.rf, g.count('棉')]);
+  g.addItem('棉', 8); g.addItem('麻', 8); g.msgText = ''; g.craft('mendnet');
+  ok('a whole net in the bag is refused by the craft panel', g.msgText.indexOf('不用加固') >= 0 && g.count('棉') === 8, g.msgText);
+  g.addItem('漁網', 1); p.sel = p.bag.findIndex(x => x.n === '漁網' && x.dur === undefined); g.msgText = ''; g.craft('mendnet');
+  ok('a fresh net is refused too', g.msgText.indexOf('不用加固') >= 0 && g.count('棉') === 8, g.msgText);
+  face(1, 0); w.set(nk.x, nk.y, '水'); p.sel = p.bag.indexOf(back); g.pressPlace(); const rec3 = w.netAt(nk.x, nk.y); rec3.dur = 7; g.save();
+  const svn2 = JSON.parse(localStorage.getItem('xieyi.save.v5')); const nrec = Object.values(svn2.world.nets).find(v => v[1] === nk.x && v[2] === nk.y);
+  ok('the save records a net\'s durability and mends', !!nrec && nrec[6] === 7 && nrec[7] === 6, nrec);
+  g.load(svn2); const rec4 = w.netAt(nk.x, nk.y);
+  ok('and loading brings them back', !!rec4 && rec4.dur === 7 && rec4.rf === 6 && rec4.tidal === false, rec4);
+  g.pressGather(); takeYes(); g.removeItem('棉', 99); g.removeItem('麻', 99);
+  g.removeItem('魚', 99); g.removeItem('大漁網', 9); g.removeItem('漁網', 9); g.removeItem('中漁網', 9);
+  // 雪域與熱氣（v0.18）：離雪五格內待過五息暖才多掉、越待越快；烤的東西給九十息熱氣、累積一百五十；有熱氣時凍不傷命。雨裡燈的損壞率看難度
+  ok('lamp ruin odds per difficulty: easy 1/4500, normal 1/2500, hard 1/800; the world carries the current one', XIEYI.DIFF.easy.lampP === 1 / 4500 && XIEYI.DIFF.normal.lampP === 1 / 2500 && XIEYI.DIFF.hard.lampP === 1 / 800 && w.rainLampP === 1 / 2500, w.rainLampP);
+  {
+    const sx = p.x + 5, sy = p.y, keep = w.raw(sx, sy), lining = p.worn['襯']; p.worn['襯'] = null; setDay(0.3); hold('石子'); p.heatT = 0;
+    const dwAt = (sec) => { p.snowT = sec; p.warm = 50; g.updateStats(1); return p.warm - 50; };
+    const base = dwAt(0); w.set(sx, sy, '雪');
+    ok('a snow tile five away counts as the snow zone; under five seconds the warmth changes as usual', w.nearChar(p.x, p.y, '雪', 5) && Math.abs(dwAt(3) - base) < 1e-6 && Math.abs(p.snowT - 4) < 1e-9, [dwAt(3), base, p.snowT]);
+    const d6 = dwAt(5), d20 = dwAt(19), d60 = dwAt(60);
+    ok('past five seconds it drops 1.1 more a second, 2.5 more at twenty, and tops out at 4 more', Math.abs((base - d6) - 1.1) < 1e-6 && Math.abs((base - d20) - 2.5) < 1e-6 && Math.abs((base - d60) - 4) < 1e-6 && toasts().indexOf('寒氣逼人') >= 0, [base - d6, base - d20, base - d60]);
+    w.set(sx, sy, '雪'); w.set(p.x + 6, p.y, '雪'); w.set(sx, sy, keep);
+    ok('six away is outside the zone: the timer resets', Math.abs(dwAt(30) - base) < 1e-6 && p.snowT === 0, [dwAt(30), base]); w.set(p.x + 6, p.y, w.base(p.x + 6, p.y) === '雪' ? '土' : w.base(p.x + 6, p.y));
+    g.addItem('烤肉', 2); hold('烤肉'); p.food = 10; g.msgText = ''; g.useItem();
+    ok('roast meat gives ninety seconds of heat', Math.abs(p.heatT - 90) < 1e-9 && g.msgText.indexOf('熱氣 90 息') >= 0, [p.heatT, g.msgText]);
+    hold('烤肉'); p.food = 10; g.useItem();
+    ok('a second helping tops it up to the cap of 150', Math.abs(p.heatT - 150) < 1e-9, p.heatT);
+    g.addItem('烤魚', 1); hold('烤魚'); p.food = 10; g.useItem(); ok('roast fish counts too (still capped)', Math.abs(p.heatT - 150) < 1e-9, p.heatT);
+    await sleep(60); ok('the 暖 label shows the heat', document.getElementById('warmlabel').textContent.indexOf('熱') >= 0, document.getElementById('warmlabel').textContent);
+    setDay(0.7); p.warm = 0; p.hp = 50; p.food = 100; p.sta = 100; p.san = 100; p.hurtT = 0; p.poisonT = 0; g.updateStats(1);
+    ok('with heat in the belly freezing costs no hp', p.hp >= 50 && p.heatT > 148 && p.heatT < 150 && p.warm === 0, [p.hp, p.heatT, p.warm]);
+    p.heatT = 0; p.hp = 50; g.updateStats(1);
+    ok('without it the cold takes three a second', Math.abs(p.hp - 47) < 1e-6, p.hp);
+    p.heatT = 42; g.save(); const svh = JSON.parse(localStorage.getItem('xieyi.save.v5')); p.heatT = 0; g.load(svh);
+    ok('heat survives a save and load', Math.abs(p.heatT - 42) < 1e-9, p.heatT);
+    p.worn['襯'] = lining; setDay(0.3); p.warm = 100; p.hp = 100; p.heatT = 0; p.snowT = 0; g.removeItem('烤肉', 9); g.removeItem('烤魚', 9);
+  }
   for (let dx = 0; dx < 3; dx++) for (let dy = 0; dy < 3; dy++) w.set(nk.x + dx, nk.y + dy, w.base(nk.x + dx, nk.y + dy));   // 測試挖的深水還原，免得把出生點圍住
   // 煤與鐵：山裡有礦；礦二煤一入旺灶煉鐵；煤是好柴
   let coal = 0, iron = 0; for (let x = -60; x <= 60; x++) for (let y = -60; y <= 60; y++) { const b = w.base(x, y); if (b === '煤') coal++; else if (b === '鐵') iron++; }
@@ -794,7 +878,7 @@ const result = await page.evaluate(async () => {
     ok('rain ruins the lamp outside and spares the one indoors', w.get(cx + 3, cy) !== '燈' && w.get(cx - 6, cy) === '燈' && !w.lamps.has((cx + 3) + ',' + cy));
     const sw = w.serialize();
     ok('true random helper and weather save fields exist', typeof U.trueRand() === 'number' && U.trueRand() < 1 && typeof sw.rainUntil === 'number' && typeof sw.nextRainAt === 'number');
-    w.rainLampP = 1 / 1500; w.rainUntil = 0; }
+    w.rainLampP = XIEYI.DIFF.normal.lampP; w.rainUntil = 0; }
   // ============ v0.14：神兵成類、小屋、霧障會動、數值燈與提醒 ============
   calm();
   ok('god weapons have their own craft category 神兵', G.CRAFT_CATS.indexOf('神兵') > 0 && G.RECIPES.find(r => r.id === 'hammer').cat === '神兵' && G.RECIPES.find(r => r.id === 'seagod').cat === '神兵' && !G.RECIPES.some(r => r.cat === '工具' && (r.id === 'hammer' || r.id === 'seagod')));

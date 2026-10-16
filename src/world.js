@@ -6,16 +6,18 @@
   const CH = 16;                 // 區塊邊長（格）
   const STEP = 0.5;              // 模擬步長（秒）
   const DAY = 300;               // 一晝夜（秒），潮汐隨之起落；v0.17 從 240 加長四分之一，要跟 game.js 的 DAY 一致
+  const NET_DUR = { 1: 30, 2: 90, 3: 240 };   // 漁網的耐久：小中大各能取幾條魚（v0.17.1），取完就破、不再進魚，棉麻加固回滿
+  const TIDE_WET = 0.7;          // 灘一天裡有七成時間在水下（退潮 0.12–0.42）；放在灘上的網魚來得慢，間隔除以這個數
   const N8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
   const N4 = [[0, -1], [-1, 0], [1, 0], [0, 1]];
   // 天氣：雨。一場雨下 RAIN_MIN–RAIN_MAX 秒，停後隔 RAIN_GAP_MIN–RAIN_GAP_MAX 秒再來（真隨機，不走種子）；
-  // 下雨時屋外的燈每盞每息有 RAIN_LAMP_P 的真隨機機會被澆壞；ROOM_LIMIT 格內被牆圍得住才算屋裡
+  // 下雨時屋外的燈每盞每息有 rainLampP 的真隨機機會被澆壞（預設 RAIN_LAMP_P；開局由 game.js 照難度改成 DIFF.*.lampP：簡單 1/4500、一般 1/2500、困難 1/800）；ROOM_LIMIT 格內被牆圍得住才算屋裡
   // 霧障：每日擲 FOG_ROLLS 次、每次 FOG_P 的真隨機機會起一片霧（每日最多兩片，第二日起）；一片 FOG_MIN–FOG_MAX 格、形狀隨機長；
   // 起在玩家 FOG_NEAR 格外的陸地上；放著不管 FOG_LIFE 後自己散
   const FOG_ROLLS = 2, FOG_P = 0.25, FOG_MIN = 8, FOG_MAX = 12, FOG_NEAR = [8, 28], FOG_LIFE = DAY;
   const SEA_FOG_MIN = 6, SEA_FOG_MAX = 10, SEA_FOG_LIFE = 90;   // 蜃吐的海霧：六到十格，九十息就散
   const SHIPS = G.SHIPS;                                        // 船的兩種（孤帆、方舟）：大小、命、船頭首骨格數
-  const RAIN_MIN = DAY * 0.25, RAIN_MAX = DAY * 1.0, RAIN_GAP_MIN = DAY * 1.0, RAIN_GAP_MAX = DAY * 4.0, RAIN_LAMP_P = 1 / 1500, ROOM_LIMIT = 121;
+  const RAIN_MIN = DAY * 0.25, RAIN_MAX = DAY * 1.0, RAIN_GAP_MIN = DAY * 1.0, RAIN_GAP_MAX = DAY * 4.0, RAIN_LAMP_P = 1 / 2500, ROOM_LIMIT = 121;
   // 小屋：牆與門圍起的小空間，裡面不生生靈、生靈也進不去。多小才算看難度，由 game 透過 roomLimitFor(type) 告訴世界：獸一個門檻、魄一個門檻
   // （簡單 28／18、一般 18／8、困難 10／0，0 ＝ 牆擋不住魄）；MAX_ROOM 是各門檻的最大值，漫延數到這裡就停
   const MAX_ROOM = 28;
@@ -147,16 +149,19 @@
       return false;
     }
     // 漁網：小網三條九十息一條，中網八條三十息一條，大網二十條十息一條；魚是懶算的
-    addNet(x, y, size, now) {
-      const key = U.key(x, y), rec = { size, x, y, fish: 0, t: now, under: [] }, ch = size === 1 ? '網' : size === 2 ? '罟' : '罾';
+    addNet(x, y, size, now, dur, rf) {   // dur／rf：收回再放的網帶著原本的耐久與加固次數
+      const key = U.key(x, y), rec = { size, x, y, fish: 0, t: now, under: [], dur: dur === undefined ? NET_DUR[size] : dur, rf: rf || 0 }, ch = size === 1 ? '網' : size === 2 ? '罟' : '罾';
       this.nets.set(key, rec);
       for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) { rec.under.push(this.raw(x + i, y + j)); this.netCells.set(U.key(x + i, y + j), key); this.set(x + i, y + j, ch); }   // 記住網下原本的水，收網時還原
+      rec.tidal = rec.under.indexOf('灘') >= 0;   // 有一格是灘就算灘上的網：魚來得慢三成
       return rec;
     }
+    netDur(size) { return NET_DUR[size]; }
     netAt(x, y) { const a = this.netCells.get(U.key(x, y)); return a ? this.nets.get(a) || null : null; }
-    netRule(size) { return size === 1 ? { cap: 3, every: 90 } : size === 2 ? { cap: 8, every: 30 } : { cap: 20, every: 10 }; }
+    netRule(size, tidal) { const r = size === 1 ? { cap: 3, every: 90 } : size === 2 ? { cap: 8, every: 30 } : { cap: 20, every: 10 }; return tidal ? { cap: r.cap, every: Math.round(r.every / TIDE_WET) } : r; }   // 灘上 129／43／14 息一條
     netFish(rec, now) {
-      const r = this.netRule(rec.size), n = Math.floor((now - rec.t) / r.every);
+      if (rec.dur !== undefined && rec.dur <= 0) { rec.t = now; return rec.fish; }   // 破網不進魚，裡面剩的還拿得走
+      const r = this.netRule(rec.size, rec.tidal), n = Math.floor((now - rec.t) / r.every);
       if (n > 0) { rec.fish = Math.min(r.cap, rec.fish + n); rec.t += n * r.every; }
       if (rec.fish >= r.cap) rec.t = now;
       return rec.fish;
@@ -495,7 +500,7 @@
       const timers = {}; for (const [k, v] of this.timers) timers[k] = [v.to, Math.round(v.at), v.from || '灰'];
       const scarecrows = {}; for (const [k, v] of this.scarecrows) scarecrows[k] = Math.round(v);
       const chests = {}; for (const [k, v] of this.chests) chests[k] = v;
-      const nets = {}; for (const [k, v] of this.nets) nets[k] = [v.size, v.x, v.y, v.fish, Math.round(v.t), (v.under || []).join('')];
+      const nets = {}; for (const [k, v] of this.nets) nets[k] = [v.size, v.x, v.y, v.fish, Math.round(v.t), (v.under || []).join(''), v.dur === undefined ? NET_DUR[v.size] : v.dur, v.rf || 0];
       const stoves = {}; for (const [k, v] of this.stoves) stoves[k] = Math.round(v);
       const bags = {}; for (const [k, v] of this.bags) bags[k] = v;
       const weirs = {}; for (const [k, v] of this.weirs) weirs[k] = Math.round(v);
@@ -534,7 +539,7 @@
       this.scarecrows = new Map(Object.entries(s.scarecrows || {}));
       this.chests = new Map(Object.entries(s.chests || {}));
       this.nets = new Map(); this.netCells = new Map();
-      for (const [k, v] of Object.entries(s.nets || {})) { const rec = { size: v[0], x: v[1], y: v[2], fish: v[3], t: v[4], under: v[5] ? Array.from(v[5]) : [] }; this.nets.set(k, rec); for (let j = 0; j < rec.size; j++) for (let i = 0; i < rec.size; i++) this.netCells.set(U.key(rec.x + i, rec.y + j), k); }
+      for (const [k, v] of Object.entries(s.nets || {})) { const rec = { size: v[0], x: v[1], y: v[2], fish: v[3], t: v[4], under: v[5] ? Array.from(v[5]) : [], dur: v[6] === undefined ? NET_DUR[v[0]] : v[6], rf: v[7] || 0 }; rec.tidal = rec.under.indexOf('灘') >= 0; this.nets.set(k, rec); for (let j = 0; j < rec.size; j++) for (let i = 0; i < rec.size; i++) this.netCells.set(U.key(rec.x + i, rec.y + j), k); }
       this.stoves = new Map(Object.entries(s.stoves || {}));
       this.bags = new Map(Object.entries(s.bags || {}));
       this.weirs = new Map(Object.entries(s.weirs || {}));
