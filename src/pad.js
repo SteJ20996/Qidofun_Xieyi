@@ -11,19 +11,19 @@
   const STICKS = { lx: 1, ly: 1, rx: 1, ry: 1 };
   const STICK_NEG = { lx: ['lx-', '左搖桿往左推到底'], ly: ['ly-', '左搖桿往上推到底'], rx: ['rx-', '右搖桿往左推到底'], ry: ['ry-', '右搖桿往上推到底'] };   // 搖桿若是按鍵，再問反方向
   // 沒開面板時各鍵做什麼：丟鍵盤事件給遊戲；hold 的鍵按著不放（取、攻擊按住連取）
-  const ACTIONS = { A: { code: 'KeyE', hold: true }, B: { code: 'Escape' }, X: { code: 'KeyF' }, Y: { code: 'KeyV' }, L: { code: 'KeyQ' }, R: { code: 'Tab' }, ZL: { code: 'KeyP' }, ZR: { code: 'KeyE', hold: true }, MINUS: { code: 'KeyM' }, PLUS: { code: 'KeyC' }, L3: { code: 'KeyJ' }, R3: { code: 'KeyR' } };
+  const ACTIONS = { A: { code: 'KeyE', hold: true }, B: { code: 'Escape' }, X: { code: 'KeyF' }, Y: { code: 'KeyV' }, L: { code: 'KeyQ' }, R: { code: 'Tab' }, ZL: { code: 'KeyP' }, ZR: { code: 'KeyE', hold: true }, MINUS: { code: 'KeyM' }, PLUS: { code: 'KeyC' }, L3: { code: 'KeyL' }, R3: { code: 'KeyY' } };   // v0.26：L3 神兵、R3 彈弓；見聞錄與睡移到右搖桿上下
   const DIR_CODE = { UP: 'KeyW', DOWN: 'KeyS', LEFT: 'KeyA', RIGHT: 'KeyD' };
   const DIR_NAME = { UP: '上', DOWN: '下', LEFT: '左', RIGHT: '右' };
   const PANELS = ['dead', 'warn', 'takeask', 'fogask', 'seaask', 'padmap', 'padset', 'help', 'voyage', 'pause', 'read', 'chest', 'stove', 'craft', 'map', 'journal', 'start'];   // 由上到下，先找到誰就是最上面那層
-  const TOGGLES = { PLUS: 1, MINUS: 1, L3: 1 };   // 面板開著時仍照丟的鍵（C、M、J 都是開關）
+  const TOGGLES = { PLUS: 1, MINUS: 1 };   // 面板開著時仍照丟的鍵（C、M 都是開關）
   const MAP_VERSION = 3;   // v0.23：存的對應帶版本，舊版學到的（可能學錯的）一律不用，重新來過
   const STILL = 0.05, CALM_MS = 220, NOISY_MS = 1500;   // 精靈每一步開始前：各軸 0.22 息內晃動不到 0.05 才算靜下來；一點五息都靜不下來的軸當雜訊（體感、陀螺儀）不看
   const DEAD = 0.4, MOVE = 0.3, AXIS_MIN = 0.12, TINY = 0.03, HOLD_MS = 1200, REPEAT0 = 350, REPEAT = 120, STICK_REPEAT = 260, HAT_TOL = 0.3, LOST_FRAMES = 90;   // MOVE：搖桿算推動的門檻；AXIS_MIN：鍵那步收軸的門檻（帽子軸的某些位置離閒置只有 0.14）；TINY／HOLD_MS：搖桿幅度很小時，按住一秒多就收變化最大的那根軸
   const STEPS = [['A', 'A（右邊那顆）'], ['B', 'B（下面那顆）'], ['X', 'X（上面那顆）'], ['Y', 'Y（左邊那顆）'], ['L', 'L（左肩）'], ['R', 'R（右肩）'], ['ZL', 'ZL（左扳機）'], ['ZR', 'ZR（右扳機）'], ['MINUS', '－'], ['PLUS', '＋'], ['L3', '左搖桿按下去'], ['R3', '右搖桿按下去'], ['UP', '十字鍵上'], ['DOWN', '十字鍵下'], ['LEFT', '十字鍵左'], ['RIGHT', '十字鍵右'], ['lx', '左搖桿往右推到底'], ['ly', '左搖桿往下推到底'], ['rx', '右搖桿往右推到底'], ['ry', '右搖桿往下推到底']];
   // 手柄設定頁（v0.25）：二十個鍵位一列一個，寫名稱與遊戲裡做什麼；點「設定」再按那顆就換
   const ENTRY_NAME = { A: 'A', B: 'B', X: 'X', Y: 'Y', L: 'L', R: 'R', ZL: 'ZL', ZR: 'ZR', MINUS: '－', PLUS: '＋', L3: 'L3（左搖桿按下）', R3: 'R3（右搖桿按下）', UP: '十字鍵上', DOWN: '十字鍵下', LEFT: '十字鍵左', RIGHT: '十字鍵右', lx: '左搖桿左右', ly: '左搖桿上下', rx: '右搖桿左右', ry: '右搖桿上下' };
-  const ENTRY_DOES = { A: '取／攻擊（按住連取）；面板裡按下', B: '關面板／暫停', X: '放（F）', Y: '吃喝、用（V）', L: '囊裡上一格', R: '囊裡下一格', ZL: '換工具', ZR: '攻擊（同 A）', MINUS: '地圖', PLUS: '製作', L3: '見聞錄', R3: '睡', UP: '往上走；面板裡移焦點', DOWN: '往下走', LEFT: '往左走', RIGHT: '往右走', lx: '走（左右）', ly: '走（上下）', rx: '換囊格', ry: '（沒用到）' };
-  const PAD_KEYS_HTML = '手柄：左搖桿／十字鍵 走 · <b>A</b> 取／攻擊 · <b>B</b> 關／暫停 · <b>X</b> 放／用 · <b>Y</b> 吃／用 · <b>L</b><b>R</b> 換囊格 · <b>ZL</b> 換工具 · <b>ZR</b> 攻擊 · <b>＋</b> 製作 · <b>－</b> 地圖 · <b>L3</b> 見聞 · <b>R3</b> 睡 · 面板裡十字鍵移焦點、A 按下、B 關';
+  const ENTRY_DOES = { A: '取／攻擊（按住連取）；面板裡按下', B: '關面板／暫停', X: '放（F）', Y: '吃喝、用（V）', L: '囊裡上一格', R: '囊裡下一格', ZL: '換工具；拿著神兵時收回（P）', ZR: '攻擊（同 A）', MINUS: '地圖', PLUS: '製作', L3: '拿出神兵、再按換另一件（L）', R3: '拿出／收起彈弓（Y）', UP: '往上走；面板裡移焦點', DOWN: '往下走', LEFT: '往左走', RIGHT: '往右走', lx: '走（左右）', ly: '走（上下）', rx: '換囊格', ry: '上＝見聞錄（J）、下＝睡（R）' };
+  const PAD_KEYS_HTML = '手柄：左搖桿／十字鍵 走 · <b>A</b> 取／攻擊 · <b>B</b> 關／暫停 · <b>X</b> 放／用 · <b>Y</b> 吃／用 · <b>L</b><b>R</b> 換囊格 · <b>ZL</b> 換工具／收神兵 · <b>ZR</b> 攻擊 · <b>＋</b> 製作 · <b>－</b> 地圖 · <b>L3</b> 神兵 · <b>R3</b> 彈弓 · 右搖桿上 見聞、下 睡 · 面板裡十字鍵移焦點、A 按下、B 關';
   const $ = (id) => document.getElementById(id);
   const key = (type, code) => document.dispatchEvent(new KeyboardEvent(type, { code, key: code, bubbles: true, cancelable: true }));   // 發在 document：跟真的按鍵一樣先經過 window 的捕獲（設定頁、精靈先攔），再冒泡到遊戲
   const isDown = (b) => !!b && (typeof b === 'object' ? (b.pressed || b.value > 0.5) : b > 0.5);
@@ -32,7 +32,7 @@
 
   const PAD = {
     enabled: true, seen: false, id: '', index: -1, map: Object.assign({}, STD), axes: JSON.parse(JSON.stringify(STD_AXES)), rest: {}, custom: false, standard: true,
-    down: {}, dirHeld: {}, heldCodes: {}, focus: null, focusIdx: -1, lastPanel: null, rep: { dir: null, at: 0 }, stick: { dir: 0, at: 0 }, learning: null, lastGp: null, lost: 0, keysHtml: null, lastDir: null,
+    down: {}, dirHeld: {}, heldCodes: {}, focus: null, focusIdx: -1, lastPanel: null, rep: { dir: null, at: 0 }, stick: { dir: 0, at: 0 }, stickV: 0, learning: null, lastGp: null, lost: 0, keysHtml: null, lastDir: null,
     // ---------- 自訂對應的存取 ----------
     allCustom() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}') || {}; } catch (e) { return {}; } },
     customFor(id) { const c = this.allCustom()[id]; return c && c.v >= MAP_VERSION ? c : null; },   // 舊版存的不用
@@ -44,10 +44,17 @@
       this.map = c ? Object.assign({}, STD, c.buttons) : Object.assign({}, STD);
       this.axes = c ? Object.assign(JSON.parse(JSON.stringify(STD_AXES)), c.axes) : JSON.parse(JSON.stringify(STD_AXES));
       this.rest = c && c.rest ? Object.assign({}, c.rest) : {};
+      if (!this.standard && !(c && c.axes && c.axes.ry)) this.axes.ry = null;   // 右搖桿上下（v0.26 起有用）：非標準手柄的軸 3 不一定是它（常是扳機），沒學過就不用
       if (!c) this.recenter(gp, false);   // 第一眼看到時各軸停在哪裡就是閒置值（有的手柄閒置不在零，不記的話人會自己走）
       this.custom = !!c; this.down = {};
     },
-    useStandard() { this.forgetFor(this.id); this.map = Object.assign({}, STD); this.axes = JSON.parse(JSON.stringify(STD_AXES)); this.rest = {}; this.custom = false; this.note('手柄對應', '改回標準對應。'); },
+    useStandard() { this.forgetFor(this.id); this.map = Object.assign({}, STD); this.axes = JSON.parse(JSON.stringify(STD_AXES)); if (this.id && !this.standard) this.axes.ry = null; this.rest = {}; this.custom = false; this.note('手柄對應', '改回標準對應。'); },
+    ryFree() {   // 右搖桿上下那根軸沒被別的鍵位（左搖桿、右搖桿左右、十字鍵或扳機學成的軸）佔著才用
+      const a = this.axes.ry; if (!a) return false; if (!Array.isArray(a)) return true;
+      if (['lx', 'ly', 'rx'].some(n => Array.isArray(this.axes[n]) && this.axes[n][0] === a[0])) return false;
+      const onAx = (m) => Array.isArray(m) ? m.some(onAx) : !!m && typeof m === 'object' && m.ax === a[0];
+      return !BTN.some(n => onAx(this.map[n]));
+    },
     restOf(i) { const r = this.rest[i]; return num(r) ? r : 0; },
     // 一個綁法現在按著沒有
     bound(gp, m) {
@@ -135,12 +142,15 @@
       if (this.recording) this.recordStep(gp, now);
       if (this.learning) { this.learnStep(gp); return; }
       const dir = this.direction(gp); this.lastDir = dir;
-      const rx = this.axis(gp, 'rx');
+      const rx = this.axis(gp, 'rx'), ry = this.ryFree() ? this.axis(gp, 'ry') : 0;
       const panel = this.panel();
+      const vd = Math.abs(ry) > 0.6 && Math.abs(ry) > Math.abs(rx) ? (ry > 0 ? 1 : -1) : 0;   // 右搖桿上下（v0.26）：上＝見聞錄、下＝睡，推一下算一下；見聞錄開著時往上推關掉
+      if (this.stickV === null) { if (!vd) this.stickV = 0; }   // 剛學完（最後一步常是右搖桿往上）：等它回中再算
+      else if (vd !== this.stickV) { this.stickV = vd; if (vd && !panel) this.tap(vd < 0 ? 'KeyJ' : 'KeyR'); else if (vd < 0 && panel && panel.id === 'journal') this.tap('KeyJ'); }
       if (panel) { this.holdDirs(null); this.navigate(panel, dir, now); if (panel.id === 'pause') { this.liveText(gp, $('pause-live')); this.liveBars(gp, $('pause-bars'), null, true); } else if (panel.id === 'padset') { this.liveBars(gp, $('padset-bars'), null, false); this.liveText(gp, $('padset-live')); } }
       else {
         this.clearFocus(); this.holdDirs(dir);
-        const sd = Math.abs(rx) > 0.6 ? (rx > 0 ? 1 : -1) : 0;   // 右搖桿左右：換囊格，按著會連跳
+        const sd = Math.abs(rx) > 0.6 && Math.abs(rx) >= Math.abs(ry) ? (rx > 0 ? 1 : -1) : 0;   // 右搖桿左右：換囊格，按著會連跳（往上下推得多就不算）
         if (sd !== this.stick.dir) { this.stick.dir = sd; this.stick.at = now + REPEAT0; if (sd) this.tap(sd > 0 ? 'Tab' : 'KeyQ'); }
         else if (sd && now >= this.stick.at) { this.stick.at = now + STICK_REPEAT; this.tap(sd > 0 ? 'Tab' : 'KeyQ'); }
       }
@@ -155,7 +165,7 @@
       const k = $('keys'); if (k) { if (this.keysHtml === null) this.keysHtml = k.innerHTML; k.innerHTML = PAD_KEYS_HTML; }   // keysHtml 在載入時就記下繁體原文（見檔尾），選了簡體也不會記成簡體
       this.renderPadset();
       if (!this.standard && !this.custom && $('padset') && $('padset').classList.contains('hidden')) { this.note('手柄已連上', name + '。這支手柄的對應不是標準的，先學一遍；推搖桿時看面板下面哪一條在動。'); this.learn(); }
-      else this.note('手柄已連上', name + (this.custom ? '（用你學過的對應）' : '') + '。A 取、B 關、X 放、Y 用、L／R 換囊格、ZL 換工具、＋製作、－地圖。哪顆不對就到暫停或起始頁的「手柄設定」單獨換。');
+      else this.note('手柄已連上', name + (this.custom ? '（用你學過的對應）' : '') + '。A 取、B 關、X 放、Y 用、L／R 換囊格、ZL 換工具、L3 神兵、R3 彈弓、＋製作、－地圖。哪顆不對就到暫停或起始頁的「手柄設定」單獨換。');
     },
     onLost() {   // 手柄不見了（藍牙斷了、拔掉了）：放掉按著的鍵，按鍵列換回鍵盤的
       this.releaseAll(); this.seen = false; this.lost = 0; this.id = ''; this.index = -1; this.lastDir = null;
@@ -347,13 +357,13 @@
       if (L.i < L.steps.length) { this.renderLearn(); return; }
       if (L.single) { this.finishOne(L); return; }
       const rest = {}; (L.rest || []).forEach((v, i) => { if (Math.abs(v) > 0.02) rest[i] = v; }); for (const k in L.restOf) { if (Math.abs(L.restOf[k]) > 0.02) rest[k] = L.restOf[k]; else delete rest[k]; }   // 學到的軸用那一步的基準當閒置值
-      this.map = Object.assign({}, STD, L.buttons); this.axes = Object.assign(JSON.parse(JSON.stringify(STD_AXES)), L.axes); this.rest = rest; this.custom = true;
+      this.map = Object.assign({}, STD, L.buttons); this.axes = Object.assign(JSON.parse(JSON.stringify(STD_AXES)), L.axes); if (!L.axes.ry) this.axes.ry = null; this.rest = rest; this.custom = true;
       this.saveFor(this.id, { buttons: L.buttons, axes: L.axes, rest });
-      this.learning = null; $('padmap').classList.add('hidden'); this.down = {};
+      this.learning = null; $('padmap').classList.add('hidden'); this.down = {}; this.stickV = null;
       if (L.back) this.backToPadset();
       this.note('手柄對應存好了', '以後這支手柄都用這套。暫停面板最下面一行會即時顯示讀數與判定；方向不對就再學或改回標準。');
     },
-    learnCancel() { const L = this.learning, single = L && L.single; this.learning = null; $('padmap').classList.add('hidden'); this.down = {}; if (single) { const st = $('padset-state'); if (st) st.textContent = ''; this.renderPadset(); } if (L && L.back) this.backToPadset(); },
+    learnCancel() { const L = this.learning, single = L && L.single; this.learning = null; $('padmap').classList.add('hidden'); this.down = {}; this.stickV = null; if (single) { const st = $('padset-state'); if (st) st.textContent = ''; this.renderPadset(); } if (L && L.back) this.backToPadset(); },
     backToPadset() { $('padset').classList.remove('hidden'); this.renderPadset(); },   // 從設定頁開的精靈：學完或取消都回設定頁
     // ---------- 手柄設定頁：二十個鍵位一個一個設 ----------
     friendly(m, stick) {
@@ -425,7 +435,7 @@
       if (na && !Array.isArray(na)) { clearB(na.pos); clearB(na.neg); }
       for (const k in L.restOf) { if (Math.abs(L.restOf[k]) > 0.02) this.rest[k] = L.restOf[k]; else delete this.rest[k]; }
       this.map = m; this.axes = a; this.custom = true; this.persist();
-      this.learning = null; this.down = {}; if (this.lastGp) for (const n of BTN) this.down[n] = this.pressed(this.lastGp, n);   // 剛按的那顆還按著：不當成新的一下（免得在面板裡又按到「設定」）
+      this.learning = null; this.down = {}; this.stickV = null; if (this.lastGp) for (const n of BTN) this.down[n] = this.pressed(this.lastGp, n);   // 剛按的那顆還按著：不當成新的一下（免得在面板裡又按到「設定」）
       const st = $('padset-state'); if (st) st.textContent = '';
       this.renderPadset();
       this.note('手柄設定', ENTRY_NAME[name] + '＝' + this.friendly(STICKS[name] ? a[name] : m[name], !!STICKS[name]) + (cleared.length ? '；' + cleared.map(n => ENTRY_NAME[n]).join('、') + ' 原本也用它，改成無' : '') + '。');

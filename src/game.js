@@ -789,6 +789,34 @@
       p.tool = p.tool + d; if (p.tool >= n) p.tool = -1; else if (p.tool < -1) p.tool = n - 1;
       this.message(p.tool < 0 ? '空手。' : '手持「' + p.tools[p.tool].n + '」。'); this.buildBag();
     }
+    // 神兵與彈弓各有專鍵（v0.26）：L 拿出神兵（手上已是神兵就換另一件）、P 收回；Y 拿出彈弓、再按收起。
+    // 收回時回到拿出前手上那把（拿出前是空手、或那把已經不在了就空手）；在神兵與彈弓之間換來換去不改記著的那把。
+    isSpecial(s) { return !!s && (GODS.indexOf(s.n) >= 0 || s.n === '彈弓'); }
+    takeOut(names) {   // 拿出 names 裡的一件（具欄優先，沒有就從囊移進具欄）；回傳那件、沒有回 null、具欄滿了回 false
+      const p = this.player, cur = this.activeTool();
+      let i = p.tools.findIndex(s => names.indexOf(s.n) >= 0 && s !== cur);
+      if (i < 0) { const b = p.bag.findIndex(s => names.indexOf(s.n) >= 0); if (b < 0) return null; if (!this.equipFromBag(b)) return false; i = p.tools.length - 1; }
+      if (!this.isSpecial(cur)) this.prevTool = cur;
+      p.tool = i; this.barSig = ''; this.buildBag(); SFX.write(); return p.tools[i];
+    }
+    putAway() {
+      const p = this.player, cur = this.activeTool(), prev = this.prevTool, j = prev ? p.tools.indexOf(prev) : -1;
+      p.tool = j; this.prevTool = null; this.barSig = ''; this.buildBag();
+      this.message('收起「' + (cur ? cur.n : '') + '」，' + (j >= 0 ? '手持「' + prev.n + '」。' : '空手。'));
+    }
+    drawGod() {
+      const cur = this.activeTool(), holding = !!cur && GODS.indexOf(cur.n) >= 0, got = this.takeOut(GODS);
+      if (got) { this.message('拿出「' + got.n + '」。P 收回。'); return; }
+      if (got === false) return;   // 具欄滿了，equipFromBag 已經說了
+      this.message(holding ? '手持「' + cur.n + '」，只有這一件神兵。P 收回。' : '沒有神兵。膽氣卅一重可鑄九閽鳴雷與燭龍焚溟。');
+    }
+    toggleSling() {
+      const cur = this.activeTool();
+      if (cur && cur.n === '彈弓') { this.putAway(); return; }
+      const got = this.takeOut(['彈弓']);
+      if (got) this.message('拿出彈弓：E 射面前九格內最近的獸。Y 收起。');
+      else if (got === null) this.message('沒有彈弓。木二、麻三可做（製作的「具」）。');
+    }
     equipFromBag(i) {
       const p = this.player, s = p.bag[i]; if (!s || !this.isTool(s.n)) return false;
       if (p.tools.length >= this.toolSlots()) { this.message('具欄滿了。'); SFX.fail(); return false; }
@@ -1638,7 +1666,9 @@
           case 'KeyF': case 'Enter': this.pressPlace(); break;
           case 'KeyV': this.useItem(); break;
           case 'KeyR': this.sleep(); break;
-          case 'KeyP': this.cycleTool(1); break;
+          case 'KeyP': { const h = this.activeTool(); if (h && GODS.indexOf(h.n) >= 0) this.putAway(); else this.cycleTool(1); break; }   // 拿著神兵時 P 收回
+          case 'KeyL': this.drawGod(); break;
+          case 'KeyY': this.toggleSling(); break;
           case 'KeyN': this.message(SFX.toggle() ? '已靜音' : '聲音已開'); break;
           case 'BracketLeft': case 'KeyQ': this.cycle(-1); break;
           case 'BracketRight': case 'KeyZ': case 'Tab': this.cycle(1); break;
