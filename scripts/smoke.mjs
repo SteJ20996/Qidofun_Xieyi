@@ -984,6 +984,35 @@ const result = await page.evaluate(async () => {
     PAD.map.UP = -1; PAD.map.DOWN = -1; PAD.map.LEFT = -1; PAD.map.RIGHT = -1; PAD.axes.lx = [4, 1]; PAD.axes.ly = [5, 1];
     pressBtn(odd, 12, true); await frames(3); ok('fallback: standard d-pad button 12 (unbound) still holds W', g.keys.has('KeyW')); pressBtn(odd, 12, false); await frames(3);
     odd.axes[1] = 0.9; await frames(3); ok('fallback: standard left-stick axis 1 (unbound) still holds S', g.keys.has('KeyS')); odd.axes[1] = 0; await frames(3);
+    // —— 幅度很小、閒置不在零、Y 反向的搖桿（像 12 位元資料塞在 16 位元欄位裡）：按住一秒多就收，照幅度放大
+    PAD.useStandard(); navigator.getGamepads = () => []; await until(() => !PAD.seen, 9000);
+    const tiny = mkPad('Tiny stick pad (Vendor: 0000 Product: 0002)', '', 16, 6); tiny.axes[4] = -0.9375; tiny.axes[5] = 0.9375; navigator.getGamepads = () => [tiny];
+    pressBtn(tiny, 0, true); await frames(3); pressBtn(tiny, 0, false); await frames(3);
+    ok('the tiny-stick pad opens the wizard and nothing walks while the sticks rest off-centre', !hidden('padmap') && !g.keys.has('KeyS') && !g.keys.has('KeyW'));
+    for (let i = 0; i < 16; i++) { pressBtn(tiny, i, true); await frames(3); pressBtn(tiny, i, false); await frames(3); }
+    ok('sixteen buttons learned, now the left stick', document.getElementById('padmap-text').textContent.indexOf('左搖桿往右') >= 0);
+    tiny.axes[4] = -0.8125; await sleep(400); const early = document.getElementById('padmap-text').textContent.indexOf('左搖桿往右') >= 0; await until(() => document.getElementById('padmap-text').textContent.indexOf('左搖桿往下') >= 0, 3000); tiny.axes[4] = -0.9375; await frames(3);
+    ok('a stick that only moves 0.125 is accepted after holding it a second or so', early && document.getElementById('padmap-text').textContent.indexOf('左搖桿往下') >= 0 && document.getElementById('padmap-text').textContent.indexOf('幅0.125') >= 0, document.getElementById('padmap-text').textContent.slice(0, 160));
+    tiny.axes[5] = 0.8125; await until(() => document.getElementById('padmap-text').textContent.indexOf('右搖桿往右') >= 0, 3000); tiny.axes[5] = 0.9375; await frames(3);
+    PAD.learnSkip(); await frames(2); PAD.learnSkip(); await frames(3);
+    ok('learned: left stick x = axis 4 span 0.125, y = axis 5 inverted span 0.125', hidden('padmap') && PAD.custom && PAD.axes.lx[0] === 4 && PAD.axes.lx[1] === 1 && Math.abs(PAD.axes.lx[2] - 0.125) < 1e-3 && PAD.axes.ly[0] === 5 && PAD.axes.ly[1] === -1, PAD.axes);
+    ok('at rest nothing moves', !g.keys.has('KeyS') && !g.keys.has('KeyW') && !g.keys.has('KeyD'));
+    tiny.axes[4] = -0.8125; await frames(3); ok('pushing it right (−0.94 → −0.81) walks east', g.keys.has('KeyD')); tiny.axes[4] = -0.9375; await frames(3);
+    tiny.axes[5] = 0.8125; await frames(3); ok('pushing it down (inverted: 0.94 → 0.81) walks south', g.keys.has('KeyS') && !g.keys.has('KeyW')); tiny.axes[5] = 0.9375; await frames(3);
+    // —— 暫停面板的工具：對調、反向、校正中點、錄讀數
+    PAD.swapSticks(); ok('swap sticks moves the learned left stick to the right stick', PAD.axes.rx[0] === 4 && PAD.axes.lx[0] === 2 && (JSON.parse(localStorage.getItem('xieyi.pad'))[tiny.id]).axes.rx[0] === 4);
+    PAD.swapSticks(); PAD.flip('ly'); ok('flip y inverts the learned sign and saves it', PAD.axes.ly[1] === 1 && (JSON.parse(localStorage.getItem('xieyi.pad'))[tiny.id]).axes.ly[1] === 1); PAD.flip('ly');
+    tiny.axes[4] = -0.8125; PAD.recenter(null, true); await frames(3); ok('recentre takes the current stick position as rest: no walking now', !g.keys.has('KeyD') && Math.abs(PAD.rest[4] + 0.8125) < 1e-6);
+    tiny.axes[4] = -0.6875; await frames(3); ok('and pushing further from the new centre walks again', g.keys.has('KeyD')); tiny.axes[4] = -0.9375; PAD.recenter(null, true); await frames(3);
+    PAD.recordMs = 400; PAD.record(); await frames(2); pressBtn(tiny, 3, true); tiny.axes[4] = -0.8125; await frames(3); pressBtn(tiny, 3, false); tiny.axes[4] = -0.9375; await until(() => !PAD.recording, 3000); await frames(2);
+    const rec = document.getElementById('pause-rec').value;
+    ok('the eight-second recorder reports id, counts, pressed buttons, every axis rest/min/max and the current mapping', !PAD.recording && rec.indexOf('山海有形手柄讀數 v2') === 0 && rec.indexOf('16 鍵 6 軸') >= 0 && rec.indexOf('[3]') >= 0 && rec.indexOf('4:-0.94[-0.94,-0.81]★') >= 0 && rec.indexOf('現在的對應') >= 0, rec.slice(0, 200));
+    // —— 標準對應但搖桿閒置不在零：第一眼記下閒置值，不會自己走
+    PAD.useStandard(); navigator.getGamepads = () => []; await until(() => !PAD.seen, 9000);
+    const driftPad = mkPad('Drifty (STANDARD GAMEPAD)', 'standard', 17, 4); driftPad.axes[1] = 0.9; navigator.getGamepads = () => [driftPad];
+    pressBtn(driftPad, 1, true); await frames(3); pressBtn(driftPad, 1, false); await frames(3);
+    ok('a standard pad whose y axis rests at 0.9 does not walk south by itself', PAD.seen && !g.keys.has('KeyS') && Math.abs(PAD.rest[1] - 0.9) < 1e-6);
+    driftPad.axes[1] = 0.2; await frames(3); ok('moving it up from there (0.9 → 0.2) walks north', g.keys.has('KeyW')); driftPad.axes[1] = 0.9; await frames(3);
     PAD.useStandard(); navigator.getGamepads = real; PAD.releaseAll(); PAD.seen = false; PAD.id = ''; PAD.index = -1; const kl = document.getElementById('keys'); if (PAD.keysHtml !== null) kl.innerHTML = PAD.keysHtml; await frames(2); g.keys.clear(); }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
