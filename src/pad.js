@@ -16,7 +16,7 @@
   const DIR_NAME = { UP: '上', DOWN: '下', LEFT: '左', RIGHT: '右' };
   const PANELS = ['dead', 'warn', 'fogask', 'seaask', 'padmap', 'help', 'voyage', 'pause', 'read', 'chest', 'stove', 'craft', 'map', 'journal', 'start'];   // 由上到下，先找到誰就是最上面那層
   const TOGGLES = { PLUS: 1, MINUS: 1, L3: 1 };   // 面板開著時仍照丟的鍵（C、M、J 都是開關）
-  const DEAD = 0.4, MOVE = 0.3, AXIS_MIN = 0.12, REPEAT0 = 350, REPEAT = 120, STICK_REPEAT = 260, HAT_TOL = 0.3, LOST_FRAMES = 90;   // MOVE：搖桿算推動的門檻；AXIS_MIN：鍵那步收軸的門檻（帽子軸的某些位置離閒置只有 0.14）
+  const DEAD = 0.4, MOVE = 0.3, AXIS_MIN = 0.12, TINY = 0.03, HOLD_MS = 1200, REPEAT0 = 350, REPEAT = 120, STICK_REPEAT = 260, HAT_TOL = 0.3, LOST_FRAMES = 90;   // MOVE：搖桿算推動的門檻；AXIS_MIN：鍵那步收軸的門檻（帽子軸的某些位置離閒置只有 0.14）；TINY／HOLD_MS：搖桿幅度很小時，按住一秒多就收變化最大的那根軸
   const STEPS = [['A', 'A（右邊那顆）'], ['B', 'B（下面那顆）'], ['X', 'X（上面那顆）'], ['Y', 'Y（左邊那顆）'], ['L', 'L（左肩）'], ['R', 'R（右肩）'], ['ZL', 'ZL（左扳機）'], ['ZR', 'ZR（右扳機）'], ['MINUS', '－'], ['PLUS', '＋'], ['L3', '左搖桿按下去'], ['R3', '右搖桿按下去'], ['UP', '十字鍵上'], ['DOWN', '十字鍵下'], ['LEFT', '十字鍵左'], ['RIGHT', '十字鍵右'], ['lx', '左搖桿往右推到底'], ['ly', '左搖桿往下推到底'], ['rx', '右搖桿往右推到底'], ['ry', '右搖桿往下推到底']];
   const PAD_KEYS_HTML = '手柄：左搖桿／十字鍵 走 · <b>A</b> 取／攻擊 · <b>B</b> 關／暫停 · <b>X</b> 放／用 · <b>Y</b> 吃／用 · <b>L</b><b>R</b> 換囊格 · <b>ZL</b> 換工具 · <b>ZR</b> 攻擊 · <b>＋</b> 製作 · <b>－</b> 地圖 · <b>L3</b> 見聞 · <b>R3</b> 睡 · 面板裡十字鍵移焦點、A 按下、B 關';
   const $ = (id) => document.getElementById(id);
@@ -38,7 +38,7 @@
       this.map = c ? Object.assign({}, STD, c.buttons) : Object.assign({}, STD);
       this.axes = c ? Object.assign(JSON.parse(JSON.stringify(STD_AXES)), c.axes) : JSON.parse(JSON.stringify(STD_AXES));
       this.rest = c && c.rest ? Object.assign({}, c.rest) : {};
-      if (!c) gp.axes.forEach((v, i) => { if (num(v) && Math.abs(v) < 0.3) this.rest[i] = v; });
+      if (!c) this.recenter(gp, false);   // 第一眼看到時各軸停在哪裡就是閒置值（有的手柄閒置不在零，不記的話人會自己走）
       this.custom = !!c; this.down = {};
     },
     useStandard() { this.forgetFor(this.id); this.map = Object.assign({}, STD); this.axes = JSON.parse(JSON.stringify(STD_AXES)); this.rest = {}; this.custom = false; this.note('手柄對應', '改回標準對應。'); },
@@ -60,7 +60,33 @@
       const a = this.axes[name]; if (!a) return 0;
       if (!Array.isArray(a)) return (this.bound(gp, a.pos) ? 1 : 0) - (this.bound(gp, a.neg) ? 1 : 0);   // 搖桿是按鍵
       const v = gp.axes[a[0]]; if (!num(v) || Math.abs(v) > 1.5) return 0;
-      return (v - this.restOf(a[0])) * a[1];
+      const span = a[2] && a[2] > TINY ? a[2] : 1;   // 學到的幅度：有的搖桿推到底只動 0.1，照幅度放大到 ±1
+      return Math.max(-1, Math.min(1, (v - this.restOf(a[0])) * a[1] / span));
+    },
+    // ---------- 暫停面板的工具：校正中點、對調搖桿、反向、錄讀數 ----------
+    recenter(gp, save) { gp = gp || this.lastGp; if (!gp) return false; gp.axes.forEach((v, i) => { if (num(v) && Math.abs(v) <= 1) this.rest[i] = v; }); if (save) this.persist(); return true; },
+    persist() {   // 把現在這套（含手動調整）當成這支手柄的自訂對應存起來
+      const buttons = {}; for (const n of BTN) if (JSON.stringify(this.map[n]) !== JSON.stringify(STD[n])) buttons[n] = this.map[n];
+      this.saveFor(this.id, { buttons, axes: JSON.parse(JSON.stringify(this.axes)), rest: Object.assign({}, this.rest) }); this.custom = true;
+    },
+    swapSticks() { const l = [this.axes.lx, this.axes.ly]; this.axes.lx = this.axes.rx; this.axes.ly = this.axes.ry; this.axes.rx = l[0]; this.axes.ry = l[1]; this.persist(); this.note('手柄', '左右搖桿對調了。'); },
+    flip(name) { const a = this.axes[name]; if (Array.isArray(a)) a[1] = -a[1]; else if (a) { const t = a.pos; a.pos = a.neg; a.neg = t; } this.persist(); this.note('手柄', (name === 'lx' ? '左搖桿左右' : name === 'ly' ? '左搖桿上下' : name === 'rx' ? '右搖桿左右' : '右搖桿上下') + '反向了。'); },
+    record(ms) {   // 錄一段：各軸閒置值與最小最大、按過的鍵、幾鍵幾軸、id；錄完寫進文字框並複製到剪貼簿
+      const gp = this.lastGp; if (!gp) { this.note('手柄', '還沒看到手柄。'); return; }
+      const R = { until: performance.now() + (ms || this.recordMs || 8000), rest: Array.from(gp.axes).map(v => (num(v) ? v : 0)), min: Array.from(gp.axes).map(v => (num(v) ? v : 0)), max: Array.from(gp.axes).map(v => (num(v) ? v : 0)), btns: new Set(), id: gp.id, mapping: gp.mapping, nb: gp.buttons.length, na: gp.axes.length };
+      this.recording = R; const box = $('pause-rec'); if (box) { box.classList.remove('hidden'); box.value = '錄音中……請依序：左搖桿繞一圈、右搖桿繞一圈、十字鍵四向各按一下、再按 A B X Y。'; }
+    },
+    recordStep(gp, now) {
+      const R = this.recording; if (!R) return;
+      gp.axes.forEach((v, i) => { if (!num(v)) return; if (v < R.min[i]) R.min[i] = v; if (v > R.max[i]) R.max[i] = v; });
+      gp.buttons.forEach((b, i) => { if (isDown(b)) R.btns.add(i); });
+      if (now < R.until) return;
+      this.recording = null;
+      const axes = R.rest.map((r, i) => i + ':' + r.toFixed(2) + '[' + R.min[i].toFixed(2) + ',' + R.max[i].toFixed(2) + ']' + (R.max[i] - R.min[i] > TINY ? '★' : '')).join(' ');
+      const text = '山海有形手柄讀數 v2 | ' + (R.id || '').slice(0, 60) + ' | 對應 ' + (R.mapping || '非標準') + ' | ' + R.nb + ' 鍵 ' + R.na + ' 軸 | 按過的鍵 [' + [...R.btns].sort((a, b) => a - b).join(',') + '] | 軸 閒置[最小,最大]（★有動）：' + axes + ' | 現在的對應：' + this.summary();
+      const box = $('pause-rec'); if (box) { box.classList.remove('hidden'); box.value = text; }
+      this.lastRecord = text;
+      try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => this.note('讀數錄好了', '已複製到剪貼簿，貼給開發者即可；下面的框裡也有。'), () => this.note('讀數錄好了', '在下面的框裡，全選複製。')); else this.note('讀數錄好了', '在下面的框裡，全選複製。'); } catch (e) { this.note('讀數錄好了', '在下面的框裡，全選複製。'); }
     },
     usedButtons() { const s = new Set(); const take = (m) => { if (typeof m === 'number' && m >= 0) s.add(m); else if (Array.isArray(m)) m.forEach(take); else if (m && typeof m === 'object' && m.ax === undefined) { take(m.pos); take(m.neg); } }; for (const n in this.map) take(this.map[n]); for (const n in this.axes) take(this.axes[n]); return s; },
     usedAxes() { const s = new Set(); for (const n in this.map) { const m = this.map[n]; if (m && typeof m === 'object' && m.ax !== undefined) s.add(m.ax); } for (const n in this.axes) { const a = this.axes[n]; if (Array.isArray(a)) s.add(a[0]); } return s; },
@@ -99,6 +125,7 @@
       if (gp.id !== this.id || gp.index !== this.index) this.use(gp);
       const any = gp.buttons.some(isDown) || gp.axes.some((v, i) => num(v) && Math.abs(v - (this.rest[i] !== undefined ? this.rest[i] : (Math.abs(v) > 1.5 ? v : 0))) > 0.6);   // 第一次有動靜才算連上（帽子軸閒置的 3.29 不算動靜）
       if (!this.seen) { if (!any) { gp.axes.forEach((v, i) => { if (num(v) && Math.abs(v) > 1.5 && this.rest[i] === undefined) this.rest[i] = v; }); return; } this.seen = true; this.onConnect(gp); }
+      if (this.recording) this.recordStep(gp, now);
       if (this.learning) { this.learnStep(gp); return; }
       const dir = this.direction(gp); this.lastDir = dir;
       const rx = this.axis(gp, 'rx');
@@ -189,7 +216,7 @@
     },
     // ---------- 讀數：瀏覽器看到什麼、遊戲判定成什麼（精靈最下面一行、暫停面板） ----------
     describe(m) { if (m === undefined || m === null || m === -1) return '無'; if (typeof m === 'number') return '鍵' + m; if (Array.isArray(m)) return m.map(x => this.describe(x)).join('或'); if (m.ax !== undefined) return '軸' + m.ax + '@' + (+m.at).toFixed(2); return '鍵' + m.pos + '／' + m.neg; },
-    describeStick(a) { if (!a) return '無'; if (Array.isArray(a)) return '軸' + a[0] + (a[1] < 0 ? '反' : ''); return '鍵' + this.describe(a.pos) + '／' + this.describe(a.neg); },
+    describeStick(a) { if (!a) return '無'; if (Array.isArray(a)) return '軸' + a[0] + (a[1] < 0 ? '反' : '') + (a[2] ? '幅' + a[2] : ''); return '鍵' + this.describe(a.pos) + '／' + this.describe(a.neg); },
     summary() { return BTN.map(n => (DIR_NAME[n] || n) + '＝' + this.describe(this.map[n])).join(' ') + ' 左搖桿＝' + this.describeStick(this.axes.lx) + '，' + this.describeStick(this.axes.ly) + ' 右搖桿＝' + this.describeStick(this.axes.rx) + '，' + this.describeStick(this.axes.ry); },
     liveText(gp, el, rest) {
       if (!el) return;
@@ -204,7 +231,7 @@
     learnOrHint() { if (!this.seen) { this.note('還沒看到手柄', '先按一下手柄上任一鍵（藍牙或 USB 接上電腦後），瀏覽器才會把它交給遊戲。'); return false; } this.learn(); return true; },
     learn() {
       this.releaseAll();
-      this.learning = { i: 0, steps: STEPS.map(s => s.slice()), buttons: {}, axes: {}, rest: null, idle: false, hatAxes: {} };
+      this.learning = { i: 0, steps: STEPS.map(s => s.slice()), buttons: {}, axes: {}, rest: null, idle: false, hatAxes: {}, slow: null };
       $('padmap').classList.remove('hidden'); this.renderLearn();
     },
     renderLearn() {
@@ -231,9 +258,18 @@
       const usedB = Object.values(L.buttons).filter(v => typeof v === 'number').concat(...Object.values(L.axes).filter(a => !Array.isArray(a)).map(a => [a.pos, a.neg].filter(x => typeof x === 'number')));
       if (STICKS[name] || (name.length === 3 && name[2] === '-')) {
         const base = name.slice(0, 2);
-        if (big.length && !(name.length === 3)) {   // 搖桿是軸：動得最多的那根（先挑不是帽子軸的）
-          const i = big.find(k => !L.hatAxes[k]) !== undefined ? big.find(k => !L.hatAxes[k]) : big[0];
-          L.axes[base] = [i, gp.axes[i] > L.rest[i] ? 1 : -1]; L.hold = { ax: i, at: gp.axes[i] };
+        // 搖桿幅度很小的手柄：沒有軸動超過 0.3，就看哪根軸動了一點點（> 0.03）且按住一秒多，收它並記下幅度
+        let tiny = null;
+        if (!big.length && name.length === 2) {
+          let bi = -1, bd = TINY; gp.axes.forEach((v, i) => { if (!num(v) || L.hatAxes[i]) return; const d = Math.abs(v - L.rest[i]); if (d > bd) { bd = d; bi = i; } });
+          if (bi < 0) L.slow = null;
+          else if (!L.slow || L.slow.ax !== bi) L.slow = { ax: bi, since: performance.now() };
+          else if (performance.now() - L.slow.since >= HOLD_MS) tiny = bi;
+        }
+        if ((big.length || tiny !== null) && !(name.length === 3)) {   // 搖桿是軸：動得最多的那根（先挑不是帽子軸的）
+          const i = tiny !== null ? tiny : (big.find(k => !L.hatAxes[k]) !== undefined ? big.find(k => !L.hatAxes[k]) : big[0]);
+          const span = Math.min(1, Math.max(TINY, Math.abs(gp.axes[i] - L.rest[i])));
+          L.axes[base] = span < 0.95 ? [i, gp.axes[i] > L.rest[i] ? 1 : -1, +span.toFixed(3)] : [i, gp.axes[i] > L.rest[i] ? 1 : -1]; L.hold = { ax: i, at: gp.axes[i] }; L.slow = null;
         } else {
           const b = down.find(k => !usedB.includes(k)); if (b === undefined) return;
           if (name.length === 2) { L.axes[base] = { pos: b, neg: -1 }; L.steps.splice(L.i + 1, 0, STICK_NEG[base]); }   // 搖桿是按鍵：記正向，再加一步問反向
@@ -269,6 +305,11 @@
       on('help-pad', () => { $('help').classList.add('hidden'); this.learnOrHint(); });
       on('btn-pad', () => this.learnOrHint());
       on('pause-pad', () => this.learnOrHint());
+      on('pause-center', () => { if (this.recenter(null, true)) this.note('手柄', '以現在搖桿停的位置當中點。'); else this.note('手柄', '還沒看到手柄。'); });
+      on('pause-swap', () => this.swapSticks());
+      on('pause-flipy', () => this.flip('ly'));
+      on('pause-flipx', () => this.flip('lx'));
+      on('pause-record', () => this.record());
       window.addEventListener('keydown', (ev) => { if (!this.learning) return; if (ev.code === 'Escape') this.learnCancel(); else if (ev.code === 'Space') this.learnSkip(); ev.preventDefault(); ev.stopImmediatePropagation(); }, true);
     },
     loop() {
