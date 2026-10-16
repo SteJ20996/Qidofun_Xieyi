@@ -55,7 +55,7 @@
     '磚': { s: 16, walk: 0, kind: 'object', ink: INK.brick, yield: { '磚': 1 }, time: 4.0, fast: '鎬', place: true, flavor: '二土一草成磚。獸不得過；魄能穿。鎬拆之快。' },
     '床': { s: 7, walk: 0, kind: 'object', ink: INK.brown, yield: { '床': 1 }, time: 1.0, place: true, flavor: '六團棉、兩塊木。夜裡面向它按 R，一覺到天明。' },
     '門': { s: 8, walk: 1.0, kind: 'object', gate: true, ink: INK.brown, yield: { '門': 1 }, time: 1.0, place: true, flavor: '人能過，獸不能。面向它按 E 可問路。' },
-    '燈': { s: 16, walk: 0, kind: 'object', light: 5, ink: INK.gold, yield: { '燈': 1 }, time: 1.0, place: true, flavor: '石與火把成燈，長明不滅，只怕屋外的雨。魄六格內即煙滅。' },
+    '燈': { s: 16, walk: 0, kind: 'object', light: 5, ink: INK.gold, yield: { '燈': 1 }, time: 1.0, place: true, flavor: '石與火把成燈，長明不滅，只怕屋外的雨。魄三格內即煙滅；人跨得過，獸過不去。' },
     '橋': { s: 16, walk: 1.0, kind: 'object', flam: 0.3, ink: INK.brown, yield: { '橋': 1 }, time: 1.0, place: true, onWater: true, flavor: '架在水上的橋。' },
     '漁': { s: 14, walk: 0, kind: 'object', ink: INK.water, yield: { '漁': 1 }, time: 1.0, place: true, onWater: true, flavor: '魚梁。放在水上，隔一陣子就有魚。' },
     '網': { s: 14, walk: 0, kind: 'object', ink: INK.water, place: true, onWater: true, net: 1, flavor: '小漁網，棉麻草織成。放在淺水或灘上（灘上慢三成），九十息一條魚、存三條；能取三十條就破，棉麻加固。面向按 E 取魚，空網再按 E 收回。' },
@@ -85,7 +85,7 @@
     '蛇': { s: 11, kind: 'beast', ink: INK.beast, hp: 90, bite: 3, flavor: '草木之交的毒蛇。約三息一口，一口五秒毒；連咬不斷（兩口相隔不過六息）滿十五口必死。' },
     '蛛': { s: 12, kind: 'beast', ink: INK.beast, hp: 90, bite: 3, passive: true, flavor: '除草時驚出的蜘蛛。不惹不咬；咬起來與蛇同。' },
     '蟾': { s: 19, kind: 'beast', ink: INK.beast, hp: 90, bite: 2, passive: true, flavor: '水邊的蟾蜍。紅的有毒會反咬；生吃皆中毒，烤了吃令人愜意。' },
-    '魄': { s: 15, kind: 'beast', ink: INK.ghost, hp: 1, flavor: '第十三夜起夜行。無形，穿牆（四十五格內的小屋除外），不傷身而蝕心：四格內無光，愜意與力氣俱減。火把、蠟燭、燈帽、燈，六格內即煙滅。白日藏於林中。龜甲卜得吉兆，五日不來。' },
+    '魄': { s: 15, kind: 'beast', ink: INK.ghost, hp: 1, flavor: '第十三夜起夜行，夜越深越多越快。無形，穿牆（夠小的小屋除外，看難度），不傷身而蝕心：四格內無光，愜意與力氣俱減；屋外繞著而屋裡沒燈，心也發毛。手裡的火把、頭上的燈帽只逼得退，牠會撲上來吹熄手裡的光；燈、火、旺灶三格內才煙滅。白日藏於林中。龜甲卜得吉兆，五日不來。' },
     '鷹': { s: 24, kind: 'beast', ink: INK.beast, hp: 60, atk: 12, flavor: '山間的鷹，半友好：不惹不啄，打牠就反啄。手持魚面向牠按 F 投魚可馴（第一隻 35%、第二隻 25%、第三隻起 10%）；馴了跟你走、替你打獸，餵魚回力。' },
     '龜': { s: 16, kind: 'beast', ink: INK.rock, hp: 50, passive: true, flavor: '水邊的龜，少見，不咬人。靈物也，殺之不祥、愜意減三十；得龜甲，灼而卜之。' },
     '蜃': { s: 13, kind: 'beast', ink: INK.red, hp: 900, atk: 30, ram: 25, sea: true, flavor: '海中的大蜃，吐氣成霧（蜃樓）。命九百，只在海上：撞船一下二十五，咬落水的人一口三十，所過之處吞吐霧障。船頭有獸首骨鎮著就不敢撞。九閽鳴雷打牠減半，燭龍焚溟專克。' },
@@ -350,7 +350,7 @@
     { r: 0.26, hint: '六團棉、兩塊木，是一張床。夜裡面向它按 R，一覺到天明，愜意 +20；附近有魄則睡不著。' },
     { r: 0.42, hint: '二土一草成磚，木三成門，石四木四成櫃。砌一圈留一扇門，獸不得入。麻布三棉二織錦囊，用之囊更大。麻布二石子二木三草四，是一個稻草人，三十天內獸不近身。' },
     { r: 0.56, hint: '石子磨石加一根木，可成刀、鎬、鋤、劍、斧。山裡有煤有鐵，礦二煤一入旺灶可煉鐵，鐵可打甲。蛇與蛛咬人有毒，連咬不斷（兩口相隔不過六息）滿十五口必死；藥可解毒。豹與狼一撲十滴血。' },
-    { r: 0.70, hint: '第十三夜起，魄夜行，穿牆而過，不傷身而蝕心。手持火把或蠟燭、頭戴燈帽、地上有燈，六格內魄即煙滅。白日藏於林中。' },
+    { r: 0.70, hint: '第十三夜起，魄夜行，穿牆而過，不傷身而蝕心。手持火把或蠟燭、頭戴燈帽，魄退到六格外；地上的燈、火、旺灶三格內才煙滅。白日藏於林中。' },
     { r: 0.83, hint: '野果久藏則醉，醉可昏睡一刻。沙三入旺灶成瓶，瓶取泉水，醉果二合淡水成酒，飲之愜意。膽氣八重，可造孤帆、方舟渡海；卅一重，鐵十二煤六石子九，可鑄九閽鳴雷。' }
   ];
   function spiralFind(tx, ty, maxR, test) {
