@@ -1313,6 +1313,83 @@ const result = await page.evaluate(async () => {
     p.food = 85; p.san = 50; g.sanAcc = 0; g.updateStats(1);
     ok('one of them below 90% and it drains as usual', !g.content() && p.san < 50, p.san);
     p.food = 100; p.warm = 100; p.san = 100; }
+  // ============ 彈弓、台與階、囊滿時烤不吞（v0.22） ============
+  { calm(); const X = p.x, Y = p.y, area = [];
+    for (let dx = -2; dx <= 11; dx++) for (let dy = -3; dy <= 3; dy++) { const x = X + dx, y = Y + dy; area.push([x, y, w.raw(x, y)]); if (dx || dy) w.set(x, y, '土'); }
+    g.ents.list = g.ents.list.filter(e => '鹿虎豹狼蛇蛛蟾鷹龜蜃魚'.indexOf(e.type) < 0); p.cour = 0;
+    for (const k of ['襯', '褲', '甲', '盔', '靴', '帽']) if (p.worn[k]) g.takeOff(k);
+    const tAt = (x, y) => { p.x = p.rx = x; p.y = p.ry = y; };
+    g.removeItem('木', 999); g.removeItem('麻', 99); g.addItem('木', 2); g.addItem('麻', 3); p.sta = 100; g.craft('sling');
+    const sl = tool('彈弓');
+    ok('a slingshot is two wood and three hemp; it goes to the tool bar with 80 durability', !!sl && sl.dur === 80 && g.count('麻') === 0 && g.count('木') === 0);
+    p.tool = p.tools.indexOf(sl); face(1, 0);
+    const tg = g.ents.add('虎', X + 8, Y, { moveT: 99, calm: 99 });
+    ok('aiming east, the tiger eight tiles away is the target', g.slingTarget() === tg);
+    face(-1, 0); ok('facing west there is nothing to shoot', g.slingTarget() === null); face(1, 0);
+    tg.x = tg.rx = X + 10; ok('ten tiles is out of range', g.slingTarget() === null);
+    tg.x = tg.rx = X + 9; ok('nine is in range', g.slingTarget() === tg);
+    tg.x = tg.rx = X + 8;
+    g.removeItem('石子', 999); g.msgText = ''; p.atkT = 0; g.action = null; g.pressGather();
+    ok('no pebbles, no shot', tg.hp === 300 && g.msgText.indexOf('石子') >= 0, g.msgText);
+    g.addItem('石子', 5); p.atkT = 0; p.sta = 50; g.msgText = ''; g.pressGather();
+    ok('E shoots a pebble: 6 damage, one pebble and one durability spent, the tiger is provoked', tg.hp === 294 && g.count('石子') === 4 && sl.dur === 79 && tg.provoked > 19 && p.sta < 50 && g.msgText.indexOf('七格內') >= 0, [tg.hp, g.count('石子'), sl.dur, tg.provoked, g.msgText]);
+    p.atkT = 0.5; g.pressGather(); ok('the next shot waits 0.8 s', tg.hp === 294 && g.count('石子') === 4);
+    tg.moveT = 0; g.ents.update(0.01, g);
+    ok('provoked but eight tiles away: it does not charge', tg.moveT >= 0.5, tg.moveT);
+    tg.x = tg.rx = X + 6; tg.moveT = 0; const lk = w.raw(X + 6, Y + 1); w.set(X + 6, Y + 1, '燈'); g.ents.update(0.01, g);
+    ok('within seven it charges straight at you, lamp or no lamp, by day', Math.abs(tg.moveT - 0.22) < 1e-6 && U.cheb(tg.x, tg.y, p.x, p.y) === 5, [tg.moveT, U.cheb(tg.x, tg.y, p.x, p.y)]);
+    w.set(X + 6, Y + 1, lk);
+    const quiet = g.ents.add('虎', X + 6, Y - 2, { moveT: 0, calm: 0 }); g.ents.update(0.01, g);
+    ok('an unprovoked tiger six tiles off by day does not', quiet.moveT >= 0.5, quiet.moveT); g.ents.remove(quiet);
+    tg.x = tg.rx = X + 8; tg.y = tg.ry = Y; w.set(X + 4, Y, '磚');
+    ok('a brick wall in between blocks the shot', g.slingTarget() === null);
+    // 台與階
+    g.removeItem('磚', 999); g.removeItem('石', 999); g.addItem('磚', 8); g.addItem('石', 6); p.sta = 100; p.food = 5; g.msgText = ''; g.craft('platform');
+    ok('a 台 costs food as well: too hungry, refused', g.count('台') === 0 && g.msgText.indexOf('太餓') >= 0, g.msgText);
+    p.food = 50; g.craft('platform'); g.craft('steps');
+    ok('台: six bricks, four stones, 12 stamina, 8 food; 階: two bricks, two stones, 6 stamina, 4 food', g.count('台') === 1 && g.count('階') === 1 && g.count('磚') === 0 && g.count('石') === 0 && Math.abs(p.food - 38) < 0.5 && p.sta === 82, [p.food, p.sta]);
+    g.craftCat = '全部'; g.buildCraft(); const prow = [...document.querySelectorAll('#craft-list .recipe')].find(r => r.textContent.indexOf('台') === 0 || r.querySelector('b') && r.querySelector('b').textContent.indexOf('台') === 0);
+    ok('the craft row shows the food cost', !!prow && prow.textContent.indexOf('飽 8') >= 0, prow && prow.textContent);
+    face(1, 0); hold('階'); g.pressPlace(); w.set(X + 2, Y, '台');
+    ok('the 階 is placed like any building', w.get(X + 1, Y) === '階' && g.count('階') === 0);
+    ok('beasts cannot stand on 台 or 階', !g.ents.canStand('虎', X + 2, Y, true) && !g.ents.canStand('狼', X + 1, Y, true));
+    tAt(X + 2, Y + 1); ok('from the ground you cannot step onto the 台', !g.pass(X + 2, Y));
+    tAt(X + 1, Y); ok('from the 階 you can', g.pass(X + 2, Y));
+    p.moveT = 0; g.tryStep(1, 0); ok('and you walk up onto it', p.x === X + 2 && w.get(p.x, p.y) === '台', [p.x - X, w.get(p.x, p.y)]);
+    ok('from the 台 you can jump down anywhere', g.pass(X + 2, Y + 1));
+    face(1, 0); tg.x = tg.rx = X + 9; ok('on the 台 a pebble flies over the wall', g.slingTarget() === tg);
+    tg.x = tg.rx = X + 3; tg.hp = 300; tg.slowT = 0; p.hp = 100; p.hurtT = 0; p.hitWin = { start: -99, n: 0 }; g.hit(tg, 20);
+    ok('a beast pouncing at you on the 台 hits its edge: −30 (a tenth of 300) and slowed for 5 s', tg.hp === 270 && tg.slowT === 5 && p.hp < 100, [tg.hp, tg.slowT, p.hp]);
+    tg.moveT = 1; tg.atk = 1; g.ents.update(0.2, g);
+    ok('slowed: its move and pounce timers run at half speed', Math.abs(tg.moveT - 0.9) < 1e-6 && Math.abs(tg.atk - 0.9) < 1e-6, [tg.moveT, tg.atk]);
+    const sn = g.ents.add('蛇', X + 2, Y + 1, { moveT: 99 }); g.bite(sn, 3); p.poisonT = 0; p.poisonPer = 0;
+    ok('a snake biting you there loses 9 (a tenth of 90)', sn.hp === 81, sn.hp); g.ents.remove(sn);
+    tAt(X, Y); tg.hp = 300; g.hit(tg, 20); ok('on the ground there is no such recoil', tg.hp === 300, tg.hp);
+    g.ents.remove(tg); p.hp = 100;
+    // 囊滿時：烤不了就不烤，肉不會少（v0.21 前烤好的會不見）；具欄裡的鋼劍熔了也要囊有地方放鐵
+    face(0, 1); const sx = X, sy = Y + 1; w.set(sx, sy, '灶'); w.addFuel(sx, sy, 300);
+    g.removeItem('烤肉', 99); g.removeItem('鐵', 99); g.addItem('肉', 3); g.addItem('鋼劍', 1);
+    for (const n of ['土', '草', '沙', '花', '竹', '木', '石子', '棉', '麻', '鐵礦', '煤', '玻璃瓶', '麻布', '偶', '門', '床', '燈', '櫃', '扇', '蠟燭', '火把', '藥', '鎢鋼', '精煤', '龜甲', '磚', '石', '果']) { if (p.bag.length >= g.slots()) break; if (!g.has(n)) g.addItem(n, 1); }
+    ok('(the bag is full)', p.bag.length === g.slots() && !!tool('鋼劍'), [p.bag.length, g.slots()]);
+    g.pressPlace(); const m0 = g.count('肉'); g.msgText = ''; g.stoveCook('肉');
+    ok('with a full bag the meat is not cooked away: refused, the meat is still there', g.count('肉') === m0 && g.count('烤肉') === 0 && g.msgText.indexOf('放不下') >= 0, [g.count('肉'), g.count('烤肉'), g.msgText]);
+    g.msgText = ''; g.stoveMelt('鋼劍'); ok('nor is a steel sword in the tool bar melted into iron with nowhere to go', !!tool('鋼劍') && g.count('鐵') === 0 && g.msgText.indexOf('放不下') >= 0, g.msgText);
+    const one = p.bag.find(x => x.c === 1 && x.n !== '肉'); g.removeItem(one.n, 1); g.stoveCook('肉');
+    ok('with one slot free it cooks', g.count('烤肉') === 1 && g.count('肉') === m0 - 1);
+    g.closeStove(); for (const [x, y, c] of area) w.set(x, y, c);
+    trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); p.tools = p.tools.filter(x => x.n !== '彈弓' && x.n !== '鋼劍'); p.tool = p.tools.length ? 0 : -1; g.barSig = ''; g.buildBag(); tAt(X, Y); }
+  // 一山不容二虎：兩隻虎相距至少十二格（v0.22）
+  { calm(); setDay(0.7); const X = p.x + 20, Y = p.y, area = [];
+    for (let dx = -2; dx <= 18; dx++) for (let dy = -3; dy <= 3; dy++) { const x = X + dx, y = Y + dy; area.push([x, y, w.raw(x, y)]); w.set(x, y, '草'); }
+    g.ents.list = g.ents.list.filter(e => e.type !== '虎');
+    const A = g.ents.add('虎', X, Y, { moveT: 99 }), B = g.ents.add('虎', X + 13, Y, { moveT: 99 });
+    ok('no tiger may be born within twelve tiles of another', !g.ents.tigerRoom(X + 11, Y + 2) && !g.ents.tigerRoom(X + 6, Y) && g.ents.tigerRoom(X - 12, Y));   // X+6 離 A 六格、離 B 七格
+    ok('a tiger thirteen away will not step to twelve-minus-one', !g.ents.tigerTooClose(B, X + 12, Y) && g.ents.tigerTooClose({ type: '虎', x: X + 12, y: Y }, X + 11, Y));
+    B.x = B.rx = X + 12; for (let i = 0; i < 6; i++) { g.ents.stepTo(B, A.x, A.y, false, true); }
+    ok('chasing toward the other tiger it stops at twelve', U.cheb(A.x, A.y, B.x, B.y) >= 12, U.cheb(A.x, A.y, B.x, B.y));
+    B.x = B.rx = X + 5; B.y = B.ry = Y; B.moveT = 0; B.calm = 99; g.ents.update(0.01, g);
+    ok('two tigers already too close: the idle one walks away', U.cheb(A.x, A.y, B.x, B.y) === 6, U.cheb(A.x, A.y, B.x, B.y));
+    g.ents.remove(A); g.ents.remove(B); for (const [x, y, c] of area) w.set(x, y, c); calm(); }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
   // —— 三格存檔：第一格沿用舊鍵；每格帶摘要
