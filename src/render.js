@@ -2,7 +2,8 @@
 (function () {
   'use strict';
   const U = window.U, G = window.G, DB = G.DB;
-  const FONT = '"LXGW WenKai TC", "BiauKai", "DFKai-SB", "標楷體", "Kaiti TC", "Noto Serif TC", "Noto Serif CJK TC", "PingFang TC", "WenQuanYi Zen Hei", serif';
+  const FONT = '"LXGW WenKai TC", "BiauKai", "DFKai-SB", "標楷體", "Kaiti TC", "Kaiti SC", "STKaiti", "KaiTi", "Noto Serif TC", "Noto Serif SC", "Noto Serif CJK TC", "PingFang TC", "WenQuanYi Zen Hei", serif';   // 簡體字霞鶩文楷 TC 也有，缺的幾個落到 SC 字型
+  const L = (s) => (window.I18N ? window.I18N.t(s) : s);   // 畫布上的字：選了簡體就轉（v0.24）
   const MINI = {
     '淼': '#4a6f8f', '水': '#6f93b0', '沙': '#d9c89a', '石': '#9c9a93', '山': '#6e6c75', '雪': '#e8ecf2',
     '草': '#b9c98f', '花': '#d29b8e', '木': '#8aa86f', '林': '#5e8a55', '森': '#3b5f3a', '竹': '#7fa36b', '田': '#d1c572',
@@ -58,6 +59,7 @@
 
     // 字形緩存：每個字按顏色渲染一次（帶一層模糊的"滲墨"），之後只做 drawImage
     glyph(ch, color) {
+      ch = L(ch);   // 選了簡體：畫簡體字（字形各自快取）
       const key = ch + '|' + color;
       let c = this.atlas.get(key);
       if (c) return c;
@@ -246,7 +248,7 @@
           ctx.save(); ctx.fillStyle = 'rgba(60,55,50,' + (0.35 * (1 - pr)) + ')'; ctx.beginPath(); ctx.ellipse(px, py, T * (0.3 + 0.3 * pr), T * (0.2 + 0.15 * pr), 0.4, 0, 7); ctx.fill(); ctx.restore();
         } else if (f.type === 'float') {
           ctx.save(); ctx.globalAlpha = 1 - pr; ctx.fillStyle = f.color || G.INK.black; ctx.font = 'bold ' + Math.round(T * 0.5) + 'px ' + FONT; ctx.textAlign = 'center';
-          ctx.fillText(f.text, px, py - T * 0.3 - pr * T * 0.9); ctx.restore();
+          ctx.fillText(L(f.text), px, py - T * 0.3 - pr * T * 0.9); ctx.restore();
         }
       }
 
@@ -348,7 +350,7 @@
         if (!pl.seen) continue;
         const i = pl.x + (pl.w - 1) / 2 - p.x + half, j = pl.y + (pl.h - 1) / 2 - p.y + half;
         if (i < 0 || j < 0 || i >= N || j >= N) continue;
-        m.fillText(pl.ch || pl.name, i * px + px / 2, j * px + px / 2);
+        m.fillText(L(pl.ch || pl.name), i * px + px / 2, j * px + px / 2);
       }
       m.fillStyle = 'rgba(200,198,192,0.85)';
       for (const f of g.world.fogs.values()) for (const k of f.cells) { const [x, y] = U.unkey(k), i = x - p.x + half, j = y - p.y + half; if (i >= 0 && j >= 0 && i < N && j < N && g.world.isSeen(x, y)) m.fillRect(i * px, j * px, px + 0.5, px + 0.5); }
@@ -392,10 +394,10 @@
         if (!pl.seen) continue;
         const cx = (pl.x + pl.w / 2 + R) * px, cy = (pl.y + pl.h / 2 + R) * px;
         m.font = Math.round(px * 4.2) + 'px ' + FONT; m.fillStyle = pl.ch ? (DB[pl.ch].ink) : '#5a3e2b';
-        m.fillText(pl.ch || '村', cx, cy);
+        m.fillText(L(pl.ch || '村'), cx, cy);
         const read = p.places && p.places[pl.id] === 2;
         m.fillStyle = read ? '#b4392a' : 'rgba(180,57,42,0.45)'; m.fillRect(cx + px * 2.4, cy - px * 2.2, px * 3.2, px * 3.2);
-        m.fillStyle = '#f7efe0'; m.font = Math.round(px * 2.4) + 'px ' + FONT; m.fillText(pl.name, cx + px * 4.0, cy - px * 0.5);
+        m.fillStyle = '#f7efe0'; m.font = Math.round(px * 2.4) + 'px ' + FONT; m.fillText(L(pl.name), cx + px * 4.0, cy - px * 0.5);
       }
       // 家、人
       if (p.home) { m.fillStyle = '#9a6b45'; m.beginPath(); m.arc((p.home.x + R + 0.5) * px, (p.home.y + R + 0.5) * px, px * 1.2, 0, 7); m.fill(); }

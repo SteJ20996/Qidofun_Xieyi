@@ -1415,6 +1415,28 @@ const result = await page.evaluate(async () => {
     B.x = B.rx = X + 5; B.y = B.ry = Y; B.moveT = 0; B.calm = 99; g.ents.update(0.01, g);
     ok('two tigers already too close: the idle one walks away', U.cheb(A.x, A.y, B.x, B.y) === 6, U.cheb(A.x, A.y, B.x, B.y));
     g.ents.remove(A); g.ents.remove(B); for (const [x, y, c] of area) w.set(x, y, c); calm(); }
+  // ============ 簡體中文（v0.24）：只在顯示那一層轉字，程式、存檔、字庫的鍵一律繁體 ============
+  { calm();
+    ok('the converter: 字裡行間 → 字里行间; 乾坤 and 著名 kept as words; 穿著 → 穿着; 九閽鳴雷 → 九阍鸣雷', I18N.toHans('字裡行間 · 一紙之島') === '字里行间 · 一纸之岛' && I18N.toHans('乾坤') === '乾坤' && I18N.toHans('著名') === '著名' && I18N.toHans('穿著') === '穿着' && I18N.toHans('九閽鳴雷') === '九阍鸣雷');
+    ok('traditional by default; the pause panel offers 简体中文', !I18N.hans && document.documentElement.lang === 'zh-TW' && document.getElementById('pause-lang').textContent === '简体中文');
+    const lore = document.querySelector('#start .lore'), lore0 = lore.textContent, help = document.getElementById('help'), help0 = help.textContent;
+    I18N.set('hans'); await sleep(30);
+    ok('choosing 简体 converts the page (start page, help) and remembers the choice', I18N.hans && document.documentElement.lang === 'zh-CN' && document.documentElement.classList.contains('hans') && lore.textContent.indexOf('鸟栖于山') >= 0 && help.textContent.indexOf('胆气') >= 0 && help.textContent.indexOf('膽氣') < 0 && localStorage.getItem('xieyi.lang') === 'hans', lore.textContent.slice(0, 20));
+    ok('the language options themselves stay as they are written', document.querySelector('[data-lang="hant"]').textContent === '繁體' && document.getElementById('pause-lang').textContent === '繁體中文' && document.querySelector('[data-lang="hans"]').classList.contains('on'));
+    g.toast('測試標題', '櫃裡的鐵與鳥'); g.message('灶火還能燒 99 息。'); g.lastMsg = ''; g.updateHUD(); await sleep(30);
+    ok('toasts and messages the game writes afterwards come out simplified', toasts().indexOf('柜里的铁与鸟') >= 0 && document.getElementById('msg').textContent.indexOf('灶火还能烧 99 息') >= 0, [toasts().slice(-20), document.getElementById('msg').textContent]);
+    g.addItem('鐵', 1); g.barSig = ''; g.buildBag(); await sleep(30);
+    const ironSlot = [...document.querySelectorAll('#bagbar .slot')].find(el => el.textContent.indexOf('铁') >= 0);
+    ok('the bag shows 铁 with a simplified tooltip, while the game still counts 鐵', !!ironSlot && ironSlot.title.indexOf('铁') >= 0 && document.getElementById('bagbar').textContent.indexOf('鐵') < 0 && g.count('鐵') >= 1, ironSlot && ironSlot.title.slice(0, 20));
+    g.renderer.atlas.delete('鸟|#123456'); g.renderer.glyph('鳥', '#123456');
+    ok('glyphs drawn on the canvas are simplified too', g.renderer.atlas.has('鸟|#123456') && !g.renderer.atlas.has('鳥|#123456'));
+    g.save(); const svh = JSON.parse(localStorage.getItem('xieyi.save.v5'));
+    ok('the save stays in traditional keys', JSON.stringify(svh.player.bag).indexOf('鐵') >= 0 && JSON.stringify(svh.player.bag).indexOf('铁') < 0);
+    I18N.set('hant'); await sleep(30);
+    ok('back to 繁體: the original text is put back, including the toast written while simplified', !I18N.hans && document.documentElement.lang === 'zh-TW' && lore.textContent === lore0 && help.textContent === help0 && toasts().indexOf('櫃裡的鐵與鳥') >= 0 && localStorage.getItem('xieyi.lang') === 'hant', toasts().slice(-20));
+    document.getElementById('pause-lang').click(); await sleep(20); const viaPause = I18N.hans; document.getElementById('pause-lang').click(); await sleep(20);
+    ok('the pause-panel button switches back and forth', viaPause && !I18N.hans && document.getElementById('pause-lang').textContent === '简体中文');
+    g.removeItem('鐵', 1); }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
   // —— 三格存檔：第一格沿用舊鍵；每格帶摘要
@@ -1500,6 +1522,15 @@ try {
     f.buttons[1].pressed = true; await frames(3); f.buttons[1].pressed = false; await frames(3); document.getElementById('btn-pad').click(); await frames(2);
     return { open: !document.getElementById('padmap').classList.contains('hidden'), text: document.getElementById('padmap-text').textContent.slice(0, 20) }; });
   ok2('with a pad seen, the start-page button opens the wizard', wiz.open && /第 1／20 步/.test(wiz.text), wiz);
+  // 起始頁的文字選項：點简体整頁轉簡體，重開仍是簡體；點繁體轉回來
+  await page.goto(base, { waitUntil: 'load' }); await page.click('[data-lang="hans"]'); await page.waitForTimeout(80);
+  const hz = await page.evaluate(() => ({ sub: document.querySelector('#start .sub').textContent, diff: document.querySelector('.diffrow').textContent, stored: localStorage.getItem('xieyi.lang') }));
+  ok2('the start page has 繁體／简体; 简体 turns the page simplified', hz.sub === '字里行间 · 一纸之岛' && hz.diff.indexOf('难度') >= 0 && hz.stored === 'hans', hz);
+  await page.goto(base, { waitUntil: 'load' }); await page.waitForTimeout(80);
+  const hz2 = await page.evaluate(() => ({ sub: document.querySelector('#start .sub').textContent, lang: document.documentElement.lang, cards: document.getElementById('saves').textContent }));
+  ok2('reloading keeps 简体, the save cards included', hz2.sub === '字里行间 · 一纸之岛' && hz2.lang === 'zh-CN' && /岛 #|空/.test(hz2.cards) && !/島 #/.test(hz2.cards), hz2);
+  await page.click('[data-lang="hant"]'); await page.waitForTimeout(80);
+  ok2('繁體 turns it back', await page.$eval('#start .sub', e => e.textContent) === '字裡行間 · 一紙之島' && await page.evaluate(() => localStorage.getItem('xieyi.lang')) === 'hant');
 } catch (e) { checks2.push('CRASH start page: ' + e.message); }
 result.checks.push(...checks2); result.failed = result.checks.filter(c => c.startsWith('FAIL') || c.startsWith('CRASH')).length;
 console.log(result.checks.join('\n'));
