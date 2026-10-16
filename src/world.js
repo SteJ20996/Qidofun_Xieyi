@@ -6,6 +6,7 @@
   const CH = 16;                 // 區塊邊長（格）
   const STEP = 0.5;              // 模擬步長（秒）
   const DAY = 300;               // 一晝夜（秒），潮汐隨之起落；v0.17 從 240 加長四分之一，要跟 game.js 的 DAY 一致
+  const STOVE_CAP = 999, SHELF_SLOTS = 4;   // 灶與鼎的火最多存 999 息（v0.21，原 900）；灶的柴架四格
   const NET_DUR = { 1: 30, 2: 90, 3: 240 };   // 漁網的耐久：小中大各能取幾條魚（v0.17.1），取完就破、不再進魚，棉麻加固回滿
   const TIDE_WET = 0.7;          // 灘一天裡有七成時間在水下（退潮 0.12–0.42）；放在灘上的網魚來得慢，間隔除以這個數
   const N8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
@@ -36,6 +37,8 @@
       this.nets = new Map();     // 錨點 "x,y" -> { size, x, y, fish, t }：漁網（一乘一、二乘二、三乘三）
       this.netCells = new Map(); // 每一格 -> 錨點
       this.stoves = new Map();   // "x,y" -> 灶裡剩餘的柴火（秒）
+      this.shelves = new Map();  // "x,y" -> 灶的柴架：最多四格 [{ n, c }]，存著的燃料點一下就燒
+      this.shelfSlots = SHELF_SLOTS; this.stoveCap = STOVE_CAP;
       this.bags = new Map();     // "x,y" -> 落在地上的囊（物品列表）
       this.weirs = new Map();    // "x,y" -> 魚梁下一次有魚的時間
       this.steps = new Map();    // "x,y" -> 走過的次數（走多了就成路）
@@ -113,6 +116,7 @@
       if (ch === this.base(x, y)) this.diff.delete(k); else this.diff.set(k, ch);
       if (DB[ch].flam <= 0) this.burn.delete(k);
       if ((old === '灶' || old === '鼎') && ch !== '灶' && ch !== '鼎') this.stoves.delete(k);
+      if (old === '灶' && ch !== '灶') this.shelves.delete(k);   // 柴架跟著灶走（拆灶時遊戲端先把它記到囊裡那個灶上）
       if ((ch === '灶' || ch === '鼎') && !this.stoves.has(k)) this.stoves.set(k, 0);
       if (old === '包' && ch !== '包') this.bags.delete(k);
       if (old === '偶' && ch !== '偶') this.scarecrows.delete(k);
@@ -177,7 +181,9 @@
     // 灶
     stoveFuel(x, y) { return this.stoves.get(U.key(x, y)) || 0; }
     stoveLit(x, y) { const c = this.get(x, y); return (c === '灶' || c === '鼎') && this.stoveFuel(x, y) > 0; }
-    addFuel(x, y, sec) { const k = U.key(x, y); this.stoves.set(k, Math.min(900, (this.stoves.get(k) || 0) + sec)); }
+    addFuel(x, y, sec) { const k = U.key(x, y); this.stoves.set(k, Math.min(STOVE_CAP, (this.stoves.get(k) || 0) + sec)); }
+    stoveRoom(x, y) { return STOVE_CAP - this.stoveFuel(x, y); }   // 還能添幾息
+    shelf(x, y) { const k = U.key(x, y); if (!this.shelves.has(k)) this.shelves.set(k, []); return this.shelves.get(k); }
 
     // ---------- 探索：看過的格子才會畫到地圖上 ----------
     seenBits(cx, cy) { const k = U.key(cx, cy); let b = this.explored.get(k); if (!b) { b = new Uint8Array(32); this.explored.set(k, b); } return b; }
@@ -520,13 +526,14 @@
       const timers = {}; for (const [k, v] of this.timers) timers[k] = [v.to, Math.round(v.at), v.from || '灰'];
       const scarecrows = {}; for (const [k, v] of this.scarecrows) scarecrows[k] = Math.round(v);
       const chests = {}; for (const [k, v] of this.chests) chests[k] = v;
+      const shelves = {}; for (const [k, v] of this.shelves) if (v.length) shelves[k] = v.map(s => [s.n, s.c]);
       const nets = {}; for (const [k, v] of this.nets) nets[k] = [v.size, v.x, v.y, v.fish, Math.round(v.t), (v.under || []).join(''), v.dur === undefined ? NET_DUR[v.size] : v.dur, v.rf || 0];
       const stoves = {}; for (const [k, v] of this.stoves) stoves[k] = Math.round(v);
       const bags = {}; for (const [k, v] of this.bags) bags[k] = v;
       const weirs = {}; for (const [k, v] of this.weirs) weirs[k] = Math.round(v);
       const explored = {}; for (const [k, b] of this.explored) explored[k] = Array.from(b, v => v.toString(16).padStart(2, '0')).join('');
       const seen = this.places.filter(p => p.seen).map(p => p.id);
-      return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers, stoves, bags, weirs, explored, seen, scarecrows, chests, nets, rainUntil: Math.round(this.rainUntil), nextRainAt: Math.round(this.nextRainAt),
+      return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers, stoves, shelves, bags, weirs, explored, seen, scarecrows, chests, nets, rainUntil: Math.round(this.rainUntil), nextRainAt: Math.round(this.nextRainAt),
         fogs: [...this.fogs.values()].map(f => [Math.round(f.until), [...f.cells].join(';'), f.sea ? 1 : 0]), fogPlan: this.fogPlan.map(Math.round), fogDay: this.fogDay,
         ships: Object.fromEntries([...this.ships].map(([k, v]) => [k, { kind: v.kind, hp: Math.round(v.hp), skulls: (v.skulls || []).map(([n, e]) => [n, Math.round(e)]), repairs: v.repairs || 0, cells: v.cells }])) };
     }
@@ -558,6 +565,7 @@
       this.timers = new Map(Object.entries(s.timers || {}).map(([k, v]) => [k, { to: v[0], at: v[1], from: v[2] || '灰' }]));
       this.scarecrows = new Map(Object.entries(s.scarecrows || {}));
       this.chests = new Map(Object.entries(s.chests || {}));
+      this.shelves = new Map(Object.entries(s.shelves || {}).map(([k, v]) => [k, v.map(([n, c]) => ({ n, c }))]));
       this.nets = new Map(); this.netCells = new Map();
       for (const [k, v] of Object.entries(s.nets || {})) { const rec = { size: v[0], x: v[1], y: v[2], fish: v[3], t: v[4], under: v[5] ? Array.from(v[5]) : [], dur: v[6] === undefined ? NET_DUR[v[0]] : v[6], rf: v[7] || 0 }; rec.tidal = rec.under.indexOf('灘') >= 0; this.nets.set(k, rec); for (let j = 0; j < rec.size; j++) for (let i = 0; i < rec.size; i++) this.netCells.set(U.key(rec.x + i, rec.y + j), k); }
       this.stoves = new Map(Object.entries(s.stoves || {}));
