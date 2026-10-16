@@ -8,6 +8,9 @@
   const SCARED = '虎豹狼蛇蛛蟾';           // 稻草人擋得住的
   const HOSTILE = '虎豹狼蛇蛛蟾';          // 敵對獸：命翻倍、攻擊間隔放慢四分之一
   const FOREST = '林森竹';
+  // 彈弓挑釁（v0.22）：被石子打過的獸 provoked 秒內，到玩家 PROVOKE_R 格內就直撲過來（不管光、稻草人嚇不嚇、晝夜），一步 CHARGE_STEP 秒
+  const TIGER_GAP = 12;   // 一山不容二虎（v0.22）：兩隻虎相距至少十二格——生的時候避開，走的時候不往十二格內靠，已經太近的走開
+  const PROVOKE_R = 7, CHARGE_STEP = 0.22, CHARGERS = '虎豹狼蛇蛛鷹', BITERS = '蛇蛛蟾';
   // 魄（v0.20 加強）：玩家身上的光（手裡的火把蠟燭、頭上的燈帽）只把魄逼到 GHOST_KEEP 格外，在 GHOST_HOVER 格內徘徊；
   // 地上的光（燈、火、旺灶）GHOST_BURN 格內、龍四格內才煙滅。玩家有光時每 GHOST_DASH_GAP 息，最近那隻撲上來 GHOST_DASH 息；
   // 魄在兩格內（GHOST_SNUFF_R），手裡的光每息有 snuffP 的機會被吹熄（game.ghostTouch）
@@ -78,11 +81,17 @@
       return true;
     }
 
+    tigerRoom(x, y, self) { for (const o of this.list) if (o !== self && o.type === '虎' && U.cheb(o.x, o.y, x, y) < TIGER_GAP) return false; return true; }   // 這格十二格內沒有別的虎
+    tigerTooClose(e, x, y) {   // 虎走到這格會不會離別的虎不到十二格、而且比現在更近
+      if (e.type !== '虎') return false;
+      for (const o of this.list) if (o !== e && o.type === '虎') { const dn = U.cheb(x, y, o.x, o.y); if (dn < TIGER_GAP && dn < U.cheb(e.x, e.y, o.x, o.y)) return true; }
+      return false;
+    }
     stepTo(e, tx, ty, away, night) {
       let best = null, bestD = away ? -1 : Infinity;
       for (const [dx, dy] of N8) {
         const nx = e.x + dx, ny = e.y + dy;
-        if (!this.canStand(e.type, nx, ny, night) || this.beastAt(nx, ny)) continue;
+        if (!this.canStand(e.type, nx, ny, night) || this.beastAt(nx, ny) || this.tigerTooClose(e, nx, ny)) continue;
         const d = U.dist(nx, ny, tx, ty) + Math.random() * 0.3;
         if (away ? d > bestD : d < bestD) { bestD = d; best = [nx, ny]; }
       }
@@ -94,7 +103,7 @@
       let fallback = null;
       for (const [dx, dy] of order) {
         const nx = e.x + dx, ny = e.y + dy;
-        if (!this.canStand(e.type, nx, ny, night) || this.beastAt(nx, ny)) continue;
+        if (!this.canStand(e.type, nx, ny, night) || this.beastAt(nx, ny) || this.tigerTooClose(e, nx, ny)) continue;
         if (!prefer || prefer.indexOf(this.world.get(nx, ny)) >= 0) { e.x = nx; e.y = ny; return; }
         if (!fallback) fallback = [nx, ny];
       }
@@ -125,7 +134,7 @@
       for (let n = 0; n < 8; n++) {
         const a = Math.random() * Math.PI * 2, r = rMin + Math.random() * (rMax - rMin);
         const x = p.x + Math.round(Math.cos(a) * r), y = p.y + Math.round(Math.sin(a) * r);
-        if (this.habitat(type, x, y, night) && !this.at(x, y)) return this.add(type, x, y, extra);
+        if (this.habitat(type, x, y, night) && !this.at(x, y) && (type !== '虎' || this.tigerRoom(x, y))) return this.add(type, x, y, extra);
       }
       return null;
     }
@@ -219,9 +228,12 @@
           e.fogT = (e.fogT === undefined ? 6 : e.fogT) - dt;
           if (e.fogT <= 0) { e.fogT = 16 + Math.random() * 10; if (d <= 16 && (p.sailing || p.swimming)) w.spawnSeaFog(e.x, e.y, p.x, p.y); }
         }
-        if (e.atk > 0) e.atk -= dt;
+        const rate = e.slowT > 0 ? 0.5 : 1;            // 撞在台邊：五息內行動與撲咬都慢一倍
+        if (e.slowT > 0) e.slowT -= dt;
+        if (e.provoked > 0) e.provoked -= dt;
+        if (e.atk > 0) e.atk -= dt * rate;
         if (e.calm > 0) e.calm -= dt;
-        e.moveT -= dt;
+        e.moveT -= dt * rate;
         if (e.moveT > 0) continue;
 
         const sheltered = !!DB[w.get(p.x, p.y)].shelter;
@@ -234,6 +246,12 @@
             if (e.foe.hp <= 0) { g.companionDied(e.foe, e); e.foe = null; }
             continue;
           }
+        }
+        // 被彈弓打惱了：七格內直撲過來；七格外照常
+        if (e.provoked > 0 && d <= PROVOKE_R && (CHARGERS.indexOf(e.type) >= 0 || (e.type === '蟾' && e.venom)) && !e.tame) {
+          if (d <= 1) { if (BITERS.indexOf(e.type) >= 0) this.bite(e, g); else this.maul(e, g); e.moveT = 0.5; }
+          else { e.moveT = CHARGE_STEP; this.stepTo(e, p.x, p.y, false, true); }   // 惱了連白天也出林
+          continue;
         }
         if (e.type === '蜃') {
           const atSea = p.sailing || p.swimming, warded = p.sailing && g.shipWarded();
@@ -278,8 +296,9 @@
             if (d <= 1) { this.maul(e, g); e.calm = e.type === '豹' ? 3 : 14; e.moveT = 0.6; }
             else { e.moveT = speed; this.stepTo(e, p.x, p.y, false, night); }
           } else {
-            e.moveT = 0.6 + Math.random() * 1.4;
-            if (Math.random() < 0.6) this.wander(e, night, night ? null : '森林');
+            const rival = e.type === '虎' ? this.list.find(o => o !== e && o.type === '虎' && U.cheb(o.x, o.y, e.x, e.y) < TIGER_GAP) : null;
+            if (rival) { e.moveT = 0.6; this.stepTo(e, rival.x, rival.y, true, night); }   // 一山不容二虎：太近就走開
+            else { e.moveT = 0.6 + Math.random() * 1.4; if (Math.random() < 0.6) this.wander(e, night, night ? null : '森林'); }
           }
         } else if (e.type === '狼') {
           if (this.dragonNear(e.x, e.y, 4) && d <= 4) { e.moveT = 0.3; this.stepTo(e, p.x, p.y, true, true); }

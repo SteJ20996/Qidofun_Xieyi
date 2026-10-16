@@ -35,6 +35,9 @@
   // 魄（v0.20）：手裡的光被吹熄後 SNUFF_TIME 息才點得著；魄兩格內燈帽的蠟燭燒 HAT_GHOST_BURN 倍；
   // 屋裡（covered）沒燈、ROOM_DREAD_R 格內有魄，愜意每息掉 ROOM_DREAD；第 GHOST_FAST_NIGHT 夜起每四夜魄快一成，最多快 GHOST_FAST_MAX 倍
   const SNUFF_TIME = 8, HAT_GHOST_BURN = 3, ROOM_DREAD = 0.5, ROOM_DREAD_R = 8, GHOST_FAST_NIGHT = 20, GHOST_FAST_MAX = 2;
+  // 彈弓（v0.22）：九格內、面前五十度、一下六（再乘攻擊倍率）、間隔 0.8 息、一顆石子；被打的獸惱 PROVOKE_TIME 息；站在台上越得過牆
+  // 台：撲上來的獸撞在台邊，掉命上限的 PLATFORM_RECOIL、慢 PLATFORM_SLOW 息
+  const SLING_RANGE = 9, SLING_DMG = 6, SLING_CD = 0.8, SLING_PREY = '鹿虎豹狼蛇蛛蟾鷹龜蜃', PROVOKE_TIME = 20, PLATFORM_RECOIL = 0.1, PLATFORM_SLOW = 5;
   const SAN_REST = 0.1, CONTENT_AT = 90;   // 飽、暖、力都在九成以上：愜意不掉，反而每息回 0.1×倍率（v0.21）
   const REGRIND_CAP = 8, MEND_STA = 3, CAST_COST = [1, 2, 4, 7];   // CAST_COST：撒一網網到 0／1／2／3 條以上各耗幾點耐久   // 1、2、4、8 法則的上限：重磨的石子、加固漁網的棉麻（MEND_STA 是面向網按 F 加固的耗力）                      // 同一把工具重磨：第一次石子一、再來二、四、八，八為上限（rg 記在那把工具上）
   const CLOTH_FUEL = 50;                      // 舊布製品（內襯、布褲、布甲、布帽、布靴）丟進灶裡當柴：一件五十息（v0.21 前一百二十）
@@ -559,6 +562,7 @@
       const t = this.stovePos(), w = this.world, y = this.meltYield(name), p = this.player; if (!y) return false;
       if (!w.stoveLit(t.x, t.y)) { this.message('灶是冷的，先添些柴。'); SFX.fail(); return false; }
       const m = this.meltables().find(x => x.n === name); if (!m) return false;
+      if (!this.canAdd(y.out, y.n) && m.from !== 'bag') { this.message('囊滿了，熔出來的' + y.out + '放不下。先騰一格。'); SFX.fail(); return false; }   // 具欄裡的熔了不騰囊格
       if (m.from === 'bag') { p.bag.splice(m.i, 1); if (p.sel >= p.bag.length) p.sel = Math.max(0, p.bag.length - 1); } else { p.tools.splice(m.i, 1); if (p.tool >= p.tools.length) p.tool = p.tools.length - 1; }
       this.addItem(y.out, y.n); this.barSig = ''; this.message('熔了「' + name + '」，得' + y.out + ' ×' + y.n + '。'); SFX.fuse();
       this.fx.push({ type: 'float', x: t.x, y: t.y, text: y.out, color: G.INK.red, t: 0, dur: 1 });
@@ -599,7 +603,10 @@
       if (!w.stoveLit(t.x, t.y)) { this.message('灶是冷的，先添些柴。'); SFX.fail(); return false; }
       if (this.count(name) < need) { this.message('要 ' + need + ' 個' + name + '才夠。'); SFX.fail(); return false; }
       for (const m in ck.extra || {}) if (this.count(m) < ck.extra[m]) { this.message('還要 ' + m + ' ×' + ck.extra[m] + '。'); SFX.fail(); return false; }
-      this.removeItem(name, need); for (const m in ck.extra || {}) this.removeItem(m, ck.extra[m]); this.addItem(ck.out, ck.k || 1);
+      const snap = JSON.stringify(this.player.bag), sel0 = this.player.sel;   // 先拿掉材料，看烤好的放不放得下；放不下就原樣退回（v0.21 前囊滿時烤好的會不見）
+      this.removeItem(name, need); for (const m in ck.extra || {}) this.removeItem(m, ck.extra[m]);
+      if (!this.canAdd(ck.out, ck.k || 1)) { this.player.bag = JSON.parse(snap); this.player.sel = sel0; this.barSig = ''; this.message('囊滿了，' + this.stoveVerb(ck) + '好的「' + ck.out + '」放不下。先騰一格。'); SFX.fail(); return false; }
+      this.addItem(ck.out, ck.k || 1);
       this.message((ck.verb || (ck.out === '玻璃瓶' ? '燒成了' : ck.out === '淡水瓶' ? '蒸餾成了' : '烤好了')) + '：' + ck.out + (ck.k > 1 ? ' ×' + ck.k : '')); SFX.fuse();
       this.fx.push({ type: 'float', x: t.x, y: t.y, text: ck.out, color: G.INK.red, t: 0, dur: 1 });
       this.buildBag(); this.buildStove(); return true;
@@ -803,6 +810,7 @@
       if (this.player.sailing || this.player.swimming) return d.kind === 'water' || d.walk > 0;
       const w = this.world, p = this.player;
       if (ch === '水' && w.raw(x, y) === '灘' && w.raw(p.x, p.y) === '灘') return true;   // 漲潮困在灘上：可涉水走到別的灘
+      if (ch === '台') { const here = w.get(p.x, p.y); if (here !== '台' && here !== '階') return false; }   // 台要從階或台走上去（下台可以直接跳）
       return d.walk > 0 || ch === '燈' || (ch === '水' && this.has('竹筏'));   // 燈：人跨得過（獸照 canStand 過不去，魄本來就穿牆）
     }
     handleMove(dt) {
@@ -826,7 +834,7 @@
     }
     tryStep(dx, dy) {
       const p = this.player, w = this.world, nx = p.x + dx, ny = p.y + dy;
-      if (!this.pass(nx, ny) || this.ents.beastAt(nx, ny)) return false;
+      if (!this.pass(nx, ny) || this.ents.beastAt(nx, ny)) { if (w.get(nx, ny) === '台' && !p.sailing) this.hintOnce('台要從「階」走上去。'); return false; }
       if (dx && dy && !(this.pass(p.x + dx, p.y) && this.pass(p.x, p.y + dy))) return false;
       const d = w.info(nx, ny);
       if (p.sailing) {
@@ -859,6 +867,7 @@
         const targets = this.ents.list.filter(o => ('鹿虎豹狼蛇蛛蟾蜃龜'.indexOf(o.type) >= 0 || (o.type === '鷹' && !o.tame)) && U.cheb(o.x, o.y, p.x, p.y) <= HAMMER_RANGE);
         if (targets.length || (e && e.type !== '龍')) { this.fireStrike(targets); return; }
       }
+      if (this.heldTool() === '弓') { const st = this.slingTarget(); if (st) { this.slingShot(st); return; } }   // 彈弓：面前九格內有獸就射，沒有就照常取
       if (e) {
         if (e.type === '龍') { this.message('你的龍。'); return; }
         if (e.type === '魄') { this.message('魄無形，打不著；用光。'); return; }
@@ -950,6 +959,46 @@
       else if (e.type === '虎' || e.type === '豹') { e.calm = 2; e.moveT = 0.3; this.message(e.type + '受創而退（還有 ' + left + '）。'); }
       else this.message(e.type + '（還有 ' + left + '）。');
     }
+    // 彈弓：面前五十度、九格內最近的獸；中間不能有牆石山灶這類擋路的東西（水與草木不擋），站在台上就越得過
+    slingTarget() {
+      const p = this.player, w = this.world; if (this.heldTool() !== '弓') return null;
+      const fl = Math.hypot(p.fx, p.fy) || 1, fx = p.fx / fl, fy = p.fy / fl, high = w.get(p.x, p.y) === '台';
+      let best = null, bd = Infinity;
+      for (const e of this.ents.list) {
+        if (SLING_PREY.indexOf(e.type) < 0 || e.tame || (e.fade !== undefined && e.fade < 1)) continue;
+        const dx = e.x - p.x, dy = e.y - p.y, dc = Math.max(Math.abs(dx), Math.abs(dy)); if (dc < 1 || dc > SLING_RANGE) continue;
+        const dl = Math.hypot(dx, dy); if ((dx * fx + dy * fy) / dl < 0.64) continue;
+        if (!high && !this.lineClear(p.x, p.y, e.x, e.y)) continue;
+        if (dl < bd) { bd = dl; best = e; }
+      }
+      return best;
+    }
+    lineClear(x0, y0, x1, y1) {
+      const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+      for (let i = 1; i < n; i++) { const d = DB[this.world.get(Math.round(x0 + (x1 - x0) * i / n), Math.round(y0 + (y1 - y0) * i / n))]; if (d && d.walk <= 0 && d.kind !== 'water') return false; }
+      return true;
+    }
+    slingShot(e) {
+      const p = this.player;
+      if (p.atkT > 0) return;
+      if (!this.has('石子')) { this.message('彈弓要石子當彈。'); SFX.fail(); return; }
+      if (p.sta < 1) { this.message('力氣不夠，歇一歇。'); return; }
+      p.atkT = SLING_CD; p.sta = Math.max(0, p.sta - this.ironDrain()); this.removeItem('石子', 1); this.wearTool();
+      const dmg = Math.round(SLING_DMG * this.dmgMult()), d = U.cheb(e.x, e.y, p.x, p.y);
+      e.hp -= dmg; e.provoked = PROVOKE_TIME; e.angry = true; e.calm = 0; if (e.type === '鷹') e.angryT = 12;
+      this.fx.push({ type: 'shot', x: p.x, y: p.y, x1: e.x, y1: e.y, t: 0, dur: 0.12 + d * 0.03 });
+      this.fx.push({ type: 'float', x: e.x, y: e.y, text: '−' + dmg, color: G.INK.red, t: 0, dur: 0.7 }); SFX.write();
+      if (e.hp <= 0) { this.kill(e); return; }
+      const charges = '虎豹狼蛇蛛鷹'.indexOf(e.type) >= 0 || (e.type === '蟾' && e.venom);
+      this.message('石子打中「' + e.type + '」（還有 ' + Math.ceil(e.hp) + '）。' + (!charges ? '' : d <= 7 ? '牠惱了，撲過來！' : '牠惱了，你一進七格內就撲過來。'));
+    }
+    platformRecoil(e) {   // 站在台上：撲上來的獸撞在台邊，掉命上限的一成、慢五息；回傳掉了多少
+      if (!e || e.type === '蜃' || this.world.get(this.player.x, this.player.y) !== '台' || !(DB[e.type] && DB[e.type].hp)) return 0;
+      const r = Math.max(1, Math.round(DB[e.type].hp * PLATFORM_RECOIL)); e.hp -= r; e.slowT = PLATFORM_SLOW;
+      this.fx.push({ type: 'float', x: e.x, y: e.y, text: '−' + r, color: G.INK.red, t: 0, dur: 0.8 });
+      if (e.hp <= 0) this.kill(e);
+      return r;
+    }
     hammerStrike(targets) {
       const p = this.player;
       if (this.level() < HAMMER_LEVEL) { this.message(HAMMER + '要膽氣卅一重才掄得動。'); SFX.fail(); return; }
@@ -1012,11 +1061,12 @@
     hit(e, dmg) {
       const p = this.player, d = Math.round(dmg * (this.totemNear(e.x, e.y) ? 5 / 3 : 1) * this.takenMult());
       p.hp = Math.max(0, p.hp - d); p.hurtT = 6; this.renderer.shake = 0.5; SFX.tiger(); this.armorHit();
-      this.message(e.type + '！命 −' + d + '。');
+      const rc = this.platformRecoil(e);
+      this.message(e.type + '！命 −' + d + '。' + (rc ? '牠撞在台邊，−' + rc + '，慢了下來。' : ''));
     }
     bite(e, per) {
       const p = this.player, now = this.world.time, per2 = Math.round(per * (this.totemNear(e.x, e.y) ? 5 / 3 : 1) * this.takenMult());
-      this.armorHit();
+      this.armorHit(); this.platformRecoil(e);
       if (this.ironFull()) { p.hurtT = 3; this.renderer.shake = 0.2; SFX.fail(); this.message(e.type + '咬在鐵甲上，毒牙咬不進。'); return; }
       p.biteN = (now - p.biteLast <= 6) ? p.biteN + 1 : 1; p.biteLast = now; this.stats.bites++;
       this.poison(per2, 5); p.hurtT = 6; this.renderer.shake = 0.3; SFX.fail();
@@ -1221,6 +1271,7 @@
       }
       if (s.n === '海水瓶') { this.message('海水鹹，喝不得。放在旺的灶上蒸餾。'); return; }
       if (!f) { this.message(tl.tool && tl.dur ? '「' + s.n + '」是工具，按 F 移進具欄。' : tl.tool || tl.kind === 'wear' ? '「' + s.n + '」在囊中即生效。' : '「' + s.n + '」不能吃，按 F 放到地上。'); return; }
+      if (f.bottle && s.c > 1 && !this.canAdd('玻璃瓶', 1)) { this.message('囊滿了，喝完的空瓶沒處放。先騰一格。'); SFX.fail(); return; }
       const ate = s.n === '果' ? this.takeFruit(1) : null; if (!ate) this.removeItem(s.n, 1);
       const age = ate && ate.length ? this.day() - ate[0] : 0;
       if (f.bottle) this.addItem('玻璃瓶', 1);
@@ -1287,7 +1338,7 @@
         let btns = '';
         if (r.choose) btns = r.choose.map(c => '<button data-r="' + r.id + '" data-c="' + c + '">' + c + '</button>').join('');
         else btns = '<button data-r="' + r.id + '"' + (spent ? ' disabled' : '') + '>' + (spent ? '已用完' : r.regrind ? '磨' : r.mend ? '固' : owned ? '翻新' : '造') + '</button>';
-        row.innerHTML = '<span class="num">' + (i + 1) + '</span><b>' + title + '</b><span class="needs">' + needs + '</span><span class="sta">力 ' + r.sta + (locked ? '<br><i>需' + r.level + '重</i>' : '') + '</span><span class="note">' + r.note + (r.regrind && this.activeTool() ? '（這把第 ' + (((this.activeTool().rg) || 0) + 1) + ' 次：石子 ' + this.regrindCost(this.activeTool()) + '）' : '') + (r.mend && this.heldNet() ? '<br><i>這張第 ' + ((this.heldNet().rf || 0) + 1) + ' 次：棉麻各 ' + this.mendCost(this.heldNet()) + (this.heldNet().dur === undefined ? '；還沒用過，不用固' : '，耐 ' + this.heldNet().dur + '／' + this.world.netDur(DB[ITEMS[this.heldNet().n].tile].net)) + '</i>' : '') + '</span><span class="btns">' + btns + '</span>';
+        row.innerHTML = '<span class="num">' + (i + 1) + '</span><b>' + title + '</b><span class="needs">' + needs + '</span><span class="sta">力 ' + r.sta + (r.food ? '<br>飽 ' + r.food : '') + (locked ? '<br><i>需' + r.level + '重</i>' : '') + '</span><span class="note">' + r.note + (r.regrind && this.activeTool() ? '（這把第 ' + (((this.activeTool().rg) || 0) + 1) + ' 次：石子 ' + this.regrindCost(this.activeTool()) + '）' : '') + (r.mend && this.heldNet() ? '<br><i>這張第 ' + ((this.heldNet().rf || 0) + 1) + ' 次：棉麻各 ' + this.mendCost(this.heldNet()) + (this.heldNet().dur === undefined ? '；還沒用過，不用固' : '，耐 ' + this.heldNet().dur + '／' + this.world.netDur(DB[ITEMS[this.heldNet().n].tile].net)) + '</i>' : '') + '</span><span class="btns">' + btns + '</span>';
         list.appendChild(row);
       });
       list.querySelectorAll('button').forEach(b => b.addEventListener('click', (ev) => { ev.stopPropagation(); this.craft(b.dataset.r, b.dataset.c); }));
@@ -1326,8 +1377,9 @@
         this.buildCraft(); this.buildBag(); return;
       }
       if (!this.canAdd(out, n)) { this.message('囊已滿。'); SFX.fail(); return; }
+      if (r.food && p.food < r.food) { this.message('太餓了，砌不動（要飽 ' + r.food + '）。'); SFX.fail(); return; }   // 台與階：耗力也耗飽
       for (const m in r.need) this.removeItem(m, r.need[m]);
-      p.sta -= r.sta; this.addItem(out, n); const gain = this.afterCraft(r);
+      p.sta -= r.sta; if (r.food) p.food -= r.food; this.addItem(out, n); const gain = this.afterCraft(r);
       this.toast('造了「' + out + '」' + (n > 1 ? ' ×' + n : ''), G.item(out).flavor + '　愜意 +' + gain); SFX.fuse();
       this.buildCraft(); this.buildBag();
     }
@@ -1791,6 +1843,7 @@
           if (it.food) s += ' · <kbd>V</kbd> ' + (hs.n.indexOf('瓶') >= 0 || hs.n === '果酒' ? '喝' : '吃');
         }
         if (this.bedNear()) s += ' · <kbd>R</kbd> 睡';
+        if (this.heldTool() === '弓') { const st = this.slingTarget(); s += ' · 彈弓：' + (st ? '<kbd>E</kbd> 射「' + st.type + '」（' + U.cheb(st.x, st.y, p.x, p.y) + ' 格）' : '面前九格內沒有獸') + ' · 石子 ' + this.count('石子') + (w.get(p.x, p.y) === '台' ? ' · 站在台上，越得過牆' : ''); }
         if (ch === '灶') s += (hs ? '' : ' · <kbd>F</kbd> 開灶') + '<br><span class="dim">灶：按 F 開灶，在灶裡添柴、烤魚肉、燒瓶、蒸餾、煉鐵煉鎢鋼</span>';
         if (ch === '鼎') s += '<br><span class="dim">鼎：選中木或煤按 F 添柴；火旺時選中蟾蜍肉或毒蟾肉按 F 煉丹（這次 ' + Math.round(this.pillChance('蟾蜍肉') * 100) + '%／' + Math.round(this.pillChance('毒蟾肉') * 100) + '%，已煉 ' + p.pillsMade + ' 顆）</span>';
       }
