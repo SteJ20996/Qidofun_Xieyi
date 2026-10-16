@@ -21,7 +21,7 @@
   // 小屋：牆與門圍起的小空間，裡面不生生靈、生靈也進不去。多小才算看難度，由 game 透過 roomLimitFor(type) 告訴世界：獸一個門檻、魄一個門檻
   // （簡單 28／18、一般 18／8、困難 10／0，0 ＝ 牆擋不住魄）；MAX_ROOM 是各門檻的最大值，漫延數到這裡就停
   const MAX_ROOM = 28;
-  // 霧障會動：每 FOG_STEP 息挪一格，速度慢；FOG_LIGHT_R 格內有光（燈、火、旺灶、玩家手裡的光）就往反方向躲，沒光就慢慢亂飄
+  // 霧障會動：每 FOG_STEP 息上下挪一格（v0.19 起間隔六到十四成之間抖動），速度慢；FOG_LIGHT_R 格內有光（燈、火、旺灶、玩家手裡的光）就往反方向躲，沒光就順著自己的風向慢慢飄，風向有慣性、偶爾轉；挪完偶爾換形（尾巴掉一格、前頭長一格）
   const FOG_STEP = 6, FOG_LIGHT_R = 10;
 
   class World {
@@ -314,22 +314,19 @@
       }
       return best;
     }
-    // 霧障挪一格：FOG_LIGHT_R 格內有光就往反方向躲（燈火、旺灶、手裡有光的玩家，取最近的）；沒光就順著原方向慢慢飄，偶爾轉向。
-    // 整片一起挪，陸上的霧只走陸地、海霧只走水面；挪不動就原地不動。可以飄到玩家身上（沒帶光的玩家會被霧追上）
+    // 霧障挪一格：FOG_LIGHT_R 格內有光就往反方向躲（燈火、旺灶、手裡有光的玩家，取最近的）；沒光就順著自己的風向飄。
+    // v0.19 改得自然些：八個方向（含斜角）、風向 f.ang 有慣性（每步微轉、偶爾大轉、卡住就掉頭）、走過的方向會拉動風向；挪完有一半機會換形（morphFog）。
     moveFog(f, px, py) {
       const c = this.fogCenter(f), R = U.trueRand;
       let src = this.nearestLight(Math.round(c.x), Math.round(c.y), FOG_LIGHT_R);
       if (this.playerLit()) { const d = Math.hypot(px - c.x, py - c.y); if (d <= FOG_LIGHT_R && (!src || d < src.d)) src = { x: px, y: py, d }; }
-      let order;
-      if (src) {
-        const ax = c.x - src.x, ay = c.y - src.y;   // 背光的方向
-        order = N4.slice().sort((a, b) => (b[0] * ax + b[1] * ay) - (a[0] * ax + a[1] * ay));
-        f.dir = order[0];
-      } else {
-        if (!f.dir || R() < 0.2) f.dir = N4[Math.floor(R() * 4)];
-        order = [f.dir].concat(N4.filter(d => d !== f.dir).sort(() => R() - 0.5));
-      }
+      if (src) f.ang = Math.atan2(c.y - src.y, c.x - src.x) + (R() - 0.5) * 0.5;      // 背光，略帶偏
+      else if (typeof f.ang !== 'number') f.ang = R() * Math.PI * 2;
+      else f.ang += (R() - 0.5) * (R() < 0.15 ? 2.4 : 0.7);                             // 風向慢慢轉，偶爾大轉
+      const ux = Math.cos(f.ang), uy = Math.sin(f.ang), dot = (d) => (d[0] * ux + d[1] * uy) / Math.hypot(d[0], d[1]);
+      const order = N8.slice().sort((a, b) => dot(b) - dot(a));
       const ok = f.sea ? (x, y) => this.fogSea(x, y) : (x, y) => this.fogLand(x, y);
+      let moved = false;
       for (const [dx, dy] of order) {
         const next = [];
         let fits = true;
@@ -341,10 +338,33 @@
         if (!fits) continue;
         for (const k of f.cells) if (this.fogCells.get(k) === f.id) this.fogCells.delete(k);
         f.cells = new Set(next); for (const k of f.cells) this.fogCells.set(k, f.id);
-        f.dir = [dx, dy];
-        return true;
+        f.dir = [dx, dy]; const l = Math.hypot(dx, dy); f.ang = Math.atan2(uy + dy / l, ux + dx / l);   // 實際走的方向把風向拉一拉
+        moved = true; break;
       }
-      return false;
+      if (!moved) f.ang += Math.PI * (0.5 + R() * 0.5);      // 哪邊都挪不動：掉頭
+      if (R() < 0.5) this.morphFog(f, ok);
+      return moved;
+    }
+    // 換形：最背著風向、只連著一格的尾巴掉一格，順著風向的邊上長一格；格數不變、仍連著、不踩別的霧
+    morphFog(f, ok) {
+      if (f.cells.size < 4) return false;
+      const R = U.trueRand, c = this.fogCenter(f), ux = Math.cos(f.ang), uy = Math.sin(f.ang), cells = [...f.cells].map(k => U.unkey(k));
+      const has = (x, y) => f.cells.has(U.key(x, y)), along = (x, y) => (x - c.x) * ux + (y - c.y) * uy;
+      const deg = (x, y) => N4.reduce((n, [dx, dy]) => n + (has(x + dx, y + dy) ? 1 : 0), 0);
+      const tails = cells.filter(([x, y]) => deg(x, y) === 1).sort((a, b) => along(a[0], a[1]) - along(b[0], b[1]));
+      if (!tails.length) return false;
+      const tail = tails[0], front = [];
+      for (const [x, y] of cells) for (const [dx, dy] of N4) {
+        const nx = x + dx, ny = y + dy;
+        if (has(nx, ny) || !ok(nx, ny) || this.fogCells.has(U.key(nx, ny)) || along(nx, ny) <= 0.05) continue;
+        if (Math.abs(nx - tail[0]) + Math.abs(ny - tail[1]) === 1 && deg(nx, ny) === 1) continue;   // 只靠尾巴連著的不長
+        front.push([nx, ny]);
+      }
+      if (!front.length) return false;
+      const [gx, gy] = front[Math.floor(R() * front.length)], tk = U.key(tail[0], tail[1]), gk = U.key(gx, gy);
+      f.cells.delete(tk); if (this.fogCells.get(tk) === f.id) this.fogCells.delete(tk);
+      f.cells.add(gk); this.fogCells.set(gk, f.id);
+      return true;
     }
 
     // ---------- 天氣：雨 ----------
@@ -419,7 +439,7 @@
         for (let i = 0; i < FOG_ROLLS; i++) if (U.trueRand() < this.fogP) this.fogPlan.push(today * DAY + U.trueRand() * DAY);
       }
       for (const [id, f] of this.fogs) if (this.time >= f.until) this.removeFog(id);
-      for (const f of this.fogs.values()) if (this.time >= f.moveAt) { f.moveAt = this.time + this.fogStep; this.moveFog(f, px, py); }   // 霧障慢慢挪，躲著光
+      for (const f of this.fogs.values()) if (this.time >= f.moveAt) { f.moveAt = this.time + this.fogStep * (0.6 + U.trueRand() * 0.8); this.moveFog(f, px, py); }   // 霧障慢慢挪（間隔有快有慢），躲著光
       this.roomCache.clear();
       // —— 灶裡的柴
       for (const [k, f] of this.stoves) { if (f > 0) this.stoves.set(k, Math.max(0, f - STEP)); }

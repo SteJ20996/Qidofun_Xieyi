@@ -252,7 +252,7 @@ const result = await page.evaluate(async () => {
   // 愜意：製作 +8；歸零失控；回到 10 解除
   trim(['木', '石', '石子', '草', '土', '石劍', '石鎬', '磚']);
   p.san = 50; p.cour = 0; g.addItem('土', 2); g.addItem('草', 1); p.sta = 50; g.craft('brick');
-  ok('crafting adds 8 sanity and courage equal to its stamina', p.san === 58 && p.cour === 3, [p.san, p.cour]);
+  ok('crafting adds 8 sanity and courage equal to its stamina ×1.25 (normal difficulty bonus, rounded)', p.san === 58 && p.cour === 4, [p.san, p.cour]);
   g.addItem('土', 8); g.addItem('草', 4); p.sta = 100; const sg = [];
   for (let i = 0; i < 4; i++) { const s0 = p.san; g.craft('brick'); sg.push(Math.round((p.san - s0) * 100) / 100); }
   ok('repeating the same recipe within 60 s gives 4, 2, 1, 1 sanity', sg.join(',') === '4,2,1,1', sg);
@@ -341,8 +341,8 @@ const result = await page.evaluate(async () => {
   // 錦囊：囊多兩格、具欄多一格，最多四個
   g.addItem('錦囊', 1); hold('錦囊'); g.useItem(); await sleep(60);
   ok('a pouch adds two bag slots and one tool slot', p.pouches === 1 && g.slots() === 18 && g.toolSlots() === 7 && document.querySelectorAll('#bagbar .slot').length === 18 && document.querySelectorAll('#toolbar .slot').length === 7);
-  p.pouches = 4; g.addItem('錦囊', 1); hold('錦囊'); g.useItem();
-  ok('no more than four pouches: 24 bag slots and 10 tool slots', p.pouches === 4 && g.count('錦囊') === 1 && g.slots() === 24 && g.toolSlots() === 10);
+  p.pouches = 6; g.addItem('錦囊', 1); hold('錦囊'); g.useItem();
+  ok('no more than six pouches: 28 bag slots and 12 tool slots', p.pouches === 6 && g.count('錦囊') === 1 && g.slots() === 28 && g.toolSlots() === 12);
   g.removeItem('錦囊', 1); p.pouches = 0; g.barSig = '';
   // 同一類衣甲只留一件：再造只翻新
   g.addItem('內襯', 1); const lin = p.bag.find(s => s.n === '內襯'); lin.dur = 1000; lin.wm = 3; g.addItem('棉', 4); g.addItem('麻', 2); p.sta = 50; g.buildCraft();
@@ -357,7 +357,7 @@ const result = await page.evaluate(async () => {
   // 九閽鳴雷：卅一重可造可掄，三格內同受，隨身二日一減、下限廿五重
   p.cour = g.levelAt(31); g.addItem('鐵', 12); g.addItem('煤', 6); g.addItem('石子', 9); g.addItem('麻布', 2); g.addItem('果酒', 1); p.sta = 100; g.craft('hammer');
   ok('九閽鳴雷 craftable at level 31, durability 199, goes to the tool bar', tool('九閽鳴雷') && tool('九閽鳴雷').dur === 199, bag());
-  ok('carrying it: courage decays every two days down to level 25', g.hasHammer() && g.decayDays() === 2 && g.decayFloor() === 25);
+  ok('carrying it on normal: courage decays every three days down to level 27', g.hasGod() && g.decayDays() === 3 && g.decayFloor() === 27);
   hold('九閽鳴雷'); face(1, 0); for (const [dx, dy] of [[1, 0], [3, 2], [4, 0]]) w.set(p.x + dx, p.y + dy, '草');
   const h1 = g.ents.add('虎', p.x + 1, p.y, { moveT: 99, calm: 99 }), h2 = g.ents.add('狼', p.x + 3, p.y + 2, { moveT: 99, calm: 99 }), h3 = g.ents.add('鹿', p.x + 4, p.y, { moveT: 99 });
   p.atkT = 0; p.sta = 50; g.pressGather();
@@ -540,6 +540,67 @@ const result = await page.evaluate(async () => {
     ok('heat survives a save and load', Math.abs(p.heatT - 42) < 1e-9, p.heatT);
     p.worn['襯'] = lining; setDay(0.3); p.warm = 100; p.hp = 100; p.heatT = 0; p.snowT = 0; g.removeItem('烤肉', 9); g.removeItem('烤魚', 9);
   }
+  // v0.19：膽氣加成看難度；神兵減益看難度、兩件只算一重、困難掉力；錦囊六個；跨過燈；櫃裡自動歸類；回血門檻七成五含暖；霧障八方飄、會換形
+  {
+    const l0 = p.cour; p.cour = 0;
+    g.diff = XIEYI.DIFF.hard; g.addCourage(20, 'kill'); const ch = p.cour; p.cour = 0;
+    g.diff = XIEYI.DIFF.easy; g.addCourage(20, 'kill'); const ce = p.cour; p.cour = 0;
+    g.diff = XIEYI.DIFF.normal; const cn = g.addCourage(20, 'kill');
+    ok('courage gains scale by difficulty: 20 becomes 23 on hard, 28 on easy, 25 on normal (and addCourage returns it)', ch === 23 && ce === 28 && cn === 25 && p.cour === 25, [ch, ce, cn]);
+    p.cour = l0;
+    g.addItem('燭龍焚溟', 1);
+    ok('燭龍焚溟 alone counts as a god weapon: on normal courage decays every three days down to 27', g.hasGod() && g.decayDays() === 3 && g.decayFloor() === 27);
+    g.addItem('九閽鳴雷', 1);
+    ok('both together are still one debuff', g.hasGod() && g.decayDays() === 3 && g.decayFloor() === 27);
+    g.diff = XIEYI.DIFF.hard; ok('hard: two days, floor 26', g.decayDays() === 2 && g.decayFloor() === 26 && g.godText() === '攜神兵：廿六重以上二日一減', g.godText());
+    g.diff = XIEYI.DIFF.easy; ok('easy: four days, floor 28', g.decayDays() === 4 && g.decayFloor() === 28);
+    g.diff = XIEYI.DIFF.hard; setDay(0.3); p.sta = 50; p.swimming = false; const m0 = g.mult(); g.updateStats(1);
+    ok('on hard a god weapon on you drains 0.3 stamina a second (net of the usual regen)', Math.abs(p.sta - (50 + 0.5 * m0 - 0.3)) < 1e-6, [p.sta, m0]);
+    g.diff = XIEYI.DIFF.normal; p.sta = 50; g.updateStats(1);
+    ok('on normal it does not', Math.abs(p.sta - (50 + 0.5 * m0)) < 1e-6, p.sta);
+    g.removeItem('燭龍焚溟', 9); g.removeItem('九閽鳴雷', 9); p.tools = p.tools.filter(s => s.n !== '燭龍焚溟' && s.n !== '九閽鳴雷'); if (p.tool >= p.tools.length) p.tool = p.tools.length - 1; g.barSig = '';
+    ok('without them the plain rule is back: three days, floor 31', !g.hasGod() && g.decayDays() === 3 && g.decayFloor() === 31);
+    const pch = p.pouches; p.pouches = 6; g.addItem('錦囊', 1); hold('錦囊'); g.msgText = ''; g.useItem();
+    ok('six pouches is the cap: 28 bag slots, 12 tool slots, a seventh is refused', p.pouches === 6 && g.slots() === 28 && g.toolSlots() === 12 && g.count('錦囊') === 1 && g.msgText.indexOf('六個') >= 0, [g.slots(), g.toolSlots(), g.msgText]);
+    g.removeItem('錦囊', 9); p.pouches = pch; g.barSig = '';
+    face(1, 0); const lx = T().x, ly = T().y, keepL = w.raw(lx, ly); w.set(lx, ly, '燈');
+    ok('a lamp blocks beasts but not you', g.pass(lx, ly) && !g.ents.canStand('狼', lx, ly, true) && !g.ents.canStand('虎', lx, ly, true), [g.pass(lx, ly)]);
+    const px0 = p.x, py0 = p.y; p.moveT = 0; g.tryStep(1, 0);
+    ok('stepping east onto the lamp works', p.x === px0 + 1 && w.get(p.x, p.y) === '燈', [p.x - px0, w.get(p.x, p.y)]);
+    p.x = p.rx = px0; p.y = p.ry = py0; p.moveT = 0; w.set(lx, ly, keepL);
+    {
+      face(0, 1); const cx = T().x, cy = T().y, keepC = w.raw(cx, cy); w.set(cx, cy, '櫃'); g.openChest(T());
+      const box = w.chests.get(g.chestAt); box.length = 0;
+      box.push({ n: '木', c: 3 }, { n: '烤魚', c: 1 }, { n: '布帽', c: 1, dur: 100 }, { n: '石', c: 2 }, { n: '木', c: 5 }, { n: '磚', c: 2 }, { n: '石刀', c: 1, dur: 10 });
+      g.sortChest(box);
+      ok('the chest merges the two 木 stacks and sorts tools, wear, building, food, then materials by strokes', box.map(s => s.n + (s.c > 1 ? s.c : '')).join(',') === '石刀,布帽,磚2,烤魚,木8,石2', box.map(s => s.n + s.c).join(','));
+      g.addItem('木', 2); const wi = p.bag.findIndex(s => s.n === '木'), mv = p.bag[wi].c; g.moveStack('bag', wi);
+      ok('moving more 木 in lands in the same stack', box.filter(s => s.n === '木').length === 1 && box.find(s => s.n === '木').c === 8 + mv, box.map(s => s.n + s.c).join(','));
+      g.closeChest(); box.length = 0; w.chests.delete(cx + ',' + cy); w.set(cx, cy, keepC);
+    }
+    setDay(0.3); p.hp = 50; p.hurtT = 0; p.food = 76; p.san = 76; p.sta = 76; p.warm = 70; p.heatT = 0; p.poisonT = 0; g.updateStats(0.5);
+    ok('warmth below 75 blocks regeneration even with the other three above it', p.hp <= 50 + 1e-9, p.hp);
+    p.warm = 76; p.hp = 50; g.updateStats(0.5);
+    ok('with all four at 75 or more hp regenerates', p.hp > 50, p.hp);
+    p.hp = 100; p.food = 100; p.san = 100; p.sta = 100; p.warm = 100;
+    { for (const id of [...w.fogs.keys()]) w.removeFog(id); const X = p.x, Y = p.y + 3;
+      for (let dx = -7; dx <= 7; dx++) for (let dy = 0; dy <= 10; dy++) w.set(X + dx, Y + dy, '草');
+      unarm(); p.worn['帽'] = null; g.removeItem('火把', 99); g.removeItem('蠟燭', 99); p.sel = 0;
+      const fog = w.addFog([X + ',' + (Y + 5), (X + 1) + ',' + (Y + 5), (X + 2) + ',' + (Y + 5), (X + 1) + ',' + (Y + 6), (X + 1) + ',' + (Y + 4)], w.time + DAY);
+      const shapeOf = () => { const cs = [...fog.cells].map(k => k.split(',').map(Number)), mx = Math.min(...cs.map(c => c[0])), my = Math.min(...cs.map(c => c[1])); return cs.map(([x, y]) => (x - mx) + ':' + (y - my)).sort().join('|'); };
+      const dirs = new Set(); let sizes = true, land = true, conn = true, morphs = 0, shape0 = shapeOf();
+      for (let i = 0; i < 40; i++) {
+        w.moveFog(fog, X, Y - 30);
+        if (fog.dir) dirs.add(fog.dir.join(','));
+        const cells = [...fog.cells].map(k => k.split(',').map(Number)); if (cells.length !== 5) sizes = false; if (!cells.every(([x, y]) => w.fogLand(x, y))) land = false;
+        const set = new Set(fog.cells), first = fog.cells.values().next().value, seen = new Set([first]), stack = [first];
+        while (stack.length) { const [x, y] = stack.pop().split(',').map(Number); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = (x + dx) + ',' + (y + dy); if (set.has(k) && !seen.has(k)) { seen.add(k); stack.push(k); } } }
+        if (seen.size !== 5) conn = false;
+        const sh = shapeOf(); if (sh !== shape0) morphs++; shape0 = sh;
+      }
+      ok('with no light a fog drifts in several directions (slants included), keeps five connected cells on land, and changes shape now and then', dirs.size >= 3 && [...dirs].some(d => d.indexOf('0') < 0) && sizes && land && conn && morphs > 0, [[...dirs], sizes, land, conn, morphs]);
+      w.removeFog(fog.id); }
+  }
   for (let dx = 0; dx < 3; dx++) for (let dy = 0; dy < 3; dy++) w.set(nk.x + dx, nk.y + dy, w.base(nk.x + dx, nk.y + dy));   // 測試挖的深水還原，免得把出生點圍住
   // 煤與鐵：山裡有礦；礦二煤一入旺灶煉鐵；煤是好柴
   let coal = 0, iron = 0; for (let x = -60; x <= 60; x++) for (let y = -60; y <= 60; y++) { const b = w.base(x, y); if (b === '煤') coal++; else if (b === '鐵') iron++; }
@@ -596,8 +657,8 @@ const result = await page.evaluate(async () => {
   // 力：取一次 −1，打一下 −1，力盡掉血
   p.cour = 0; p.sta = 50; hold('木'); face(0, 1); w.set(T().x, T().y, '草'); g.action = null; g.pressGather(); await until(() => !g.action, 4000);
   ok('gathering costs one stamina', p.sta < 49.9 && p.sta > 48, p.sta);
-  p.sta = 90; p.food = 90; p.san = 90; p.hp = 50; p.hurtT = 0; p.cour = 0; await until(() => p.hp > 50.3, 3000);
-  ok('hp regenerates when food, sanity and stamina are above 80', p.hp > 50.3, p.hp);
+  p.sta = 90; p.food = 90; p.san = 90; p.warm = 90; p.hp = 50; p.hurtT = 0; p.cour = 0; await until(() => p.hp > 50.3, 3000);
+  ok('hp regenerates when food, warmth, sanity and stamina are at 75 or more', p.hp > 50.3, p.hp);
   // 瓶與酒
   g.addItem('沙', 3); face(0, 1); w.set(T().x, T().y, '灶'); w.addFuel(T().x, T().y, 300); g.pressPlace(); g.stoveCook('沙'); g.closeStove();
   ok('three sand on a lit stove make two bottles', g.count('玻璃瓶') === 2 && g.count('沙') === 0, bag());
@@ -913,20 +974,20 @@ const result = await page.evaluate(async () => {
   // —— 廿二重起只靠斃敵長膽氣；斃敵白日八成、夜裡加半成
   { const t0 = w.time, c0 = p.cour; trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']);
     p.cour = g.levelAt(21); g.addItem('土', 2); g.addItem('草', 1); p.sta = 50; g.craft('brick');
-    ok('below level 22 crafting still gives courage', p.cour === g.levelAt(21) + 3, p.cour - g.levelAt(21));
+    ok('below level 22 crafting still gives courage (3 × 1.25 → 4)', p.cour === g.levelAt(21) + 4, p.cour - g.levelAt(21));
     p.cour = g.levelAt(22); g.killOnlyHinted = false; g.addItem('土', 2); g.addItem('草', 1); p.sta = 50; g.craft('brick');
     ok('from level 22 crafting gives none (the brick is still made)', p.cour === g.levelAt(22) && g.count('磚') >= 2 && toasts().indexOf('膽氣不長了') >= 0);
     g.addCourage(5, 'other'); ok('nor do gathering, reading or fishing', p.cour === g.levelAt(22));
     setDay(0.3); face(1, 0); w.set(T().x, T().y, '草'); g.kill(g.ents.add('鹿', T().x, T().y, { moveT: 99 }));
     ok('a deer is not hostile: no courage at 22', p.cour === g.levelAt(22) && !g.isNight());
     g.kill(g.ents.add('虎', T().x, T().y, { moveT: 99 }));
-    ok('a tiger by day: 15 × 0.8 = 12', p.cour === g.levelAt(22) + 12, p.cour - g.levelAt(22));
+    ok('a tiger by day: 30 × 0.8 × 1.25 = 30', p.cour === g.levelAt(22) + 30, p.cour - g.levelAt(22));
     setDay(0.7); p.cour = g.levelAt(22); g.kill(g.ents.add('虎', T().x, T().y, { moveT: 99 }));
-    ok('a tiger by night: 15 × 1.05 = 16', g.isNight() && p.cour === g.levelAt(22) + 16, p.cour - g.levelAt(22));
+    ok('a tiger by night: 30 × 1.05 × 1.25 = 39.4 → 39', g.isNight() && p.cour === g.levelAt(22) + 39, p.cour - g.levelAt(22));
     p.cour = 0; g.kill(g.ents.add('狼', T().x, T().y, { moveT: 99 }));
-    ok('the day/night factor applies at any level: a wolf by night gives 11', p.cour === 11, p.cour);
+    ok('the day/night factor applies at any level: a wolf by night gives 20 (15 × 1.05 × 1.25)', p.cour === 20, p.cour);
     setDay(0.3); p.cour = 0; g.kill(g.ents.add('鹿', T().x, T().y, { moveT: 99 }));
-    ok('below 22 a deer still gives its 3, no day factor', p.cour === 3, p.cour);
+    ok('below 22 a deer still gives its 3 (×1.25 → 4), no day factor', p.cour === 4, p.cour);
     w.time = t0; p.cour = c0; for (const n of ['肉', '磚', '虎首骨', '狼首骨']) g.removeItem(n, 99); }
   // —— 霧障會動：慢慢挪，躲著光；沒光就亂飄
   { const X = p.x, Y = p.y; for (const id of [...w.fogs.keys()]) w.removeFog(id);
@@ -937,15 +998,15 @@ const result = await page.evaluate(async () => {
     const cellsOf = () => [...fog.cells].map(k => k.split(',').map(Number));
     w.set(X + 3, Y, '燈');
     const moved1 = w.moveFog(fog, X, Y); const c1 = cellsOf();
-    ok('a lamp within ten tiles pushes the fog away: every cell shifts one step east', moved1 && c1.length === 3 && c1.every(([x]) => x >= X + 7) && !!w.fogAt(X + 8, Y) && !w.fogAt(X + 6, Y), c1);
+    ok('a lamp within ten tiles pushes the fog away: every cell shifts one step east (straight or slanting)', moved1 && c1.length === 3 && c1.every(([x]) => x >= X + 7) && !w.fogAt(X + 6, Y), c1);
     w.set(X + 3, Y, '草'); p.x = p.rx = X + 12; p.y = p.ry = Y; g.addItem('火把', 1); hold('火把');
     const moved2 = g.hasLight() && w.moveFog(fog, p.x, p.y); const c2 = cellsOf();
-    ok('a torch in the player\'s hand counts as light: the fog backs away west', moved2 && c2.every(([x]) => x <= X + 7) && !!w.fogAt(X + 7, Y), c2);
+    ok('a torch in the player\'s hand counts as light: the fog backs away west', moved2 && c2.every(([x]) => x <= X + 7), c2);
     unarm(); g.removeItem('火把', 9); p.sel = 0; p.x = p.rx = X; p.y = p.ry = Y;
     const before = JSON.stringify(cellsOf()); const moved3 = w.moveFog(fog, X, Y); const c3 = cellsOf();
     ok('with no light around the fog still drifts one step and stays on land', moved3 && c3.length === 3 && c3.every(([x, y]) => w.fogLand(x, y)) && JSON.stringify(c3) !== before, c3);
     fog.moveAt = w.time; w.fogStep = 1000; const c4 = JSON.stringify(cellsOf()); w.step(p.x, p.y);
-    ok('the world tick moves fogs on the fog clock and winds it up again', JSON.stringify(cellsOf()) !== c4 && fog.moveAt > w.time + 900 && [...fog.cells].every(k => w.fogCells.get(k) === fog.id), fog.moveAt - w.time);
+    ok('the world tick moves fogs on the fog clock and winds it up again', JSON.stringify(cellsOf()) !== c4 && fog.moveAt > w.time + 500 && fog.moveAt < w.time + 1500 && [...fog.cells].every(k => w.fogCells.get(k) === fog.id), fog.moveAt - w.time);
     const w2 = new window.World(w.seed); w2.restore(w.serialize()); const f2 = [...w2.fogs.values()][0];
     ok('a restored fog gets a fresh move clock', !!f2 && f2.moveAt > w2.time, f2 && f2.moveAt - w2.time);
     w.fogStep = 1e9; w.removeFog(fog.id); }
@@ -1126,13 +1187,13 @@ const result = await page.evaluate(async () => {
     p.hp = p.hpMax - 3; g.addItem('烤肉', 1); hold('烤肉'); g.useItem();
     ok('healing never passes the max', Math.round(p.hp) === p.hpMax); p.hp = p.hpMax;
     // 錦囊用滿四個：製作欄標「已用完」、鈕灰掉、再造被拒
-    const pch0 = p.pouches; p.pouches = 4; g.craftCat = '全部'; g.buildCraft();
+    const pch0 = p.pouches; p.pouches = 6; g.craftCat = '全部'; g.buildCraft();
     const prow = [...document.querySelectorAll('#craft-list .recipe')].find(r => r.textContent.indexOf('錦囊') >= 0);
     ok('with four pouches used the craft row says 已用完 and its button is disabled', !!prow && prow.textContent.indexOf('已用完') >= 0 && prow.classList.contains('cant') && prow.querySelector('button').disabled, prow && prow.textContent.slice(0, 40));
     g.addItem('麻布', 3); g.addItem('棉', 2); p.sta = 100; const pc0 = g.count('錦囊'); g.craft('pouch');
     ok('crafting a fifth pouch is refused', g.count('錦囊') === pc0 && g.count('麻布') >= 3 && g.msgText.indexOf('都用了') >= 0);
     g.addItem('錦囊', 1); hold('錦囊'); g.msgText = ''; g.msgUntil = 0; g.hudSig = ''; g.updateHUD();   // 清掉剛才的回饋訊息，提示列才會寫面前與手上的東西
-    ok('the hint for a pouch in hand says they are all used', document.getElementById('msg').textContent.indexOf('已用完四個') >= 0, document.getElementById('msg').textContent.slice(0, 80));
+    ok('the hint for a pouch in hand says they are all used', document.getElementById('msg').textContent.indexOf('已用完六個') >= 0, document.getElementById('msg').textContent.slice(0, 80));
     p.pouches = 1; g.buildCraft(); const prow2 = [...document.querySelectorAll('#craft-list .recipe')].find(r => r.textContent.indexOf('錦囊') >= 0);
     ok('with fewer used the row is craftable again', !!prow2 && prow2.textContent.indexOf('已用完') < 0 && !prow2.querySelector('button').disabled);
     p.pouches = pch0; g.removeItem('錦囊', 9); g.removeItem('麻布', 9); g.removeItem('棉', 9); g.barSig = ''; g.buildBag();
@@ -1202,7 +1263,7 @@ try {
   const cards = await page.$$eval('.save-card', (cs) => cs.map(c => ({ slot: c.dataset.slot, on: c.classList.contains('on'), empty: c.classList.contains('empty'), text: c.textContent })));
   ok2('start page shows three save cards', cards.length === 3 && cards.map(c => c.slot).join('') === '123');
   ok2('the newest save (slot 1) is selected by default', cards[0].on && !cards[1].on && !cards[2].on);
-  ok2('an occupied card tells island, difficulty, day, night, courage, slept nights and time', /島 #7/.test(cards[0].text) && /一般/.test(cards[0].text) && /第 \d+ 日/.test(cards[0].text) && /夜/.test(cards[0].text) && /膽氣第 \d+ 重/.test(cards[0].text) && /睡過 \d+ 夜/.test(cards[0].text) && /存於 \d\d\/\d\d/.test(cards[0].text), cards[0].text);
+  ok2('an occupied card tells island, difficulty, day, night, courage and time (no slept-nights count any more)', /島 #7/.test(cards[0].text) && /一般/.test(cards[0].text) && /第 \d+ 日/.test(cards[0].text) && /夜/.test(cards[0].text) && /膽氣第 \d+ 重/.test(cards[0].text) && !/睡過/.test(cards[0].text) && /存於 \d\d\/\d\d/.test(cards[0].text), cards[0].text);
   ok2('slot 3 shows its own island, difficulty and courage', /島 #99/.test(cards[2].text) && /困難/.test(cards[2].text) && /膽氣第 5 重/.test(cards[2].text), cards[2].text);
   ok2('slot 2 is empty and says so', cards[1].empty && /空格/.test(cards[1].text) && !/繼續/.test(cards[1].text));
   await page.click('.save-card[data-slot="3"] .save-no');
