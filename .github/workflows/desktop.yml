@@ -1,0 +1,57 @@
+# 《山海有形》桌面版（Electron）：每次合進 main（動到遊戲或殼時）自動打包 Windows 與 Linux 版，並真的開起來跑冒煙測試。
+# 打好的檔在這次執行的 Artifacts 裡下載（保留三十天）；也可以在 Actions 頁手動按 Run workflow。
+name: 桌面版（Electron）
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['src/**', 'index.html', 'style.css', 'scripts/build-single.py', 'desktop/**', '.github/workflows/desktop.yml']
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            pack: pack:win
+            out: ShanHaiYouXing-win32-x64
+            exe: ShanHaiYouXing.exe
+          - os: ubuntu-latest
+            pack: pack:linux
+            out: ShanHaiYouXing-linux-x64
+            exe: ShanHaiYouXing
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 產出單檔遊戲
+        run: python scripts/build-single.py
+      - name: 裝 Electron 與打包工具
+        working-directory: desktop
+        run: npm ci --no-audit --no-fund
+      - name: 打包
+        working-directory: desktop
+        run: npm run ${{ matrix.pack }}
+      - name: 冒煙測試（開發版與打包好的執行檔各跑一次）
+        working-directory: desktop
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then RUN="xvfb-run -a"; EXE="$PWD/out/${{ matrix.out }}/${{ matrix.exe }}"; else RUN=""; EXE="$(pwd -W)/out/${{ matrix.out }}/${{ matrix.exe }}"; fi
+          $RUN node smoke.mjs
+          XIEYI_EXE="$EXE" $RUN node smoke.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.out }}
+          path: desktop/out/${{ matrix.out }}
+          retention-days: 30
+          if-no-files-found: error

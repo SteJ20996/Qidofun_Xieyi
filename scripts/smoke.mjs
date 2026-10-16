@@ -1452,6 +1452,39 @@ const result = await page.evaluate(async () => {
     B.x = B.rx = X + 5; B.y = B.ry = Y; B.moveT = 0; B.calm = 99; g.ents.update(0.01, g);
     ok('two tigers already too close: the idle one walks away', U.cheb(A.x, A.y, B.x, B.y) === 6, U.cheb(A.x, A.y, B.x, B.y));
     g.ents.remove(A); g.ents.remove(B); for (const [x, y, c] of area) w.set(x, y, c); calm(); }
+  // ============ 神兵與彈弓各有專鍵（v0.26）：L 拿出／換神兵、P 收回；Y 拿出／收起彈弓；手柄 L3／R3 與右搖桿上下 ============
+  { calm(); const keepT = p.tools, keepB = p.bag, keepI = p.tool, keepSel = p.sel, held = () => g.activeTool() && g.activeTool().n;
+    const frames = (n) => new Promise((res) => { let k = 0; const f = () => { if (++k >= n) res(); else requestAnimationFrame(f); }; requestAnimationFrame(f); });
+    p.tools = [{ n: '石刀', c: 1, dur: 30 }, { n: '九閽鳴雷', c: 1, dur: 199 }]; p.bag = [{ n: '燭龍焚溟', c: 1, dur: 199 }, { n: '木', c: 3 }]; p.sel = 0; p.tool = 0; g.prevTool = null; g.barSig = ''; g.buildBag();
+    await press('KeyL'); ok('L takes out the god weapon in the tool bar', held() === '九閽鳴雷' && g.msgText.indexOf('拿出「九閽鳴雷」') >= 0, g.msgText);
+    await press('KeyL'); ok('L again switches to the other one, moving it from the bag into the tool bar', held() === '燭龍焚溟' && !p.bag.some(s => s.n === '燭龍焚溟') && p.tools.length === 3);
+    await press('KeyL'); ok('and back again', held() === '九閽鳴雷');
+    await press('KeyP'); ok('P puts the god weapon away: the stone knife held before is back in hand', held() === '石刀' && g.msgText.indexOf('收起「九閽鳴雷」') >= 0, g.msgText);
+    await press('KeyP'); ok('P with an ordinary tool in hand still cycles the tool bar', held() === '九閽鳴雷');
+    p.tool = -1; await press('KeyL'); await press('KeyP'); ok('drawn from empty hands, P leaves them empty again', p.tool === -1 && g.msgText.indexOf('空手') >= 0, g.msgText);
+    p.tool = 0; await press('KeyY'); ok('Y without a slingshot says how to make one and keeps the knife', held() === '石刀' && g.msgText.indexOf('沒有彈弓') >= 0, g.msgText);
+    p.bag.push({ n: '彈弓', c: 1, dur: 80 }); g.barSig = ''; await press('KeyY'); ok('Y takes the slingshot from the bag into the hand', held() === '彈弓' && !p.bag.some(s => s.n === '彈弓'));
+    await press('KeyL'); ok('L from the slingshot takes out a god weapon', held() === '九閽鳴雷');
+    await press('KeyP'); ok('P puts it away back to the knife held before the slingshot', held() === '石刀');
+    await press('KeyY'); const out = held(); await press('KeyY'); ok('Y twice: out, then put away back to the knife', out === '彈弓' && held() === '石刀' && g.msgText.indexOf('收起「彈弓」') >= 0, g.msgText);
+    // 手柄：L3 神兵、R3 彈弓、ZL 收神兵、右搖桿上見聞錄、下睡
+    const realGp = navigator.getGamepads, fp = { id: 'Keys pad (STANDARD GAMEPAD)', index: 0, connected: true, mapping: 'standard', buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })), axes: [0, 0, 0, 0], timestamp: 0 };
+    navigator.getGamepads = () => [fp]; PAD.useStandard();
+    const pb = async (i) => { fp.buttons[i].pressed = true; fp.buttons[i].value = 1; await frames(3); fp.buttons[i].pressed = false; fp.buttons[i].value = 0; await frames(3); };
+    const rs = async (v) => { fp.axes[3] = v; await frames(3); fp.axes[3] = 0; await frames(3); };
+    await pb(10); ok('L3 on the pad takes out a god weapon', PAD.seen && held() === '九閽鳴雷');
+    await pb(6); ok('ZL puts it away', held() === '石刀');
+    await pb(11); ok('R3 takes out the slingshot', held() === '彈弓');
+    await pb(11); ok('R3 again puts it away', held() === '石刀');
+    await rs(-0.9); ok('right stick up opens 見聞錄', !hidden('journal'));
+    await rs(-0.9); ok('and up again closes it', hidden('journal'));
+    g.msgText = ''; await rs(0.9); ok('right stick down is 睡 (no bed here, so it says so)', g.msgText.indexOf('床') >= 0 || g.msgText.indexOf('睡') >= 0, g.msgText);
+    const sel0 = p.sel; fp.axes[2] = 0.7; fp.axes[3] = 0.9; await frames(3); fp.axes[2] = 0; fp.axes[3] = 0; await frames(3);
+    ok('a push mostly downward does not also flip the bag slot', p.sel === sel0);
+    PAD.releaseAll(); navigator.getGamepads = realGp; PAD.seen = false; PAD.id = ''; PAD.index = -1; const kl = document.getElementById('keys'); if (PAD.keysHtml !== null) kl.innerHTML = PAD.keysHtml;
+    p.tools.length = 0; while (p.tools.length < g.toolSlots()) p.tools.push({ n: '石刀', c: 1, dur: 30 }); p.bag.push({ n: '彈弓', c: 1, dur: 80 }); p.tool = 0; g.barSig = '';
+    await press('KeyY'); ok('with the tool bar full, Y says so and nothing changes', held() === '石刀' && p.bag.some(s => s.n === '彈弓') && g.msgText.indexOf('具欄滿了') >= 0, g.msgText);
+    p.tools = keepT; p.bag = keepB; p.tool = keepI; p.sel = keepSel; g.prevTool = null; g.barSig = ''; g.buildBag(); }
   // ============ 簡體中文（v0.24）：只在顯示那一層轉字，程式、存檔、字庫的鍵一律繁體 ============
   { calm();
     ok('the converter: 字裡行間 → 字里行间; 乾坤 and 著名 kept as words; 穿著 → 穿着; 九閽鳴雷 → 九阍鸣雷', I18N.toHans('字裡行間 · 一紙之島') === '字里行间 · 一纸之岛' && I18N.toHans('乾坤') === '乾坤' && I18N.toHans('著名') === '著名' && I18N.toHans('穿著') === '穿着' && I18N.toHans('九閽鳴雷') === '九阍鸣雷');

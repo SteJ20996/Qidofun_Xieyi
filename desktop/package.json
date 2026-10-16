@@ -1,0 +1,20 @@
+{
+  "name": "xieyi-shanhai",
+  "productName": "山海有形",
+  "version": "0.26.0",
+  "description": "《山海有形》桌面版：寫意系列第一部，用 Electron 包起單檔遊戲",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "copy": "node copy-game.mjs",
+    "start": "node copy-game.mjs && electron .",
+    "smoke": "node smoke.mjs",
+    "pack:win": "node copy-game.mjs && electron-packager . ShanHaiYouXing --platform=win32 --arch=x64 --out=out --overwrite --asar --ignore=^/out --ignore=^/smoke --ignore=^/README --ignore=^/node_modules --ignore=^/copy-game --ignore=^/\\.gitignore",
+    "pack:linux": "node copy-game.mjs && electron-packager . ShanHaiYouXing --platform=linux --arch=x64 --out=out --overwrite --asar --ignore=^/out --ignore=^/smoke --ignore=^/README --ignore=^/node_modules --ignore=^/copy-game --ignore=^/\\.gitignore"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "44.5.1",
+    "playwright-core": "1.63.0"
+  }
+}
