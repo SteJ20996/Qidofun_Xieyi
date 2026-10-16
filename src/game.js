@@ -11,7 +11,7 @@
   const BASE_SLOTS = 16, STACK = 64, CHEST_SLOTS = 24, BASE_TOOLS = 6, MAX_POUCHES = 4, FERMENT_NIGHTS = 15, SHIP_LEVEL = 8, TOTEM_LEVEL = 16, DECAY_LEVEL = 31, DECAY_DAYS = 3;   // TOTEM_LEVEL：山海衣的門檻（v0.17 從十重改十六重，另要至少一件鎢鋼護具）
   // 難度：魄從第幾夜起、受傷與攻擊倍率、夜裡狼虎豹蛇的數量倍率
   // warn：數值不到四分之一要不要彈窗提醒（困難只閃不彈）；room／ghostRoom：牆與門圍起不超過幾格的小屋擋得住獸／魄（0 ＝ 牆擋不住魄，只有光）
-  const DIFF = { easy: { key: 'easy', name: '簡單', ghost: 21, taken: 0.9, dmg: 1.1, beasts: 1, warn: true, room: 28, ghostRoom: 18 }, normal: { key: 'normal', name: '一般', ghost: 13, taken: 1, dmg: 1, beasts: 1, warn: true, room: 18, ghostRoom: 8 }, hard: { key: 'hard', name: '困難', ghost: 9, taken: 1.1, dmg: 0.9, beasts: 1.5, warn: false, room: 10, ghostRoom: 0 } };
+  const DIFF = { easy: { key: 'easy', name: '簡單', ghost: 21, taken: 0.9, dmg: 1.1, beasts: 1, warn: true, room: 28, ghostRoom: 18, lampP: 1 / 4500 }, normal: { key: 'normal', name: '一般', ghost: 13, taken: 1, dmg: 1, beasts: 1, warn: true, room: 18, ghostRoom: 8, lampP: 1 / 2500 }, hard: { key: 'hard', name: '困難', ghost: 9, taken: 1.1, dmg: 0.9, beasts: 1.5, warn: false, room: 10, ghostRoom: 0, lampP: 1 / 800 } };   // lampP：下雨時屋外每盞燈每息被澆壞的機率（v0.18 分難度：簡單 1/4500、一般 1/2500、困難 1/800）
   // 九閽鳴雷：卅一重方可造、可掄；三格內諸獸同受其傷；隨身則膽氣二日一減、下限廿五重
   const HAMMER = '九閽鳴雷', HAMMER_LEVEL = 31, HAMMER_RANGE = 3, HAMMER_FLOOR = 25, HAMMER_DECAY_DAYS = 2;
   const TAME_CHANCE = [0.35, 0.25, 0.10], EAGLE_FEED = 40, TURTLE_PEACE_DAYS = 5;   // 馴鷹的機率看已經跟著幾隻；餵魚回力；龜卜吉兆幾日無魄
@@ -23,7 +23,10 @@
   const SLOT_ORDER = ['襯', '褲', '甲', '盔', '靴', '帽'], ARMOR_SLOTS = ['襯', '褲', '甲', '盔', '靴'], ARMOR_LIFE = 180 * DAY, HIT_MULT = [1, 1.05, 1.12, 1.2, 1.5];
   const FUEL = { '煤': 120, '精煤': 300 };   // 灶的好柴：一塊煤燒一百二十息，精煤三百息
   const TURTLE_SAN = 30;                      // 殺龜不祥：愜意掉三十
-  const REGRIND_CAP = 8;                      // 同一把工具重磨：第一次石子一、再來二、四、八，八為上限（rg 記在那把工具上）
+  // 雪域（v0.18）：離雪 SNOW_R 格內待超過 SNOW_GRACE 息，暖開始多掉，越待掉越快（起步每息 SNOW_RATE，每多待一息再加 SNOW_RAMP，封頂 SNOW_MAX）；
+  // 烤的東西下肚有熱氣：HEAT_PER_MEAL 息內凍不傷命，累積到 HEAT_CAP 為止
+  const SNOW_R = 5, SNOW_GRACE = 5, SNOW_RATE = 1, SNOW_RAMP = 0.1, SNOW_MAX = 4, HEAT_PER_MEAL = 90, HEAT_CAP = 150;
+  const REGRIND_CAP = 8, MEND_STA = 3;   // 1、2、4、8 法則的上限：重磨的石子、加固漁網的棉麻（MEND_STA 是面向網按 F 加固的耗力）                      // 同一把工具重磨：第一次石子一、再來二、四、八，八為上限（rg 記在那把工具上）
   const CLOTH_FUEL = 120;                     // 舊布製品（內襯、布褲、布甲、布帽、布靴）丟進灶裡當柴：一件一百二十息
   const KILL_ONLY_LEVEL = 22, KILL_DAY = 0.8, KILL_NIGHT = 1.05;   // 廿二重起膽氣只從斃敵對生靈得來（製作採集讀碑都不長）；斃敵的膽氣白日八成、夜裡加半成（四捨五入）
   const WARN_LIGHT = 0.5, WARN_POP = 0.25;    // 五條數值不到五成亮燈、不到四分之一彈窗提醒（回到五成以上才會再提醒）
@@ -47,6 +50,7 @@
       this.ents = new Entities(this.world);
       this.world.playerLit = () => this.hasLight();   // 霧障躲光：玩家手裡或帽上的光也算
       this.world.roomLimitFor = (type) => type === '魄' ? this.diff.ghostRoom : this.diff.room;   // 小屋多小才擋得住，看難度
+      this.world.rainLampP = this.diff.lampP;   // 雨裡屋外的燈多容易壞，看難度
       this.world.onDiscover = (pl) => this.discover(pl);
       this.world.onWeather = (on) => { if (on) this.toast('下雨了', '雨會澆壞屋外的燈，四面有牆的屋裡不怕。'); else this.message('雨停了。'); };
       this.world.onFog = (f) => { const c = this.world.fogCenter(f), p = this.player, dx = c.x - p.x, dy = c.y - p.y; this.toast('起霧了', this.dirName(dx, dy) + '約 ' + Math.round(Math.hypot(dx, dy)) + ' 步起了一片霧障（' + f.cells.size + ' 格）。走進去，命飽暖力愜意各掉一成；帶著扇子可以吹散。'); };
@@ -57,7 +61,7 @@
         hp: 100, hpMax: 100, food: 100, warm: 100, sta: 100, staMax: 100, san: 100, cour: 0, pillsMade: 0, pillsEaten: 0,
         hurtT: 0, atkT: 0, bag: [], sel: 0, tools: [], tool: -1, worn: { '襯': null, '褲': null, '甲': null, '盔': null, '靴': null, '帽': null }, hitWin: { start: -99, n: 0 }, totemOff: false, craftLog: {}, pouches: 0, noGhostUntil: 0, inFog: 0, ship: null, swimming: false, swimT: 0, home: null, readSteles: [], places: {}, creatures: [], raftTaken: false, dragon: false, finished: false,
         deaths: 0, dead: false, warned: {}, warnLow: {}, burn: {}, lastDay: 1,
-        poisonT: 0, poisonPer: 0, biteN: 0, biteLast: -99, zeroSan: 0, insane: false, ctrl: true, ctrlT: 0, knock: 0, sailing: false, crossed: false, decayAt: 0 };
+        poisonT: 0, poisonPer: 0, heatT: 0, snowT: 0, biteN: 0, biteLast: -99, zeroSan: 0, insane: false, ctrl: true, ctrlT: 0, knock: 0, sailing: false, crossed: false, decayAt: 0 };
       this.stats = { gathered: 0, crafted: 0, kills: 0, read: 0, nights: 0, bites: 0 };
       this.keys = new Set();
       this.action = null;
@@ -295,17 +299,22 @@
     }
 
     // ---------- 生存數值：命、飽、暖、力、愜意 ----------
+    snowDrain() { const p = this.player; return p.snowT > SNOW_GRACE ? Math.min(SNOW_MAX, SNOW_RATE + SNOW_RAMP * (p.snowT - SNOW_GRACE)) : 0; }   // 雪域每息多掉的暖：第六息 1.1、第二十息 2.5、三十五息起封頂 4
     updateStats(dt) {
       const p = this.player, w = this.world, dark = this.darkness(), m = this.mult();
       const tile = w.get(p.x, p.y), td = DB[tile];
       const drain = this.ironDrain();
       p.food = Math.max(0, p.food - dt * 0.14 * drain);
+      const nearSnow = w.nearChar(p.x, p.y, '雪', SNOW_R);   // 雪域：五格內待久了越來越冷
+      p.snowT = nearSnow ? (p.snowT || 0) + dt : 0; if (!nearSnow) p.warned.snow = false;
+      p.heatT = Math.max(0, (p.heatT || 0) - dt);            // 烤食的熱氣慢慢散
       let dw;
       if (td.shelter) dw = 5;
       else if (w.heatNear(p.x, p.y, 2)) dw = 4;
       else {
         dw = dark > 0.5 ? -0.7 : 1.5;
         if (tile === '雪') dw -= 1.2;
+        if (p.snowT > SNOW_GRACE) { dw -= this.snowDrain(); if (!p.warned.snow) { p.warned.snow = true; this.toast('寒氣逼人', '離雪域太近，暖越掉越快。離遠些、生個火；或吃口烤的，熱氣九十息內凍不傷命。'); } }
         if (td.kind === 'water') dw -= 1.0;
         if (dw < 0) { if (this.wornWarm()) dw *= 0.5; if (this.torchLit()) dw *= 0.4; }
       }
@@ -342,7 +351,7 @@
       if (p.hp <= 0) { this.die(p.food <= 0 ? '餓' : p.warm <= 0 ? '凍' : p.sta <= 0 ? '累' : p.poisonT > 0 ? '毒' : '傷'); return; }
       let dh = 0;
       if (p.food <= 0) dh -= 2;
-      if (p.warm <= 0) dh -= 3;
+      if (p.warm <= 0 && p.heatT <= 0) dh -= 3;   // 有熱氣時凍不傷命
       if (p.sta <= 0) dh -= 2;
       if (dh === 0 && p.hurtT <= 0 && p.food >= 80 && p.san >= 80 && p.sta >= 80) dh = 1 * m;
       p.hp = U.clamp(p.hp + dh * dt, 0, p.hpMax);
@@ -960,6 +969,7 @@
       const p = this.player, w = this.world, s = this.held();
       if (!this.canAct()) return;
       { const t0 = this.facing(); if (w.get(t0.x, t0.y) === '灶' && !p.sailing && !p.swimming) { this.openStove(t0); return; } }   // 灶：開界面，在裡面添柴、烤、燒、煉
+      { const t0 = this.facing(), d0 = DB[w.get(t0.x, t0.y)]; if (d0 && d0.net && !p.swimming) { this.mendNet(w.netAt(t0.x, t0.y)); return; } }   // 網：面向按 F 用棉麻加固
       if (!s) { this.message('囊中空空。'); return; }
       const name = s.n, t = this.facing(), base = w.get(t.x, t.y), bd = DB[base], it = ITEMS[name] || {};
       if (p.swimming) { this.message('游泳時騰不出手，先上岸。'); return; }
@@ -986,7 +996,7 @@
         return;
       }
       const tileName = it.tile || name;             // 大船放下是「舟」
-      if (DB[tileName] && DB[tileName].net) { this.placeNet(t, tileName, name); return; }
+      if (DB[tileName] && DB[tileName].net) { this.placeNet(t, tileName, name, s); return; }
       if (!DB[tileName] || !DB[tileName].place) { this.message('「' + name + '」放不到地上。'); fail(); return; }
       if (it.ship) {                    // 船：船身每格都要是真的淺水，沒被別的船、網、地標佔著
         const kind = it.ship, k = G.SHIPS[kind], cells = w.shipFootprint(kind, t.x, t.y);
@@ -1016,30 +1026,56 @@
     }
 
     // ---------- 漁網 ----------
-    placeNet(t, tile, name) {
-      const w = this.world, size = DB[tile].net, cells = [];
-      for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) cells.push([t.x + i, t.y + j]);
-      for (const [x, y] of cells) {
-        const ch = w.get(x, y);
-        if (DB[ch].kind !== 'water' || w.placeAt(x, y)) { this.message(size === 1 ? '小網要放在淺水上。' : '要有 ' + size + '×' + size + ' 格的水面才放得下（面前那格是左上角）。'); this.fx.push({ type: 'fail', x, y, t: 0, dur: 0.6 }); return; }
-        if (size === 1 && ch !== '水') { this.message('小網只放得了淺水；深水要中網或大網。'); this.fx.push({ type: 'fail', x, y, t: 0, dur: 0.6 }); return; }
-        if (w.raw(x, y) === '灘') { this.message('潮間的灘上下不了網，退潮會擱淺。'); this.fx.push({ type: 'fail', x, y, t: 0, dur: 0.6 }); return; }
+    // 一格能不能下網：真水或灘（灘漲潮是水、退潮是沙，都放得，魚慢三成）；小網不下深水；地標不行。回傳不行的原因，行就回空字串
+    netWhy(x, y, size) {
+      const w = this.world, raw = w.raw(x, y), ch = w.get(x, y), d = DB[ch];
+      if (w.placeAt(x, y)) return '那邊是地標，放不了網。';
+      if (raw !== '灘' && !(d && d.kind === 'water')) return size === 1 ? '小網要放在淺水或灘上。' : '要面向水，往外數 ' + size + '×' + size + ' 格都得是水面。';
+      if (size === 1 && raw !== '灘' && ch !== '水') return '小網只放得了淺水；深水要中網或大網。';
+      return '';
+    }
+    // 網的格子：從面前那格往背離人的方向伸、左右置中；置中放不下就左右挪一挪，都不行才回 null
+    netCells(t, size) {
+      const p = this.player; let dx = Math.sign(t.x - p.x), dy = Math.sign(t.y - p.y); if (!dx && !dy) dy = 1;
+      const lx = dx ? 0 : 1, ly = dx ? 1 : 0, shifts = size === 1 ? [0] : size === 2 ? [0, -1] : [-1, 0, -2];
+      for (const sh of shifts) {
+        const cells = [];
+        for (let k = 0; k < size; k++) for (let m = 0; m < size; m++) cells.push([t.x + dx * k + lx * (m + sh), t.y + dy * k + ly * (m + sh)]);
+        if (cells.every(([x, y]) => !this.netWhy(x, y, size))) return cells;
       }
-      w.addNet(t.x, t.y, size, w.time); this.removeItem(name, 1); SFX.write();
-      const r = w.netRule(size);
-      this.message('下了' + name + '：每 ' + r.every + ' 息一條魚，存 ' + r.cap + ' 條。面向按 E 取魚，空網再按 E 收回。');
+      return null;
+    }
+    placeNet(t, tile, name, s) {
+      const w = this.world, size = DB[tile].net, cells = this.netCells(t, size);
+      if (!cells) { this.message(this.netWhy(t.x, t.y, size) || '這邊的水面不夠 ' + size + '×' + size + ' 格（從面前那格往外數、左右挪過也不夠）。'); this.fx.push({ type: 'fail', x: t.x, y: t.y, t: 0, dur: 0.6 }); return; }
+      let ax = cells[0][0], ay = cells[0][1]; for (const [x, y] of cells) { ax = Math.min(ax, x); ay = Math.min(ay, y); }   // 錨點取左上
+      const rec = w.addNet(ax, ay, size, w.time, s ? s.dur : undefined, s ? s.rf : 0); if (s) this.takeHeld(s); else this.removeItem(name, 1); SFX.write();
+      const r = w.netRule(size, rec.tidal), max = w.netDur(size);
+      this.message('下了' + name + (rec.tidal ? '（灘上，退潮曬著，魚慢三成）' : '') + '：每 ' + r.every + ' 息一條魚，存 ' + r.cap + ' 條' + (rec.dur < max ? '，耐 ' + rec.dur + '／' + max : '') + (rec.dur <= 0 ? '——網是破的，先加固' : '') + '。面向按 E 取魚，空網再按 E 收回。');
+    }
+    mendNet(rec) {   // 面向放著的網按 F：棉麻各 1、2、4、8 加固，耐久回滿；破網固好了重新計時
+      if (!rec) return;
+      const w = this.world, p = this.player, max = w.netDur(rec.size), k = this.mendCost(rec), name = this.netName(rec.size);
+      if (rec.dur >= max) { this.message('這張' + name + '還結實（耐 ' + rec.dur + '／' + max + '），不用加固。'); return; }
+      if (this.count('棉') < k || this.count('麻') < k) { this.message('加固這張' + name + '要棉 ' + k + ' 麻 ' + k + '（第 ' + ((rec.rf || 0) + 1) + ' 次；囊中棉 ' + this.count('棉') + ' 麻 ' + this.count('麻') + '）。'); SFX.fail(); return; }
+      if (p.sta < MEND_STA) { this.message('力氣不夠，歇一歇。'); SFX.fail(); return; }
+      const torn = rec.dur <= 0; this.removeItem('棉', k); this.removeItem('麻', k); p.sta -= MEND_STA; rec.dur = max; rec.rf = (rec.rf || 0) + 1; if (torn) rec.t = w.time;
+      this.message('「' + name + '」加固了，用了棉麻各 ' + k + '，耐久回 ' + max + '；下次要各 ' + this.mendCost(rec) + '。'); SFX.fuse();
     }
     useNet(t) {
       const w = this.world, rec = w.netAt(t.x, t.y); if (!rec) return;
-      const fish = w.netFish(rec, w.time), name = rec.size === 1 ? '漁網' : rec.size === 2 ? '中漁網' : '大漁網';
+      const fish = w.netFish(rec, w.time), name = this.netName(rec.size), max = w.netDur(rec.size);
       if (fish > 0) {
         let take = 0; while (take < fish && this.canAdd('魚', 1)) { this.addItem('魚', 1); take++; }
         if (!take) { this.message('囊已滿。'); return; }
-        rec.fish -= take; if (rec.fish <= 0) rec.t = w.time; this.addCourage(1); this.message('網裡得魚 ' + take + ' 條' + (rec.fish ? '，還剩 ' + rec.fish + ' 條' : '') + '。'); SFX.absorb(); return;
+        rec.fish -= take; if (rec.fish <= 0) rec.t = w.time; this.addCourage(1);
+        const was = rec.dur; rec.dur = Math.max(0, rec.dur - take);   // 每取一條磨一分耐久
+        const torn = was > 0 && rec.dur <= 0;
+        this.message('網裡得魚 ' + take + ' 條' + (rec.fish ? '，還剩 ' + rec.fish + ' 條' : '') + (torn ? '。網破了，不再進魚：面向按 F 用棉麻各 ' + this.mendCost(rec) + ' 加固。' : '（耐 ' + rec.dur + '／' + max + '）。')); if (torn) SFX.fail(); else SFX.absorb(); return;
       }
       if (!this.canAdd(name, 1)) { this.message('囊已滿。'); return; }
       if (!this.takeOk) { this.askTake(t, w.get(t.x, t.y), () => this.confirmed(() => this.useNet(t))); return; }
-      w.removeNet(rec); this.addItem(name, 1); this.message('收回了' + name + '。'); SFX.absorb();
+      w.removeNet(rec); this.addItem(name, 1, rec.dur < max || rec.rf ? { dur: rec.dur, rf: rec.rf || 0 } : undefined); this.message('收回了' + name + (rec.dur < max ? '（耐 ' + rec.dur + '／' + max + (rec.dur <= 0 ? '，破的，在製作欄「加固」' : '') + '）' : '') + '。'); SFX.absorb();
     }
 
     // ---------- 煉丹 ----------
@@ -1107,6 +1143,7 @@
       if (f.eat) { p.food = Math.min(100, p.food + f.eat); parts.push('飽 +' + f.eat); }
       if (f.hurt) { p.hp = Math.max(1, p.hp - f.hurt); p.hurtT = 3; parts.push('生冷傷身 −' + f.hurt); }
       if (f.heal) { p.hp = Math.min(p.hpMax, p.hp + f.heal); parts.push('命 +' + f.heal); }
+      if (s.n.charAt(0) === '烤') { p.heatT = Math.min(HEAT_CAP, (p.heatT || 0) + HEAT_PER_MEAL); parts.push('熱氣 ' + Math.round(p.heatT) + ' 息' + (p.heatT >= HEAT_CAP ? '（滿）' : '')); }   // 烤的東西下肚：九十息內凍不傷命，最多一百五十
       if (f.cure && p.poisonT > 0) { p.poisonT = 0; p.poisonPer = 0; parts.push('毒解了'); }
       if (f.san) { p.san = Math.min(100, p.san + f.san); parts.push('愜意 +' + f.san); }
       if (f.poison) { this.poison(f.poison[0], f.poison[1]); parts.push('中毒'); }
@@ -1135,7 +1172,11 @@
     }
     canCraft(r) { const need = this.needOf(r); for (const n in need) if (this.count(n) < need[n]) return false; return true; }
     regrindCost(s) { return Math.min(REGRIND_CAP, Math.pow(2, (s && s.rg) || 0)); }   // 1、2、4、8、8……
-    needOf(r) { return r.regrind ? { '石子': this.regrindCost(this.activeTool()) } : r.need; }   // 重磨的料看手上那把磨過幾次
+    needOf(r) { if (r.regrind) return { '石子': this.regrindCost(this.activeTool()) }; if (r.mend) { const k = this.mendCost(this.heldNet()); return { '棉': k, '麻': k }; } return r.need; }   // 重磨的料看手上那把磨過幾次；加固看手裡那張網固過幾次
+    mendCost(x) { return Math.min(REGRIND_CAP, Math.pow(2, (x && x.rf) || 0)); }   // 加固漁網：棉麻各 1、2、4、8、8……（x 是網的記錄或囊裡那疊）
+    heldNet() { const s = this.held(); const it = s && ITEMS[s.n]; return it && it.tile && DB[it.tile] && DB[it.tile].net ? s : null; }   // 手裡選中的那張網
+    netName(size) { return size === 1 ? '漁網' : size === 2 ? '中漁網' : '大漁網'; }
+    takeHeld(s) { const p = this.player, bag = p.bag; if (s.c > 1) s.c--; else { const i = bag.indexOf(s); if (i >= 0) bag.splice(i, 1); } if (p.sel >= bag.length) p.sel = Math.max(0, bag.length - 1); this.barSig = ''; }   // 用掉手裡那疊的一個（帶耐久的那疊只有一個）
     visibleRecipes() { return this.craftCat === '全部' ? G.RECIPES : G.RECIPES.filter(r => r.cat === this.craftCat); }
     buildCraft() {
       const p = this.player, list = $('craft-list'); list.innerHTML = '';
@@ -1156,11 +1197,11 @@
         const owned = r.out && ITEMS[r.out] && ITEMS[r.out].slot && this.ownedPiece(r.out);
         const spent = r.id === 'pouch' && p.pouches >= MAX_POUCHES;   // 錦囊：四個都用了就標「已用完」，再造也沒用
         if (spent) row.classList.add('cant');
-        const title = (r.out ? r.out + (r.n > 1 ? ' ×' + r.n : '') : (r.regrind ? '重磨' : '磨礪')) + (owned ? ' <i class="dim">已有</i>' : '') + (spent ? ' <i class="dim">已用完</i>' : '');
+        const title = (r.out ? r.out + (r.n > 1 ? ' ×' + r.n : '') : (r.regrind ? '重磨' : r.mend ? '加固' : '磨礪')) + (owned ? ' <i class="dim">已有</i>' : '') + (spent ? ' <i class="dim">已用完</i>' : '');
         let btns = '';
         if (r.choose) btns = r.choose.map(c => '<button data-r="' + r.id + '" data-c="' + c + '">' + c + '</button>').join('');
-        else btns = '<button data-r="' + r.id + '"' + (spent ? ' disabled' : '') + '>' + (spent ? '已用完' : r.regrind ? '磨' : owned ? '翻新' : '造') + '</button>';
-        row.innerHTML = '<span class="num">' + (i + 1) + '</span><b>' + title + '</b><span class="needs">' + needs + '</span><span class="sta">力 ' + r.sta + (locked ? '<br><i>需' + r.level + '重</i>' : '') + '</span><span class="note">' + r.note + (r.regrind && this.activeTool() ? '（這把第 ' + (((this.activeTool().rg) || 0) + 1) + ' 次：石子 ' + this.regrindCost(this.activeTool()) + '）' : '') + '</span><span class="btns">' + btns + '</span>';
+        else btns = '<button data-r="' + r.id + '"' + (spent ? ' disabled' : '') + '>' + (spent ? '已用完' : r.regrind ? '磨' : r.mend ? '固' : owned ? '翻新' : '造') + '</button>';
+        row.innerHTML = '<span class="num">' + (i + 1) + '</span><b>' + title + '</b><span class="needs">' + needs + '</span><span class="sta">力 ' + r.sta + (locked ? '<br><i>需' + r.level + '重</i>' : '') + '</span><span class="note">' + r.note + (r.regrind && this.activeTool() ? '（這把第 ' + (((this.activeTool().rg) || 0) + 1) + ' 次：石子 ' + this.regrindCost(this.activeTool()) + '）' : '') + (r.mend && this.heldNet() ? '<br><i>這張第 ' + ((this.heldNet().rf || 0) + 1) + ' 次：棉麻各 ' + this.mendCost(this.heldNet()) + (this.heldNet().dur === undefined ? '；還沒用過，不用固' : '，耐 ' + this.heldNet().dur + '／' + this.world.netDur(DB[ITEMS[this.heldNet().n].tile].net)) + '</i>' : '') + '</span><span class="btns">' + btns + '</span>';
         list.appendChild(row);
       });
       list.querySelectorAll('button').forEach(b => b.addEventListener('click', (ev) => { ev.stopPropagation(); this.craft(b.dataset.r, b.dataset.c); }));
@@ -1175,6 +1216,13 @@
       let out = r.out, n = r.n || 1;
       if (r.choose) { if (!choice) { this.message('選一個方向：刀、鎬、鋤、劍、斧。'); return; } out = choice; }
       if (r.choose && ITEMS[out] && ITEMS[out].tung && p.food < 10) { this.message('太餓了，鍛不動鎢鋼。'); SFX.fail(); return; }
+      if (r.mend) {   // 加固手裡那張網：耐久回滿，棉麻各 1、2、4、8
+        const s = this.heldNet(); if (!s) { this.message('囊裡要選中一張漁網（放著的網面向按 F 也能固）。'); SFX.fail(); return; }
+        const size = DB[ITEMS[s.n].tile].net, max = this.world.netDur(size);
+        if (s.dur === undefined || s.dur >= max) { this.message('這張' + s.n + '還結實（耐 ' + max + '／' + max + '），不用加固。'); SFX.fail(); return; }
+        const k = this.mendCost(s); this.removeItem('棉', k); this.removeItem('麻', k); s.dur = max; s.rf = (s.rf || 0) + 1;
+        p.sta -= r.sta; this.barSig = ''; this.afterCraft(r); this.message('「' + s.n + '」加固了，用了棉麻各 ' + k + '，耐久回 ' + max + '；下次要各 ' + this.mendCost(s) + '。'); SFX.fuse(); this.buildCraft(); this.buildBag(); return;
+      }
       if (r.regrind) {
         const s = this.activeTool(); if (!s) { this.message('具欄裡要選中一把工具（P 換）。'); SFX.fail(); return; }
         const tung = !!ITEMS[s.n].tung, extraSta = tung ? 5 : 0, food = tung ? 10 : 0;   // 鎢鋼具重磨耗力八、飽十
@@ -1571,7 +1619,7 @@
       const ws = (this.totemOn() ? 1 : 0) + (this.totemReady() ? 1 : 0) + '|' + (hat ? Math.ceil(hat.fuel / 10) : '') + '|' + Math.round(this.takenMult() * 1000) + '|' + Math.round(this.dmgMult() * 1000) + '|' + Math.round(this.ironSpeed() * 1000) + '|' + this.wornList().map(s => this.effDays(s)).join(',');
       if (ws !== this.wornSig) { this.wornSig = ws; this.barSig = ''; }
       if (this.barSig === '') this.buildBag();
-      const sig = [Math.round(p.hp), Math.round(p.food), Math.round(p.warm), Math.round(p.sta), p.staMax, Math.round(p.san), this.shichen(), p.x, p.y, w.get(p.x, p.y), this.daylight() > 0.5, this.day(), w.tideName(), p.sailing, this.peaceDays(), w.raining(), p.ship ? Math.round(p.ship.hp) + ':' + this.wardDays() : '', p.swimming ? Math.ceil(p.swimT) : ''].join('|');
+      const sig = [Math.round(p.hp), Math.round(p.food), Math.round(p.warm), Math.round(p.sta), p.staMax, Math.round(p.san), this.shichen(), p.x, p.y, w.get(p.x, p.y), this.daylight() > 0.5, this.day(), w.tideName(), p.sailing, this.peaceDays(), w.raining(), p.ship ? Math.round(p.ship.hp) + ':' + this.wardDays() : '', p.swimming ? Math.ceil(p.swimT) : '', Math.ceil(p.heatT || 0)].join('|');
       // 夥伴：右邊一隻一隻，命與力直條
       const comps = this.ents.tamed(), csig = comps.map(e => e.type + Math.round(e.hp) + '/' + Math.round(e.sta)).join(',');
       if (csig !== this.compSig) {
@@ -1587,7 +1635,7 @@
         const fill = (id, v) => $(id).style.setProperty('--p', U.clamp(v, 0, 1).toFixed(3));
         fill('hpfill', p.hp / p.hpMax); fill('foodfill', p.food / 100); fill('warmfill', p.warm / 100); fill('stafill', p.sta / p.staMax); fill('sanfill', p.san / 100);
         for (const [k, , v] of this.vitalFracs()) { const el = $(k + 'fill').parentNode; el.classList.toggle('warn', v < WARN_LIGHT); el.classList.toggle('low', v < WARN_POP); }   // 不到五成亮燈，不到四分之一轉紅
-        $('hplabel').innerHTML = '命<br>' + Math.round(p.hp) + (p.hpMax > 100 ? '<small>／' + Math.round(p.hpMax) + '</small>' : ''); $('foodlabel').innerHTML = '飽<br>' + Math.round(p.food); $('warmlabel').innerHTML = '暖<br>' + Math.round(p.warm); $('stalabel').innerHTML = '力<br>' + Math.round(p.sta); $('sanlabel').innerHTML = '愜<br>' + Math.round(p.san);
+        $('hplabel').innerHTML = '命<br>' + Math.round(p.hp) + (p.hpMax > 100 ? '<small>／' + Math.round(p.hpMax) + '</small>' : ''); $('foodlabel').innerHTML = '飽<br>' + Math.round(p.food); $('warmlabel').innerHTML = '暖<br>' + Math.round(p.warm) + (p.heatT > 0 ? '<small>熱 ' + Math.ceil(p.heatT) + '</small>' : ''); $('stalabel').innerHTML = '力<br>' + Math.round(p.sta); $('sanlabel').innerHTML = '愜<br>' + Math.round(p.san);
         const nn = this.nightNo();
         $('status').innerHTML = '<b>第 ' + this.day() + ' 日</b> &nbsp;' + this.shichen() + ' ' + (this.daylight() > 0.5 ? '日' : '月') + (w.raining() ? '雨' : '') + (this.isNight() ? '<span class="dim">（第 ' + nn + ' 夜' + (nn >= this.diff.ghost ? '，魄夜' : '') + '）</span>' : '') + ' &nbsp;·&nbsp; ' + w.tideName() + ' &nbsp;·&nbsp; ' + (p.sailing ? '船上 · ' + (p.ship ? p.ship.kind + ' ' + Math.round(p.ship.hp) + '/' + this.shipMax(p.ship) : '') + (this.shipWarded() ? ' · 船頭' + this.shipSkullName() + ' ' + this.wardDays() + ' 日' : '') : p.swimming ? '<b style="color:#b4392a">落水 · 還有 ' + Math.ceil(p.swimT) + ' 息</b>' : G.biomeName(w.get(p.x, p.y))) + (this.peaceDays() ? ' &nbsp;·&nbsp; <span class="dim">龜卜 · ' + this.peaceDays() + ' 日無魄</span>' : '') + ' &nbsp;·&nbsp; <span class="dim">(' + p.x + ', ' + p.y + ') · ' + this.diff.name + '</span>';
       }
@@ -1618,7 +1666,7 @@
       else if (w.fogAt(t.x, t.y)) { const n = this.count('扇'); s = '霧障 · 走進去會問你要不要用扇子吹散' + (n ? '（囊中 ' + n + ' 把' + (hs && hs.n === '扇' ? '；<kbd>V</kbd> 現在就搧' : '') + '）' : '（沒有扇子：草四木一可紮一把）'); }
       else if (ch === '碑') s = '一塊古碑 · <kbd>E</kbd> 讀碑';
       else if (ch === '包') s = '落下的荷包 · <kbd>E</kbd> 取回';
-      else if (d.net) { const rec = w.netAt(t.x, t.y), f = rec ? w.netFish(rec, w.time) : 0, r = w.netRule(d.net); s = (d.net === 1 ? '小網' : d.net === 2 ? '中網' : '大網') + ' · 魚 ' + f + '/' + r.cap + '（' + r.every + ' 息一條）' + (f ? ' · <kbd>E</kbd> 取魚' : ' · <kbd>E</kbd> 收回'); }
+      else if (d.net) { const rec = w.netAt(t.x, t.y), f = rec ? w.netFish(rec, w.time) : 0, r = w.netRule(d.net, rec && rec.tidal), max = w.netDur(d.net), torn = rec && rec.dur <= 0; s = (d.net === 1 ? '小網' : d.net === 2 ? '中網' : '大網') + (rec && rec.tidal ? '（灘上）' : '') + ' · 魚 ' + f + '/' + r.cap + (torn ? '（<b>破了</b>，不進魚）' : '（' + r.every + ' 息一條）') + (rec ? ' · 耐 ' + rec.dur + '/' + max : '') + (f ? ' · <kbd>E</kbd> 取魚' : ' · <kbd>E</kbd> 收回') + (rec && rec.dur < max ? ' · <kbd>F</kbd> 加固（棉麻各 ' + this.mendCost(rec) + '）' : ''); }
       else if (ch === '漁') s = '魚梁 · <kbd>E</kbd> 取魚' + (w.time < (w.weirs.get(U.key(t.x, t.y)) || 0) ? '（魚還沒來）' : '');
       else if (ch === '門') s = '門 · <kbd>E</kbd> 問路';
       else if (ch === '櫃') s = '櫃 · <kbd>E</kbd> 開';
@@ -1636,6 +1684,7 @@
         if (hs) {
           const it = G.item(hs.n), tl = ITEMS[hs.n] || {};
           if (tl.slot) s += ' · <kbd>F</kbd> ' + (tl.light ? '戴上' : '穿上');
+          else if (tl.tile && DB[tl.tile] && DB[tl.tile].net) { const mx = w.netDur(DB[tl.tile].net); s += hs.dur !== undefined ? ' · <i class="dim">耐 ' + hs.dur + '／' + mx + (hs.dur <= 0 ? '，破的' : '') + '，固過 ' + (hs.rf || 0) + ' 次；製作欄「加固」棉麻各 ' + this.mendCost(hs) + '</i>' : ' · 面向水按 <kbd>F</kbd> 下網（水邊、灘上都行）'; }
           else if (hs.n === '錦囊') s += p.pouches >= MAX_POUCHES ? ' · <i class="dim">錦囊已用完四個</i>' : ' · <kbd>V</kbd> 用掉（囊多兩格、具欄多一格，已用 ' + p.pouches + '／' + MAX_POUCHES + '）';
           else if (tl.tool && tl.dur) s += ' · <kbd>F</kbd> 移進具欄';
           else if (ch === '鼎') s += (hs.n === '蟾蜍肉' || hs.n === '毒蟾肉') ? ' · <kbd>F</kbd> 煉丹' : (FUEL[hs.n] || (DB[hs.n] && DB[hs.n].flam > 0)) ? ' · <kbd>F</kbd> 添柴' : '';
@@ -1664,7 +1713,7 @@
       try {
         localStorage.setItem(Game.slotKey(this.slot), JSON.stringify({ v: 5, seed: this.seed, diff: this.diff.key, savedAt: Date.now(), brief: this.brief(), world: this.world.serialize(), ents: this.ents.serialize(),
           player: { x: p.x, y: p.y, fx: p.fx, fy: p.fy, hp: p.hp, food: p.food, warm: p.warm, sta: p.sta, staMax: p.staMax, san: p.san, cour: p.cour, bag: p.bag, sel: p.sel, home: p.home, readSteles: p.readSteles,
-            places: p.places, creatures: p.creatures, raftTaken: p.raftTaken, dragon: p.dragon, finished: p.finished, deaths: p.deaths, burn: p.burn, lastDay: p.lastDay, poisonT: p.poisonT, poisonPer: p.poisonPer, sailing: p.sailing, tools: p.tools, tool: p.tool, decayAt: p.decayAt, worn: p.worn, hitWin: p.hitWin, totemOff: p.totemOff, pouches: p.pouches, noGhostUntil: p.noGhostUntil, hpMax: p.hpMax, pillsMade: p.pillsMade, pillsEaten: p.pillsEaten, inFog: p.inFog, ship: p.ship, swimming: p.swimming, swimT: p.swimT }, stats: this.stats }));
+            places: p.places, creatures: p.creatures, raftTaken: p.raftTaken, dragon: p.dragon, finished: p.finished, deaths: p.deaths, burn: p.burn, lastDay: p.lastDay, poisonT: p.poisonT, heatT: p.heatT, poisonPer: p.poisonPer, sailing: p.sailing, tools: p.tools, tool: p.tool, decayAt: p.decayAt, worn: p.worn, hitWin: p.hitWin, totemOff: p.totemOff, pouches: p.pouches, noGhostUntil: p.noGhostUntil, hpMax: p.hpMax, pillsMade: p.pillsMade, pillsEaten: p.pillsEaten, inFog: p.inFog, ship: p.ship, swimming: p.swimming, swimT: p.swimT }, stats: this.stats }));
       } catch (err) { /* 隱私模式等情況下存不了，就算了 */ }
     }
     load(s) {
@@ -1672,7 +1721,7 @@
       this.world.restore(s.world || {});
       this.ents.restore(s.ents);
       const sp = s.player || {};
-      for (const k of ['x', 'y', 'fx', 'fy', 'hp', 'food', 'warm', 'sta', 'staMax', 'san', 'cour', 'bag', 'sel', 'home', 'readSteles', 'places', 'creatures', 'raftTaken', 'dragon', 'finished', 'deaths', 'burn', 'lastDay', 'poisonT', 'poisonPer', 'sailing', 'tools', 'tool', 'decayAt', 'worn', 'hitWin', 'totemOff', 'pouches', 'noGhostUntil', 'hpMax', 'pillsMade', 'pillsEaten', 'inFog', 'ship', 'swimming', 'swimT']) if (sp[k] !== undefined) p[k] = sp[k];
+      for (const k of ['x', 'y', 'fx', 'fy', 'hp', 'food', 'warm', 'sta', 'staMax', 'san', 'cour', 'bag', 'sel', 'home', 'readSteles', 'places', 'creatures', 'raftTaken', 'dragon', 'finished', 'deaths', 'burn', 'lastDay', 'poisonT', 'poisonPer', 'heatT', 'sailing', 'tools', 'tool', 'decayAt', 'worn', 'hitWin', 'totemOff', 'pouches', 'noGhostUntil', 'hpMax', 'pillsMade', 'pillsEaten', 'inFog', 'ship', 'swimming', 'swimT']) if (sp[k] !== undefined) p[k] = sp[k];
       if (p.sailing && !p.ship) p.ship = World.newShip('孤帆');     // 舊存檔在船上：給一條滿命的孤帆
       if (p.ship && !p.ship.kind) p.ship = { kind: '孤帆', hp: Math.min(p.ship.hp, G.SHIPS['孤帆'].hp), skulls: p.ship.skull && p.ship.ward > this.world.time ? [[p.ship.skull, p.ship.ward]] : [], repairs: 0 };   // v0.11 的船
       const rename = (list) => { for (const it of list || []) if (it && it.n === '大船') it.n = '孤帆'; };   // v0.11 的大船就是現在的孤帆
