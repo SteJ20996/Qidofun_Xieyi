@@ -175,13 +175,14 @@
 
 <div id="padset" class="overlay hidden">
   <div class="panel padsetpanel">
-    <h2>手柄設定</h2>
+    <div class="padsethead"><h2>手柄設定</h2><div class="row"><button id="padset-close" class="ghost">返回（Esc）</button><button id="padset-home">回到主頁</button></div></div>
     <p id="padset-status" class="dim small"></p>
     <table class="padtable"><thead><tr><th>鍵位</th><th>遊戲裡做什麼</th><th>現在綁的</th><th></th></tr></thead><tbody id="padset-rows"></tbody></table>
     <p id="padset-state" class="padstate"></p>
     <div id="padset-bars" class="padbars"></div>
     <p id="padset-live" class="dim small"></p>
-    <div class="row"><button id="padset-wizard" class="ghost">照順序全部學一遍</button><button id="padset-std" class="ghost">全部改回標準</button><button id="padset-center" class="ghost">校正中點</button><button id="padset-close">好了（Esc）</button></div>
+    <p id="padset-msg" class="padmsg"></p>
+    <div class="row"><button id="padset-wizard" class="ghost">照順序全部學一遍</button><button id="padset-std" class="ghost">全部改回標準</button><button id="padset-center" class="ghost">校正中點</button></div>
   </div>
 </div>
 

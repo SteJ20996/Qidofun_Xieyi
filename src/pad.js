@@ -25,7 +25,7 @@
   const ENTRY_DOES = { A: '取／攻擊（按住連取）；面板裡按下', B: '關面板／暫停', X: '放（F）', Y: '吃喝、用（V）', L: '囊裡上一格', R: '囊裡下一格', ZL: '換工具', ZR: '攻擊（同 A）', MINUS: '地圖', PLUS: '製作', L3: '見聞錄', R3: '睡', UP: '往上走；面板裡移焦點', DOWN: '往下走', LEFT: '往左走', RIGHT: '往右走', lx: '走（左右）', ly: '走（上下）', rx: '換囊格', ry: '（沒用到）' };
   const PAD_KEYS_HTML = '手柄：左搖桿／十字鍵 走 · <b>A</b> 取／攻擊 · <b>B</b> 關／暫停 · <b>X</b> 放／用 · <b>Y</b> 吃／用 · <b>L</b><b>R</b> 換囊格 · <b>ZL</b> 換工具 · <b>ZR</b> 攻擊 · <b>＋</b> 製作 · <b>－</b> 地圖 · <b>L3</b> 見聞 · <b>R3</b> 睡 · 面板裡十字鍵移焦點、A 按下、B 關';
   const $ = (id) => document.getElementById(id);
-  const key = (type, code) => window.dispatchEvent(new KeyboardEvent(type, { code, key: code, bubbles: true, cancelable: true }));
+  const key = (type, code) => document.dispatchEvent(new KeyboardEvent(type, { code, key: code, bubbles: true, cancelable: true }));   // 發在 document：跟真的按鍵一樣先經過 window 的捕獲（設定頁、精靈先攔），再冒泡到遊戲
   const isDown = (b) => !!b && (typeof b === 'object' ? (b.pressed || b.value > 0.5) : b > 0.5);
   const num = (v) => typeof v === 'number' && isFinite(v);
   const put = (el, t) => { if (el && el.textContent !== (window.I18N ? window.I18N.t(t) : t)) el.textContent = t; };   // 選了簡體時頁面上的字已被轉過：先轉再比，免得每幀重寫
@@ -115,6 +115,7 @@
       const g = window.XIEYI && window.XIEYI.game;
       if (g && g.toast) g.toast(title, body, 7000);
       const h = $('new-hint'); if (h && $('start') && !$('start').classList.contains('hidden')) h.textContent = title + '：' + body;
+      const m = $('padset-msg'); if (m && !$('padset').classList.contains('hidden')) m.textContent = title + '：' + body;   // 設定頁開著時起始頁收起來了，提示寫在頁裡
     },
     // ---------- 每幀 ----------
     gamepad() {
@@ -349,9 +350,11 @@
       this.map = Object.assign({}, STD, L.buttons); this.axes = Object.assign(JSON.parse(JSON.stringify(STD_AXES)), L.axes); this.rest = rest; this.custom = true;
       this.saveFor(this.id, { buttons: L.buttons, axes: L.axes, rest });
       this.learning = null; $('padmap').classList.add('hidden'); this.down = {};
+      if (L.back) this.backToPadset();
       this.note('手柄對應存好了', '以後這支手柄都用這套。暫停面板最下面一行會即時顯示讀數與判定；方向不對就再學或改回標準。');
     },
-    learnCancel() { const single = this.learning && this.learning.single; this.learning = null; $('padmap').classList.add('hidden'); this.down = {}; if (single) { const st = $('padset-state'); if (st) st.textContent = ''; this.renderPadset(); } },
+    learnCancel() { const L = this.learning, single = L && L.single; this.learning = null; $('padmap').classList.add('hidden'); this.down = {}; if (single) { const st = $('padset-state'); if (st) st.textContent = ''; this.renderPadset(); } if (L && L.back) this.backToPadset(); },
+    backToPadset() { $('padset').classList.remove('hidden'); this.renderPadset(); },   // 從設定頁開的精靈：學完或取消都回設定頁
     // ---------- 手柄設定頁：二十個鍵位一個一個設 ----------
     friendly(m, stick) {
       if (m === undefined || m === null || m === -1) return '無';
@@ -361,12 +364,29 @@
       if (m.ax !== undefined) return '軸 ' + m.ax + ' 到 ' + (+m.at).toFixed(2);
       return '無';
     },
+    // 點「手柄設定」就切換過去：把起始頁（或暫停、幫助）收起來，記下從哪裡來，「返回」時原樣放回；遊戲裡沒暫停就先暫停
     openPadset() {
       const el = $('padset'); if (!el) return;
-      for (const id of ['help', 'padmap']) { const o = $(id); if (o) o.classList.add('hidden'); }
+      const g = window.XIEYI && window.XIEYI.game;
+      if (g && !g.paused && !g.player.dead) g.togglePause();
+      if (!this.padBack) this.padBack = ['start', 'pause', 'help'].filter(id => $(id) && !$(id).classList.contains('hidden'));
+      for (const id of ['start', 'pause', 'help', 'padmap']) { const o = $(id); if (o) o.classList.add('hidden'); }
+      const back = $('padset-close'); if (back) back.classList.toggle('hidden', !g);   // 起始頁進來的只要「回到主頁」
+      const m = $('padset-msg'); if (m) m.textContent = '';
       el.classList.remove('hidden'); this.renderPadset();
     },
-    closePadset() { if (this.learning && this.learning.single) this.learnCancel(); const el = $('padset'); if (el) el.classList.add('hidden'); },
+    closePadset() {   // 返回：回到進來前的那一頁
+      if (this.learning && this.learning.single) this.learnCancel();
+      const el = $('padset'); if (el) el.classList.add('hidden');
+      for (const id of this.padBack || []) { const o = $(id); if (o) o.classList.remove('hidden'); }
+      this.padBack = null;
+    },
+    padsetHome() {   // 回到主頁：遊戲裡跟暫停面板的「回到主頁」一樣先存檔；起始頁進來的就回起始頁
+      if (this.learning) this.learnCancel();
+      if (window.XIEYI && window.XIEYI.game && $('pause-home')) { $('pause-home').click(); return; }
+      for (const id of ['padset', 'help']) { const o = $(id); if (o) o.classList.add('hidden'); }
+      $('start').classList.remove('hidden'); this.padBack = null;
+    },
     renderPadset() {
       const tb = $('padset-rows'); if (!tb) return;
       if (!tb.dataset.built) {
@@ -419,7 +439,8 @@
       on('btn-pad', () => this.openPadset());
       on('pause-pad', () => this.openPadset());
       on('padset-close', () => this.closePadset());
-      on('padset-wizard', () => { this.closePadset(); this.learnOrHint(); });
+      on('padset-home', () => this.padsetHome());
+      on('padset-wizard', () => { if (!this.seen) { this.note('還沒看到手柄', '先按一下手柄上任一鍵，再學。'); return; } $('padset').classList.add('hidden'); this.learn(); this.learning.back = true; });
       on('padset-std', () => { if (this.learning) this.learnCancel(); this.useStandard(); this.renderPadset(); });
       on('padset-center', () => { if (this.recenter(null, true)) this.note('手柄', '以現在搖桿停的位置當中點。'); else this.note('手柄', '還沒看到手柄。'); });
       on('pause-center', () => { if (this.recenter(null, true)) this.note('手柄', '以現在搖桿停的位置當中點。'); else this.note('手柄', '還沒看到手柄。'); });
@@ -427,7 +448,11 @@
       on('pause-flipy', () => this.flip('ly'));
       on('pause-flipx', () => this.flip('lx'));
       on('pause-record', () => this.record());
-      window.addEventListener('keydown', (ev) => { if (!this.learning && ev.code === 'Escape' && $('padset') && !$('padset').classList.contains('hidden')) { this.closePadset(); ev.preventDefault(); ev.stopImmediatePropagation(); return; } if (!this.learning) return; if (ev.code === 'Escape') this.learnCancel(); else if (ev.code === 'Space') this.learnSkip(); ev.preventDefault(); ev.stopImmediatePropagation(); }, true);
+      window.addEventListener('keydown', (ev) => {
+        if (!this.learning && $('padset') && !$('padset').classList.contains('hidden')) {   // 設定頁開著：Esc 返回，其他鍵不給遊戲與起始頁（免得回車落筆開新島、走路）
+          if (ev.code === 'Escape') { this.closePadset(); ev.preventDefault(); } ev.stopImmediatePropagation(); return;
+        }
+        if (!this.learning) return; if (ev.code === 'Escape') this.learnCancel(); else if (ev.code === 'Space') this.learnSkip(); ev.preventDefault(); ev.stopImmediatePropagation(); }, true);
     },
     loop() {
       const tick = (t) => { if (this.enabled && !document.hidden) { try { this.poll(t); } catch (e) { /* 手柄壞了也別把遊戲拖垮 */ } } requestAnimationFrame(tick); };
