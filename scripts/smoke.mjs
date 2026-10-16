@@ -876,6 +876,55 @@ const result = await page.evaluate(async () => {
     p.food = 100; p.san = 100; p.warnLow = {}; const d0 = g.diff; g.diff = XIEYI.DIFF.hard; p.warm = 10; g.hudSig = ''; g.updateHUD(); await sleep(250);
     ok('hard mode: the outline flashes but there is no popup', bar('warm').classList.contains('low') && hidden('warn') && !g.paused && XIEYI.DIFF.hard.warn === false && XIEYI.DIFF.normal.warn === true);
     g.diff = d0; p.warm = 100; p.warnLow = {}; g.warnEnabled = false; g.hudSig = ''; g.updateHUD(); }
+  // ============ 手柄：Gamepad API，灌一支假手柄進去 ============
+  { const fake = { id: 'Fake Pro (STANDARD GAMEPAD Vendor: 057e Product: 2009)', index: 0, connected: true, mapping: 'standard', buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0, touched: false })), axes: [0, 0, 0, 0], timestamp: 0 };
+    const real = navigator.getGamepads; navigator.getGamepads = () => [fake];
+    const pressBtn = (i, on) => { fake.buttons[i].pressed = on; fake.buttons[i].value = on ? 1 : 0; };
+    const frames = (n) => new Promise((res) => { let k = 0; const f = () => { if (++k >= n) res(); else requestAnimationFrame(f); }; requestAnimationFrame(f); });
+    ok('pad layer is loaded, nothing seen yet', !!window.PAD && !PAD.seen && PAD.enabled);
+    for (const id of ['craft', 'map', 'journal', 'help', 'chest', 'stove', 'warn', 'read']) document.getElementById(id).classList.add('hidden'); g.closeStove(); g.chestAt = null; g.keys.clear();
+    pressBtn(1, true); await frames(3);
+    ok('pressing A on a standard pad: the pad is recognised and E is held (gather/attack)', PAD.seen && PAD.standard && g.keys.has('KeyE') && toasts().indexOf('手柄已連上') >= 0);
+    pressBtn(1, false); await frames(3);
+    ok('letting go of A releases E', !g.keys.has('KeyE'));
+    fake.axes[0] = 0.9; await frames(3);
+    ok('left stick to the right holds D', g.keys.has('KeyD'));
+    fake.axes[0] = 0; await frames(3); ok('stick back to centre releases D', !g.keys.has('KeyD'));
+    pressBtn(12, true); await frames(3); ok('d-pad up holds W', g.keys.has('KeyW')); pressBtn(12, false); await frames(3);
+    const sel0 = p.sel; fake.axes[2] = 0.9; await frames(3); fake.axes[2] = 0; await frames(2);
+    ok('right stick to the right moves the bag selection one slot', p.bag.length < 2 || p.sel === (sel0 + 1) % p.bag.length, [sel0, p.sel, p.bag.length]);
+    pressBtn(9, true); await frames(3); pressBtn(9, false); await frames(3);
+    ok('＋ opens the craft panel and the focus lands inside it', !hidden('craft') && !!document.querySelector('#craft .padfocus'));
+    const f0 = document.querySelector('#craft .padfocus'); pressBtn(13, true); await frames(3); pressBtn(13, false); await frames(2);
+    ok('d-pad down moves the focus to another control in the panel', document.querySelector('#craft .padfocus') !== f0 && !!document.querySelector('#craft .padfocus'));
+    pressBtn(0, true); await frames(3); pressBtn(0, false); await frames(3);
+    ok('B closes the panel and clears the focus', hidden('craft') && !document.querySelector('.padfocus'));
+    face(0, 1); w.set(T().x, T().y, '灶'); for (const [k] of w.stoves) w.stoves.set(k, 0); g.addItem('木', 2); g.pressPlace(); await frames(3);
+    const fb = document.querySelector('#stove .padfocus');
+    ok('the stove panel gets a focus on its first button (a fuel)', !!fb && !!fb.dataset.fuel, fb && fb.outerHTML.slice(0, 60));
+    pressBtn(1, true); await frames(3); pressBtn(1, false); await frames(3);
+    ok('A on the focused button fuels the stove', w.stoveLit(T().x, T().y));
+    pressBtn(0, true); await frames(3); pressBtn(0, false); await frames(3); ok('B leaves the stove', hidden('stove'));
+    w.set(T().x, T().y, '草');
+    g.warnEnabled = true; p.warnLow = {}; p.hp = p.hpMax * 0.1; await until(() => !hidden('warn'), 2000);
+    pressBtn(1, true); await frames(3); pressBtn(1, false); await frames(3);
+    ok('A closes the low-stat popup like Enter', hidden('warn') && !g.paused); g.warnEnabled = false; p.hp = p.hpMax; p.warnLow = {};
+    PAD.learn(); await frames(2);
+    ok('the mapping wizard opens on step 1', !hidden('padmap') && document.getElementById('padmap-text').textContent.indexOf('第 1／20 步') >= 0);
+    const order = [5, 4, 7, 6, 1, 0, 3, 2, 9, 8, 11, 10, 15, 14, 13, 12];   // A B X Y L R ZL ZR － ＋ L3 R3 上下左右 要按的實體鍵，全部錯位
+    for (const i of order) { pressBtn(i, true); await frames(3); pressBtn(i, false); await frames(3); }
+    ok('after sixteen buttons the wizard asks for the left stick', !hidden('padmap') && document.getElementById('padmap-text').textContent.indexOf('左搖桿往右') >= 0, document.getElementById('padmap-text').textContent.slice(0, 30));
+    fake.axes[2] = -0.9; await frames(3); fake.axes[2] = 0; await frames(3);   // 這支手柄把左搖桿往右推成軸 2 的負值
+    fake.axes[3] = 0.9; await frames(3); fake.axes[3] = 0; await frames(3);
+    fake.axes[0] = 0.9; await frames(3); fake.axes[0] = 0; await frames(3);
+    fake.axes[1] = 0.9; await frames(3); fake.axes[1] = 0; await frames(3);
+    const saved = (JSON.parse(localStorage.getItem('xieyi.pad') || '{}'))[fake.id];
+    ok('the learned mapping is saved per pad id: A is now button 5, up is 15, left stick x is axis 2 inverted', hidden('padmap') && PAD.custom && PAD.map.A === 5 && PAD.map.UP === 15 && PAD.axes.lx[0] === 2 && PAD.axes.lx[1] === -1 && !!saved && saved.buttons.A === 5, saved);
+    pressBtn(5, true); await frames(3);
+    ok('with the learned mapping, physical button 5 is A: E is held', g.keys.has('KeyE')); pressBtn(5, false); await frames(3);
+    fake.axes[2] = -0.9; await frames(3); ok('and pushing the learned left stick right holds D', g.keys.has('KeyD')); fake.axes[2] = 0; await frames(3);
+    PAD.useStandard(); ok('back to the standard mapping, the custom one is forgotten', !PAD.custom && PAD.map.A === 1 && !(JSON.parse(localStorage.getItem('xieyi.pad') || '{}'))[fake.id]);
+    navigator.getGamepads = real; PAD.releaseAll(); PAD.seen = false; await frames(2); g.keys.clear(); }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
   // —— 三格存檔：第一格沿用舊鍵；每格帶摘要
@@ -941,6 +990,18 @@ try {
   await page.goto(base + '?autostart=1&seed=9&slot=2', { waitUntil: 'load' }); await started();
   const c2 = await page.evaluate(() => ({ slot: XIEYI.game.slot, cour: XIEYI.game.player.cour, carry: localStorage.getItem('xieyi.carry') }));
   ok2('courage carried over the sea waits for its own slot: slot 1 gets none, slot 2 gets 500 and the note is spent', c1.slot === 1 && c1.cour === 0 && c1.carry === '500@2' && c2.slot === 2 && c2.cour === 500 && c2.carry === null, { c1, c2 });
+  // 起始頁也吃手柄：十字鍵在存檔格之間移焦點，A 選那格
+  await page.goto(base, { waitUntil: 'load' });
+  const padStart = await page.evaluate(async () => {
+    const f = { id: 'Fake Pro', index: 0, connected: true, mapping: 'standard', buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })), axes: [0, 0, 0, 0] }; navigator.getGamepads = () => [f];
+    const frames = (n) => new Promise((res) => { let k = 0; const t = () => { if (++k >= n) res(); else requestAnimationFrame(t); }; requestAnimationFrame(t); });
+    const before = document.querySelector('.save-card.on').dataset.slot;
+    f.buttons[15].pressed = true; await frames(3); f.buttons[15].pressed = false; await frames(3);
+    const focused = document.querySelector('#start .padfocus');
+    f.buttons[1].pressed = true; await frames(3); f.buttons[1].pressed = false; await frames(3);
+    return { before, focusedSlot: focused && focused.dataset.slot, after: document.querySelector('.save-card.on').dataset.slot, started: !!window.XIEYI, hint: document.getElementById('new-hint').textContent };
+  });
+  ok2('on the start screen the d-pad moves the focus to the next save card (even an empty one) and A picks it', padStart.before === '2' && padStart.focusedSlot === '3' && padStart.after === '3' && !padStart.started, padStart);
 } catch (e) { checks2.push('CRASH start page: ' + e.message); }
 result.checks.push(...checks2); result.failed = result.checks.filter(c => c.startsWith('FAIL') || c.startsWith('CRASH')).length;
 console.log(result.checks.join('\n'));
