@@ -102,11 +102,11 @@
           <li><kbd>1</kbd>–<kbd>9</kbd> 選囊格（製作面板開著時直接造）· <kbd>Tab</kbd><kbd>Q</kbd>、滾輪換格</li>
           <li><kbd>M</kbd> 地圖 · <kbd>J</kbd> 見聞錄 · <kbd>H</kbd> 幫助 · <kbd>N</kbd> 靜音 · <kbd>Esc</kbd> 暫停 · <kbd>+</kbd><kbd>−</kbd> 縮放 · <kbd>Y</kbd>／<kbd>N</kbd> 霧障用不用扇子</li>
           <li>滑鼠：左鍵取、右鍵放（相鄰格）；點身上的衣甲脫下，右鍵修補</li>
-          <li>手柄（藍牙或 USB 連上電腦，按一下任一鍵就認得）：左搖桿／十字鍵走 · <b>A</b> 取／攻擊／按下 · <b>B</b> 關掉／暫停 · <b>X</b> 放／用／開灶 · <b>Y</b> 吃喝穿用 · <b>L</b>／<b>R</b> 或右搖桿換囊格 · <b>ZL</b> 換工具 · <b>ZR</b> 攻擊 · <b>＋</b> 製作 · <b>－</b> 地圖 · 左搖桿按下見聞錄 · 右搖桿按下睡。面板開著時十字鍵移焦點、A 按下、B 關。對應不是標準的手柄會自動進「手柄對應」學一遍；上面的鈕可以重學。</li>
+          <li>手柄（藍牙或 USB 連上電腦，按一下任一鍵就認得）：左搖桿／十字鍵走 · <b>A</b> 取／攻擊／按下 · <b>B</b> 關掉／暫停 · <b>X</b> 放／用／開灶 · <b>Y</b> 吃喝穿用 · <b>L</b>／<b>R</b> 或右搖桿換囊格 · <b>ZL</b> 換工具 · <b>ZR</b> 攻擊 · <b>＋</b> 製作 · <b>－</b> 地圖 · 左搖桿按下見聞錄 · 右搖桿按下睡。面板開著時十字鍵移焦點、A 按下、B 關。對應不是標準的手柄會自動進「手柄對應」學一遍；上面的「手柄設定」可以一個一個換鍵。</li>
         </ul>
       </div>
     </div>
-    <button id="help-close">合上</button> <button id="help-pad" class="ghost">手柄對應</button>
+    <button id="help-close">合上</button> <button id="help-pad" class="ghost">手柄設定</button>
   </div>
 </div>
 
@@ -173,6 +173,18 @@
   </div>
 </div>
 
+<div id="padset" class="overlay hidden">
+  <div class="panel padsetpanel">
+    <h2>手柄設定</h2>
+    <p id="padset-status" class="dim small"></p>
+    <table class="padtable"><thead><tr><th>鍵位</th><th>遊戲裡做什麼</th><th>現在綁的</th><th></th></tr></thead><tbody id="padset-rows"></tbody></table>
+    <p id="padset-state" class="padstate"></p>
+    <div id="padset-bars" class="padbars"></div>
+    <p id="padset-live" class="dim small"></p>
+    <div class="row"><button id="padset-wizard" class="ghost">照順序全部學一遍</button><button id="padset-std" class="ghost">全部改回標準</button><button id="padset-center" class="ghost">校正中點</button><button id="padset-close">好了（Esc）</button></div>
+  </div>
+</div>
+
 <div id="warn" class="overlay hidden">
   <div class="panel fogpanel">
     <h2 id="warn-title"></h2>
@@ -226,7 +238,7 @@
   <div class="panel title">
     <h1><span>暫</span><span>停</span></h1>
     <p class="dim small">島上的一切都停了。按 <kbd>Esc</kbd> 或點「繼續」回去。</p>
-    <div class="row"><button id="pause-resume">繼續</button><button id="pause-help" class="ghost">生存之道</button><button id="pause-pad" class="ghost">手柄對應</button><button id="pause-home" class="ghost">回到主頁</button><button id="pause-lang" class="ghost" data-noconv title="切換繁體／簡體">简体中文</button></div>
+    <div class="row"><button id="pause-resume">繼續</button><button id="pause-help" class="ghost">生存之道</button><button id="pause-pad" class="ghost">手柄設定</button><button id="pause-home" class="ghost">回到主頁</button><button id="pause-lang" class="ghost" data-noconv title="切換繁體／簡體">简体中文</button></div>
     <p class="dim small">回到主頁會先存檔，再回起始頁的三格存檔。</p>
     <div class="row"><span class="dim small">手柄不聽話時：</span><button id="pause-center" class="ghost small">校正中點</button><button id="pause-swap" class="ghost small">對調左右搖桿</button><button id="pause-flipy" class="ghost small">左搖桿上下反向</button><button id="pause-flipx" class="ghost small">左搖桿左右反向</button><button id="pause-record" class="ghost small">錄八秒讀數</button></div>
     <div id="pause-bars" class="padbars"></div>
@@ -256,7 +268,7 @@
       <label>世界種子 <input id="seed" type="text" maxlength="12"></label>
       <button id="btn-new">落筆</button>
       <button id="btn-help" class="ghost">生存之道</button>
-      <button id="btn-pad" class="ghost" title="接上手柄、按一下任一鍵，再點這裡：一顆一顆重新檢測每個鍵">手柄對應</button>
+      <button id="btn-pad" class="ghost" title="接上手柄、按一下任一鍵，再點這裡：二十個鍵位一個一個設">手柄設定</button>
       <span id="new-hint" class="dim small"></span>
     </div>
     <p class="dim small">WASD 走 · E 取 · F 放 · C 製作 · R 睡 · H 幫助</p>
