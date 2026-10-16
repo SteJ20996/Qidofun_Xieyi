@@ -944,7 +944,7 @@ const result = await page.evaluate(async () => {
     for (const i of [2, 1, 3, 0, 4, 5, 6, 7, 8, 9, 10, 11]) { pressBtn(hat, i, true); await frames(3); pressBtn(hat, i, false); await frames(3); }   // A B X Y L R ZL ZR － ＋ L3 R3
     ok('twelve buttons learned, now the d-pad', document.getElementById('padmap-text').textContent.indexOf('十字鍵上') >= 0, document.getElementById('padmap-text').textContent.slice(0, 40));
     for (const v of [-1, 0.1429, 0.7143, -0.4286]) { hat.axes[9] = v; await frames(3); hat.axes[9] = 3.2857; await frames(3); }   // 帽子軸：上、下、左、右
-    ok('the four d-pad directions are learned as positions on the hat axis', document.getElementById('padmap-text').textContent.indexOf('左搖桿往右') >= 0 && document.getElementById('padmap-text').textContent.indexOf('上＝帽 9') >= 0, document.getElementById('padmap-text').textContent.slice(0, 80));
+    ok('the four d-pad directions are learned as positions on the hat axis', document.getElementById('padmap-text').textContent.indexOf('左搖桿往右') >= 0 && document.getElementById('padmap-text').textContent.indexOf('上＝軸9@-1.00') >= 0, document.getElementById('padmap-text').textContent.slice(0, 80));
     for (const i of [0, 1, 2, 3]) { hat.axes[i] = 0.95; await frames(3); hat.axes[i] = i === 0 ? 0.12 : 0; await frames(3); }
     const hs = (JSON.parse(localStorage.getItem('xieyi.pad') || '{}'))[hat.id];
     ok('hat mapping saved: up is {ax 9, at −1}, A is button 2, the stick rest values are kept', hidden('padmap') && PAD.custom && PAD.map.UP && PAD.map.UP.ax === 9 && PAD.map.UP.at === -1 && PAD.map.A === 2 && !!hs && hs.rest && Math.abs(hs.rest[9] - 3.2857) < 1e-6 && Math.abs(hs.rest[0] - 0.12) < 1e-6, hs);
@@ -955,6 +955,35 @@ const result = await page.evaluate(async () => {
     hat.axes[0] = 0.4; await frames(3); const drift = !g.keys.has('KeyD'); hat.axes[0] = 0.95; await frames(3);
     ok('stick is read relative to its rest: 0.4 from a 0.12 rest is dead zone, 0.95 walks', drift && g.keys.has('KeyD')); hat.axes[0] = 0.12; await frames(3);
     pressBtn(hat, 2, true); await frames(3); ok('learned A (button 2) holds E', g.keys.has('KeyE')); pressBtn(hat, 2, false); await frames(3);
+    pressBtn(hat, 1, true); await frames(3); pressBtn(hat, 1, false); await frames(3); hat.axes[9] = -1; await frames(3);
+    ok('while paused, the pause panel shows the live readout with the judged direction', !hidden('pause') && document.getElementById('pause-live').textContent.indexOf('判定：上') >= 0 && document.getElementById('pause-live').textContent.indexOf('9=-1.00★') >= 0 && document.getElementById('pause-live').textContent.indexOf('現在的對應') >= 0, document.getElementById('pause-live').textContent.slice(0, 120));
+    hat.axes[9] = 3.2857; await frames(2); pressBtn(hat, 1, true); await frames(3); pressBtn(hat, 1, false); await frames(3); ok('B resumes again', hidden('pause'));
+    // —— 另一種帽子軸：閒置 0，上 −1 右 −0.43 下 0.14 左 0.71；左搖桿只有半幅；右搖桿是四顆按鍵
+    PAD.useStandard(); navigator.getGamepads = () => []; await until(() => !PAD.seen, 9000);
+    const odd = mkPad('Odd pad (Vendor: 0000 Product: 0001)', '', 24, 6); navigator.getGamepads = () => [odd];
+    pressBtn(odd, 0, true); await frames(3); pressBtn(odd, 0, false); await frames(3);
+    ok('the odd pad opens the wizard too', !hidden('padmap') && PAD.seen);
+    for (const i of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]) { pressBtn(odd, i, true); await frames(3); pressBtn(odd, i, false); await frames(3); }
+    for (const v of [-1, 0.1429, 0.7143, -0.4286]) { odd.axes[4] = v; await frames(3); odd.axes[4] = 0; await frames(3); }   // 帽子軸閒置 0
+    odd.axes[0] = 0.45; await frames(3); odd.axes[0] = 0; await frames(3);   // 左搖桿往右只到 0.45
+    odd.axes[1] = 0.45; await frames(3); odd.axes[1] = 0; await frames(3);
+    pressBtn(odd, 20, true); await frames(3); pressBtn(odd, 20, false); await frames(3);   // 右搖桿往右是鍵 20
+    ok('a button for a stick direction adds a step asking the opposite direction', !hidden('padmap') && document.getElementById('padmap-text').textContent.indexOf('右搖桿往左') >= 0, document.getElementById('padmap-text').textContent.slice(0, 40));
+    pressBtn(odd, 21, true); await frames(3); pressBtn(odd, 21, false); await frames(3);
+    pressBtn(odd, 22, true); await frames(3); pressBtn(odd, 22, false); await frames(3);   // 右搖桿往下是鍵 22
+    pressBtn(odd, 23, true); await frames(3); pressBtn(odd, 23, false); await frames(3);   // 往上是鍵 23
+    ok('odd pad learned: hat at rest 0, half-range left stick on axes 0/1, right stick as buttons 20/21', hidden('padmap') && PAD.custom && PAD.map.RIGHT && PAD.map.RIGHT.ax === 4 && Math.abs(PAD.map.RIGHT.at + 0.4286) < 1e-6 && PAD.axes.lx[0] === 0 && PAD.axes.rx && PAD.axes.rx.pos === 20 && PAD.axes.rx.neg === 21 && PAD.axes.ry.pos === 22 && PAD.axes.ry.neg === 23, [PAD.map.RIGHT, PAD.axes]);
+    odd.axes[4] = -0.4286; await frames(3); ok('hat at rest 0: right (−0.43) holds D', g.keys.has('KeyD') && !g.keys.has('KeyW'));
+    odd.axes[4] = 0.1429; await frames(3); ok('hat at rest 0: down (0.14) holds S', g.keys.has('KeyS') && !g.keys.has('KeyD'));
+    odd.axes[4] = -1; await frames(3); ok('hat at rest 0: up (−1) holds W', g.keys.has('KeyW') && !g.keys.has('KeyS'));
+    odd.axes[4] = 0; await frames(3); ok('hat back to 0 releases', !g.keys.has('KeyW'));
+    odd.axes[0] = 0.45; await frames(3); ok('a half-range stick (0.45) still walks', g.keys.has('KeyD')); odd.axes[0] = 0; await frames(3);
+    const selA = p.sel; pressBtn(odd, 20, true); await frames(3); pressBtn(odd, 20, false); await frames(3);
+    ok('a button-stick to the right cycles the bag like the right stick', p.bag.length < 2 || p.sel === (selA + 1) % p.bag.length);
+    // —— 精靈把方向全略過了：沒被綁走的標準十字鍵與左搖桿還是能走（保底）
+    PAD.map.UP = -1; PAD.map.DOWN = -1; PAD.map.LEFT = -1; PAD.map.RIGHT = -1; PAD.axes.lx = [4, 1]; PAD.axes.ly = [5, 1];
+    pressBtn(odd, 12, true); await frames(3); ok('fallback: standard d-pad button 12 (unbound) still holds W', g.keys.has('KeyW')); pressBtn(odd, 12, false); await frames(3);
+    odd.axes[1] = 0.9; await frames(3); ok('fallback: standard left-stick axis 1 (unbound) still holds S', g.keys.has('KeyS')); odd.axes[1] = 0; await frames(3);
     PAD.useStandard(); navigator.getGamepads = real; PAD.releaseAll(); PAD.seen = false; PAD.id = ''; PAD.index = -1; const kl = document.getElementById('keys'); if (PAD.keysHtml !== null) kl.innerHTML = PAD.keysHtml; await frames(2); g.keys.clear(); }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
