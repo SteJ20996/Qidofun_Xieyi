@@ -1,6 +1,6 @@
 # 《山海有形》桌面版（Electron）
 
-把單檔遊戲 `dist/xieyi.html` 用 Electron 包成可以直接執行的程式，為上 Steam 做準備。遊戲本身一行沒改，殼只負責開視窗；手柄照樣走瀏覽器的 Gamepad API，跟 Chrome 一模一樣。
+把單檔遊戲 `dist/xieyi.html` 用 Electron 包成可以直接執行的程式，為上 Steam 做準備。遊戲本身一行沒改，殼只負責開視窗。
 
 ## 下載試玩（Windows）
 
@@ -14,17 +14,9 @@ Linux 版（`ShanHaiYouXing-linux-x64`）同一頁下載。
 - **存檔**在 `%APPDATA%\xieyi-shanhai`（Linux：`~/.config/xieyi-shanhai`）。跟瀏覽器版的存檔是分開的兩份。
 - 同時只能開一個視窗，免得兩個視窗互相蓋存檔。
 
-## 用 Steam 測手柄（不用先付上架費）
+## 手柄
 
-Steam 會把各種手柄模擬成 Xbox 手柄交給從 Steam 啟動的程式（Steam Input）。第三方手柄在瀏覽器裡對不上的問題，很可能在這裡就消失了。這一點還沒在真機上驗證過，所以要測：
-
-1. Steam 左下角「新增遊戲」→「新增非 Steam 遊戲」→「瀏覽」→ 選 `ShanHaiYouXing.exe` → 加入。
-2. 收藏庫裡對它按右鍵 →「內容」→「控制器」→ 把「覆寫 Steam 輸入」設成「啟用 Steam 輸入」。
-3. **從 Steam 裡**按「開始」（直接點 exe 開不會經過 Steam Input）。
-4. 按一下手柄任一鍵，到起始頁的「手柄設定」：
-   - 上面一行寫「手柄：Xbox 360 Controller（標準對應…）」之類，就是 Steam 接手了。
-   - 推左搖桿，看下面的條狀讀數有沒有在動，再進遊戲走走看。
-5. 把結果（第 4 步那一行字、條有沒有動、走得動嗎）告訴我。
+手柄支援在 v0.27 封存了，桌面版目前只有鍵盤與滑鼠。原本「用 Steam 測手柄」的步驟收在 [`archive/gamepad/README.md`](../archive/gamepad/README.md)，恢復手柄時照著做。
 
 ## 自己打包（開發用）
 

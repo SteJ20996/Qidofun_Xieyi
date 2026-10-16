@@ -1,0 +1,52 @@
+<!-- 手柄封存（v0.27）：從 index.html 抽出來的片段，每段上面寫原本放在哪裡。恢復時照註解放回去。 -->
+
+<!-- 幫助（#help 的「操作」清單最後一行） -->
+          <li>手柄（藍牙或 USB 連上電腦，按一下任一鍵就認得）：左搖桿／十字鍵走 · <b>A</b> 取／攻擊／按下 · <b>B</b> 關掉／暫停 · <b>X</b> 放／用／開灶 · <b>Y</b> 吃喝穿用 · <b>L</b>／<b>R</b> 或右搖桿換囊格 · <b>ZL</b> 換工具／收神兵 · <b>ZR</b> 攻擊 · <b>＋</b> 製作 · <b>－</b> 地圖 · 左搖桿按下拿神兵 · 右搖桿按下拿／收彈弓 · 右搖桿往上見聞錄、往下睡。面板開著時十字鍵移焦點、A 按下、B 關。對應不是標準的手柄會自動進「手柄對應」學一遍；上面的「手柄設定」可以一個一個換鍵。</li>
+
+<!-- 幫助最下面「合上」右邊 -->
+ <button id="help-pad" class="ghost">手柄設定</button>
+
+<!-- #padmap 精靈（放在 #stove 之後、#warn 之前） -->
+<div id="padmap" class="overlay hidden">
+  <div class="panel fogpanel">
+    <h2>手柄對應</h2>
+    <p id="padmap-text"></p>
+    <p id="padmap-state" class="padstate"></p>
+    <p class="dim small">照提示一顆一顆按，按完放開、等「好，請按」再按下一顆；搖桿推到底再回中。沒有那顆鍵就按「略過」。下面每根軸一條、每顆鍵一格：推搖桿時哪一條的紅點在跑、按鍵時哪一格亮，就是它。<b>推左搖桿時沒有任何一條在動</b>，是瀏覽器讀不到這支手柄的搖桿——把手柄切到 PC／X-input 模式（說明書多半是按住某個組合鍵開機），或換一個瀏覽器（Firefox、Edge、Safari）試試。</p>
+    <div id="padmap-bars" class="padbars"></div>
+    <p id="padmap-live" class="dim small"></p>
+    <div class="row"><button id="padmap-skip" class="ghost">略過這顆（空白鍵）</button><button id="padmap-std" class="ghost">用標準對應</button><button id="padmap-cancel" class="ghost">取消（Esc）</button></div>
+  </div>
+</div>
+
+<!-- #padset 手柄設定頁（接在 #padmap 後面） -->
+<div id="padset" class="overlay hidden">
+  <div class="panel padsetpanel">
+    <div class="padsethead"><h2>手柄設定</h2><div class="row"><button id="padset-close" class="ghost">返回（Esc）</button><button id="padset-home">回到主頁</button></div></div>
+    <p id="padset-status" class="dim small"></p>
+    <table class="padtable"><thead><tr><th>鍵位</th><th>遊戲裡做什麼</th><th>現在綁的</th><th></th></tr></thead><tbody id="padset-rows"></tbody></table>
+    <p id="padset-state" class="padstate"></p>
+    <div id="padset-bars" class="padbars"></div>
+    <p id="padset-live" class="dim small"></p>
+    <p id="padset-msg" class="padmsg"></p>
+    <div class="row"><button id="padset-wizard" class="ghost">照順序全部學一遍</button><button id="padset-std" class="ghost">全部改回標準</button><button id="padset-center" class="ghost">校正中點</button></div>
+  </div>
+</div>
+
+<!-- 「拆下？」彈窗的說明行尾 -->
+ · 手柄 A 拆下、B 不拆
+
+<!-- 暫停面板第一列「生存之道」與「回到主頁」之間 -->
+<button id="pause-pad" class="ghost">手柄設定</button>
+
+<!-- 暫停面板「回到主頁會先存檔」那行下面 -->
+    <div class="row"><span class="dim small">手柄不聽話時：</span><button id="pause-center" class="ghost small">校正中點</button><button id="pause-swap" class="ghost small">對調左右搖桿</button><button id="pause-flipy" class="ghost small">左搖桿上下反向</button><button id="pause-flipx" class="ghost small">左搖桿左右反向</button><button id="pause-record" class="ghost small">錄八秒讀數</button></div>
+    <div id="pause-bars" class="padbars"></div>
+    <p id="pause-live" class="dim small"></p>
+    <textarea id="pause-rec" class="hidden" rows="4" readonly spellcheck="false"></textarea>
+
+<!-- 起始頁「生存之道」右邊 -->
+      <button id="btn-pad" class="ghost" title="接上手柄、按一下任一鍵，再點這裡：二十個鍵位一個一個設">手柄設定</button>
+
+<!-- script：game.js 之後、hans.js 之前（src/pad.js） -->
+<script src="src/pad.js"></script>

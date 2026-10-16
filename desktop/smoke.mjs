@@ -20,9 +20,9 @@ const launch = async () => {
 };
 try {
   let { app, page } = await launch();
-  const info = await page.evaluate(() => ({ title: document.title, start: !document.getElementById('start').classList.contains('hidden'), pad: document.getElementById('btn-pad').textContent, gp: typeof navigator.getGamepads, file: location.protocol }));
+  const info = await page.evaluate(() => ({ title: document.title, start: !document.getElementById('start').classList.contains('hidden'), help: !!document.getElementById('btn-help'), pad: !!document.getElementById('btn-pad') || typeof window.PAD !== 'undefined', file: location.protocol }));
   ok('the shell opens the game from a local file with the start page showing', info.file === 'file:' && /山海有形/.test(info.title) && info.start, info);
-  ok('the Gamepad API is there and the start page has 手柄設定', info.gp === 'function' && info.pad === '手柄設定', info);
+  ok('the start page has 生存之道 and no gamepad settings (archived in v0.27)', info.help && !info.pad, info);
   const ud = await app.evaluate(({ app }) => app.getPath('userData'));
   ok('saves go to the userData folder the test asked for', ud === userData, ud);
   await page.click('#btn-new'); await page.waitForFunction(() => window.XIEYI && window.XIEYI.game, null, { timeout: 15000 });
