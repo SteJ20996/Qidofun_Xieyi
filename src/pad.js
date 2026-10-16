@@ -147,7 +147,7 @@
     },
     onConnect(gp) {
       const name = (gp.id || '手柄').replace(/\s*\(.*$/, '').slice(0, 40);
-      const k = $('keys'); if (k) { if (this.keysHtml === null) this.keysHtml = k.innerHTML; k.innerHTML = PAD_KEYS_HTML; }
+      const k = $('keys'); if (k) { if (this.keysHtml === null) this.keysHtml = k.innerHTML; k.innerHTML = PAD_KEYS_HTML; }   // keysHtml 在載入時就記下繁體原文（見檔尾），選了簡體也不會記成簡體
       if (!this.standard && !this.custom) { this.note('手柄已連上', name + '。這支手柄的對應不是標準的，先學一遍；推搖桿時看面板下面哪一條在動。'); this.learn(); }
       else this.note('手柄已連上', name + (this.custom ? '（用你學過的對應）' : '') + '。A 取、B 關、X 放、Y 用、L／R 換囊格、ZL 換工具、＋製作、－地圖。方向不對就到暫停或起始頁按「手柄對應」重學。');
     },
@@ -366,5 +366,6 @@
     },
   };
   window.PAD = PAD;
+  { const k0 = document.getElementById('keys'); if (k0) PAD.keysHtml = k0.innerHTML; }   // 按鍵列的原文：在轉簡體之前記下
   window.addEventListener('DOMContentLoaded', () => { PAD.bind(); PAD.loop(); });
 })();

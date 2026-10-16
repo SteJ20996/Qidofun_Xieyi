@@ -4,6 +4,10 @@
   --font: "LXGW WenKai TC", "BiauKai", "DFKai-SB", "標楷體", "Kaiti TC", "Noto Serif TC", "WenQuanYi Zen Hei", serif;
   --ui: "Noto Serif TC", "Noto Serif CJK TC", "PingFang TC", "Microsoft JhengHei", "WenQuanYi Zen Hei", serif;
 }
+/* 簡體（v0.24）：畫字的楷體照用霞鶩文楷 TC（簡體字也有，缺的落到 SC 字型），內文改用思源宋體 SC */
+html.hans { --font: "LXGW WenKai TC", "Kaiti SC", "STKaiti", "KaiTi", "楷体", "Noto Serif SC", serif; --ui: "Noto Serif SC", "Noto Serif CJK SC", "PingFang SC", "Microsoft YaHei", "Noto Serif TC", serif; }
+.langrow button { min-width: 64px; }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--paper); color: var(--ink); font-family: var(--ui); }
 canvas#world { position: fixed; inset: 0; display: block; }

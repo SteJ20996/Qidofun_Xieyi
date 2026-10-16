@@ -226,7 +226,7 @@
   <div class="panel title">
     <h1><span>暫</span><span>停</span></h1>
     <p class="dim small">島上的一切都停了。按 <kbd>Esc</kbd> 或點「繼續」回去。</p>
-    <div class="row"><button id="pause-resume">繼續</button><button id="pause-help" class="ghost">生存之道</button><button id="pause-pad" class="ghost">手柄對應</button><button id="pause-home" class="ghost">回到主頁</button></div>
+    <div class="row"><button id="pause-resume">繼續</button><button id="pause-help" class="ghost">生存之道</button><button id="pause-pad" class="ghost">手柄對應</button><button id="pause-home" class="ghost">回到主頁</button><button id="pause-lang" class="ghost" data-noconv title="切換繁體／簡體">简体中文</button></div>
     <p class="dim small">回到主頁會先存檔，再回起始頁的三格存檔。</p>
     <div class="row"><span class="dim small">手柄不聽話時：</span><button id="pause-center" class="ghost small">校正中點</button><button id="pause-swap" class="ghost small">對調左右搖桿</button><button id="pause-flipy" class="ghost small">左搖桿上下反向</button><button id="pause-flipx" class="ghost small">左搖桿左右反向</button><button id="pause-record" class="ghost small">錄八秒讀數</button></div>
     <div id="pause-bars" class="padbars"></div>
@@ -251,6 +251,7 @@
     <p class="lore">鳥棲於山，是為島。一張紙落在海上，紙上的字活了。你是其中的一個「人」，赤手空拳。<br>取木、取棉、取石子；砌磚、造床、磨劍。撐過一夜，再撐過一夜。<br>第十三夜起，魄夜行。這張紙是誰寫的？島上八處地方，各留了一段話。膽氣夠了，就造一艘船離開。</p>
     <div class="saves" id="saves"></div>
     <div class="row diffrow"><span class="dim">難度</span><button data-diff="easy" class="ghost">簡單</button><button data-diff="normal" class="ghost on">一般</button><button data-diff="hard" class="ghost">困難</button><span id="diff-desc" class="dim small">第十三夜起有魄。</span></div>
+    <div class="row langrow" data-noconv><span class="dim">文字</span><button data-lang="hant" class="ghost on">繁體</button><button data-lang="hans" class="ghost">简体</button></div>
     <div class="row">
       <label>世界種子 <input id="seed" type="text" maxlength="12"></label>
       <button id="btn-new">落筆</button>
@@ -270,5 +271,7 @@
 <script src="src/render.js"></script>
 <script src="src/game.js"></script>
 <script src="src/pad.js"></script>
+<script src="src/hans.js"></script>
+<script src="src/i18n.js"></script>
 </body>
 </html>
