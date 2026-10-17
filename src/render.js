@@ -218,9 +218,9 @@
       if (warded) this.drawGlyph('骨', G.INK.red, cx, cy - size * 0.42, T * 0.42, 0, 0.9);
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     }
-    drawGlyph(ch, color, px, py, size, rot, alpha) {
-      const ctx = this.ctx, s = this.dpr, c = rot ? Math.cos(rot) : 1, sn = rot ? Math.sin(rot) : 0;
-      ctx.setTransform(s * c, s * sn, -s * sn, s * c, px * s, py * s);
+    drawGlyph(ch, color, px, py, size, rot, alpha, kx, ky) {   // kx、ky：橫、縱拉長幾倍（野牛的身子，v0.40）
+      const ctx = this.ctx, s = this.dpr, c = rot ? Math.cos(rot) : 1, sn = rot ? Math.sin(rot) : 0, ax = kx || 1, ay = ky || 1;
+      ctx.setTransform(s * c * ax, s * sn * ax, -s * sn * ay, s * c * ay, px * s, py * s);
       const a = alpha === undefined ? 1 : alpha;
       if (a < 1) ctx.globalAlpha = a;
       ctx.drawImage(this.glyph(ch, color), -size * 0.65, -size * 0.65, size * 1.3, size * 1.3);
@@ -312,7 +312,15 @@
           this.drawGlyph('蜃', d.ink, px, py + Math.sin(now * 1.2 + e.bob) * 3, T * 1.45, Math.sin(now * 0.8 + e.bob) * 0.06, 1);
           continue;
         }
-        const size = e.type === '虎' ? 0.95 : e.type === '龍' ? 1.1 : e.type === '鹿' ? 0.8 : e.type === '魚' ? 0.6 : 0.55;
+        if (e.type === '牛') {       // 野牛一乘二（v0.40）：字跟著身子拉——橫著走拉扁、縱著走拉長；轉身時在兩樣之間漸變
+          const kk = Math.min(1, dt * 10); e.rbx = e.rbx === undefined ? e.bx : e.rbx + (e.bx - e.rbx) * kk; e.rby = e.rby === undefined ? e.by : e.rby + (e.by - e.rby) * kk;
+          const hw = Math.abs(e.rbx) / Math.max(1e-6, Math.abs(e.rbx) + Math.abs(e.rby)), cx = px - e.rbx * T / 2, cy = py - e.rby * T / 2;
+          this.drawGlyph('牛', d.ink, cx, cy, T * 0.95, 0, 1, 0.8 + 1.15 * hw, 0.8 + 1.15 * (1 - hw));
+          if (e.provoked > 0 && U.cheb(e.x, e.y, p.x, p.y) <= 7) { ctx.save(); ctx.fillStyle = G.INK.red; ctx.font = 'bold ' + Math.round(T * 0.42) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('怒', px + T * 0.4, py - T * 0.42); ctx.restore(); }
+          continue;
+        }
+        // 主動找人的獸（v0.40）：豹、狼、野豬、毒蛛畫大一號，比虎小一點；蛇照舊
+        const size = e.type === '虎' ? 0.95 : e.type === '龍' ? 1.1 : (e.type === '豹' || e.type === '狼' || e.type === '豬' || (e.type === '蛛' && e.venom)) ? 0.85 : e.type === '鹿' ? 0.8 : e.type === '魚' ? 0.6 : 0.55;
         const bobY = e.type === '鳥' ? Math.sin(now * 5 + e.bob) * 3 : e.type === '龍' ? Math.sin(now * 3 + e.bob) * 4 : e.type === '魚' ? Math.sin(now * 2 + e.bob) * 1.5 : 0;
         if (e.type === '龍') lights.push({ x: e.x, y: e.y, cx: e.rx + 0.5, cy: e.ry + 0.5, r: 3, c: DRAGON });
         const rot = e.type === '魚' ? Math.sin(now * 2 + e.bob) * 0.2 : 0;

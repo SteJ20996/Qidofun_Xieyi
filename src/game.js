@@ -971,7 +971,7 @@
       const p = this.player, sx = p.x, sy = p.y, K = (x, y) => (x - sx + PATH_R) * (2 * PATH_R + 1) + (y - sy + PATH_R);
       const near = onto ? 0 : 1, done = (x, y) => U.cheb(x, y, tx, ty) === near;   // 空地走上去；其餘走到旁邊一格
       const cost = new Map([[K(sx, sy), 0]]), from = new Map(), heap = [[Math.max(0, U.cheb(sx, sy, tx, ty) - near), 0, sx, sy]];
-      const beasts = new Set(); for (const e of this.ents.list) if (this.ents.beastAt(e.x, e.y) === e) beasts.add(U.key(e.x, e.y));   // 獸站的格子繞開（找路當下的位置）
+      const beasts = new Set(); for (const e of this.ents.list) if (this.ents.beastAt(e.x, e.y) === e) for (const [cx, cy] of this.ents.cellsOf(e)) beasts.add(U.key(cx, cy));   // 獸站的格子繞開（找路當下的位置；野牛連尾巴兩格）
       const push = (e) => { heap.push(e); let i = heap.length - 1; while (i > 0) { const j = (i - 1) >> 1; if (heap[j][0] <= heap[i][0]) break; [heap[i], heap[j]] = [heap[j], heap[i]]; i = j; } };
       const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[i], heap[m]] = [heap[m], heap[i]]; i = m; } } return top; };
       let n = 0;
@@ -1958,7 +1958,7 @@
         const r = this.renderer, T = r.tile, p = this.player;
         const fx = (ev.clientX - (r.w / 2 - r.camX * T)) / T, fy = (ev.clientY - (r.h / 2 - r.camY * T)) / T;
         let ent = null, bd = 0.75;   // 點到會動的生靈（照牠畫在哪裡算，魄摸不著不算）
-        for (const e of this.ents.list) { if (e.type === '魄') continue; const dd = Math.hypot(e.rx + 0.5 - fx, e.ry + 0.5 - fy); if (dd < bd) { bd = dd; ent = e; } }
+        for (const e of this.ents.list) { if (e.type === '魄') continue; const big = e.type === '牛', bx = big ? e.bx / 2 : 0, by = big ? e.by / 2 : 0, dd = Math.hypot(e.rx - bx + 0.5 - fx, e.ry - by + 0.5 - fy) - (big ? 0.5 : 0); if (dd < bd) { bd = dd; ent = e; } }   // 野牛照身子的中間算，兩格都點得到
         const wx = ent ? ent.x : Math.floor(fx), wy = ent ? ent.y : Math.floor(fy), d = U.cheb(wx, wy, p.x, p.y);
         if (d === 0) return;
         if (d > 1) { this.walkTo(wx, wy, ent); return; }   // 點遠處：空地就走上去（v0.39），其餘走到它旁邊、面向它；點生靈就跟著（v0.33）
