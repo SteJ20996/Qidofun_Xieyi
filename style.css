@@ -133,17 +133,8 @@ kbd { display: inline-block; min-width: 1.3em; padding: 0 .3em; border: 1px soli
 @media (max-width: 720px) { .craftbody { flex-direction: column; } #craft-cats { flex-direction: row; flex-wrap: wrap; } }
 .recipe { display: grid; grid-template-columns: 230px 1fr 56px 1fr 76px; align-items: center; gap: 10px; padding: 6px 10px; position: relative; border: 1px solid rgba(28,26,23,.25); border-radius: 4px; background: rgba(255,248,234,.6); font-size: 14px; }
 .recipe.cant { opacity: .55; }
-/* 製作欄的衍生樹（v0.28）：樹、序號、品名同在第一欄（各列的其他欄才對得齊）；每層一格 18px，線用框線畫，上下各伸出 10px 接過列與列之間的空隙 */
+/* 製作欄一條一條列（v0.37 拿掉衍生樹）：序號與品名同在第一欄，各列的其他欄對得齊 */
 .recipe .head { display: flex; align-items: center; gap: 8px; align-self: stretch; min-width: 0; }
-.recipe .tree { display: flex; align-self: stretch; margin: -7px 0 -7px -6px; flex: none; }
-.recipe .tree i { position: relative; width: 18px; flex: none; }
-.recipe .tree i::before, .recipe .tree i::after { content: ''; position: absolute; border-color: rgba(28,26,23,.45); border-style: solid; border-width: 0; }
-.recipe .tree i.pipe::before, .recipe .tree i.tee::before { left: 8px; top: -10px; bottom: -10px; border-left-width: 2px; }
-.recipe .tree i.elbow::before { left: 8px; top: -10px; height: calc(50% + 11px); border-left-width: 2px; }
-.recipe .tree i.tee::after, .recipe .tree i.elbow::after { left: 8px; top: 50%; width: 26px; border-top-width: 2px; }
-.recipe .tree i.down::before { left: 8px; top: 50%; bottom: -10px; border-left-width: 2px; }
-.recipe.child { background: rgba(255,248,234,.4); }
-.recipe b .from { display: block; font: 12px var(--ui); margin-top: 3px; }
 .recipe b { font: 22px/1 var(--font); }
 .recipe .num { color: var(--dim); font-size: 12px; flex: none; width: 18px; text-align: right; }   /* 編號固定寬：1 與 10 之後的品名對得齊（v0.36） */
 .recipe .needs span { margin-right: 8px; white-space: nowrap; }

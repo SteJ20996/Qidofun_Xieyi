@@ -16,6 +16,7 @@
   const VENOM_SPIDER = 0.1, BOAR_RANGE = 5, BOAR_STEP = 0.22, BISON_STEP = 0.32 * 1.5, BISON_CALM = 30, BISON_GIVEUP = 18, TURTLE_STEP = 1.5, TURTLE_FLEE = 1.4,   /* 龜一步一息半（v0.28 使用者裁定：腳程減到三分之二），逃命快四成 */ TURTLE_SEA_R = 40;
   // 磚擋眼（v0.28）：獸跟人之間隔著磚、門、墟就看不見，只能循氣味找，找得到的距離是看得見時的七成；窗不擋。
   // 惹惱的野牛記仇比別的獸遠（十八格、三十息），擋在路上的人造磚、門、窗與墟（村裡的殘垣也算）都撞，一下隔 RAM_GAP 息；耐久在 world.js 的 WALL_HP
+  const FISH_RATE = 1.8, EAGLE_RATE = 1.25;   // 魚出現得多八成、鷹多兩成五（v0.37 使用者定）：附近的上限與刷新的機會一起放大
   const STAIRS = '台階', STAIR_SLOW = 1.5, FLIERS = '鳥龍鷹魄魚蜃';   // 獸也上得了階與台（v0.35 使用者定），一步多花一半時間
   const SMELL = 0.7, RAM_GAP = 1.6, RAMMABLE = '磚門窗墟';
   // 魄（v0.20 加強）：玩家身上的光（手裡的火把蠟燭、頭上的燈帽）只把魄逼到 GHOST_KEEP 格外，在 GHOST_HOVER 格內徘徊；
@@ -106,6 +107,13 @@
       if (e.type !== '虎') return false;
       for (const o of this.list) if (o !== e && o.type === '虎') { const dn = U.cheb(x, y, o.x, o.y); if (dn < TIGER_GAP && dn < U.cheb(e.x, e.y, o.x, o.y)) return true; }
       return false;
+    }
+    // 各種生靈附近最多幾隻；魚、鷹的上限乘上 FISH_RATE／EAGLE_RATE，零頭照機率進位（魚平均 14.4、鷹 2.5）
+    spawnCaps(night, bm) {
+      const frac = (v) => Math.floor(v) + (Math.random() < v - Math.floor(v) ? 1 : 0);
+      const caps = { '鳥': night ? 4 : 10, '鹿': 6, '魚': frac(8 * FISH_RATE), '虎': night ? Math.ceil(3 * bm) : 2, '豹': night ? Math.ceil(2 * bm) : 1, '狼': night ? Math.ceil(3 * bm) : 0, '蛇': Math.ceil(2 * bm), '蟾': 3 };
+      caps['鷹'] = frac(2 * EAGLE_RATE); caps['龜'] = 1; caps['豬'] = 2; caps['牛'] = 2;
+      return caps;
     }
     climbOk(e, nx, ny) { return this.world.get(nx, ny) !== '台' || STAIRS.indexOf(this.world.get(e.x, e.y)) >= 0; }   // 上台要從階或台上來（v0.35，跟人一樣）
     stepTo(e, tx, ty, away, night) {
@@ -205,18 +213,18 @@
       if (this.spawnAcc > 1.5) {
         this.spawnAcc = 0;
         const bm = night && g.beastMult ? g.beastMult() : 1;   // 困難：夜裡狼虎豹蛇一倍半
-        const caps = { '鳥': night ? 4 : 10, '鹿': 6, '魚': 8, '虎': night ? Math.ceil(3 * bm) : 2, '豹': night ? Math.ceil(2 * bm) : 1, '狼': night ? Math.ceil(3 * bm) : 0, '蛇': Math.ceil(2 * bm), '蟾': 3 };
-        caps['鷹'] = 2; caps['龜'] = 1; caps['豬'] = 2; caps['牛'] = 2;
+        const caps = this.spawnCaps(night, bm);
         for (const type in caps) {
           const have = type === '鷹' ? this.list.filter(e => e.type === '鷹' && !e.tame).length : this.count(type);
           if (have >= caps[type]) continue;
           if (type === '蛇' && Math.random() > 0.25) continue;        // 蛇出沒機率偏低
           if (type === '狼' && Math.random() > 0.5) continue;
-          if (type === '鷹' && Math.random() > 0.4) continue;
+          if (type === '鷹' && Math.random() > 0.4 * EAGLE_RATE) continue;   // v0.37：四成 → 五成
           if (type === '龜' && Math.random() > 0.1) continue;         // 龜少見
           if (type === '豬' && Math.random() > 0.3) continue;
           if (type === '牛' && Math.random() > 0.25) continue;
           this.spawnNear(type, p, 14, 30, night);
+          if (type === '魚' && Math.random() < FISH_RATE - 1 && this.count('魚') < caps['魚']) this.spawnNear('魚', p, 14, 30, night);   // 魚每回多八成的機會再刷一條（v0.37）
         }
         // 蜃：只在玩家行船或落水時，從十到十六格外的深海浮上來；機率低，一次只一隻
         if ((p.sailing || p.swimming) && this.count('蜃') === 0 && Math.random() < this.seaP) {

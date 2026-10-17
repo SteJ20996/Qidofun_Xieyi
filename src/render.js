@@ -258,7 +258,7 @@
         const burning = world.isBurning(x, y);
         const d = DB[ch];
         const lit = ch === '灶' && world.stoveLit(x, y);
-        const lr = ch === '燈' && world.isBig(x, y) ? 9 : d.light;   // 島外那盞燈塔照得最遠
+        const lr = ch === '燈' && world.isBig(x, y) ? 10 : d.light;   // 島外那盞燈塔照得最遠（v0.37 起燈都多照一格：燈 6、燈塔 10）
         if (lr > 0 || burning || lit) lights.push({ x, y, r: Math.max(lr, burning ? 2.5 : 0, lit ? 3 : 0), c: burning || d.kind === 'fire' ? FIRE : lit ? STOVE : lr >= 9 ? BEACON : LAMP });
         if (ch === '白' || world.isBig(x, y) || (ch === '舟' && world.shipCells.has(U.key(x, y)))) continue;      // 大字地標、停著的船整體另畫
         const r = U.hash2(x, y, 99);
