@@ -11,7 +11,8 @@
     '明': '#f0c54a', '休': '#9a6b45', '橋': '#9a6b45', '困': '#7a5a3e', '碑': '#2a2724', '日': '#e07a4a', '月': '#e3c35a',
     '果': '#c9654a', '灶': '#d9593c', '鼎': '#b4452c', '包': '#2a2724', '煤': '#2a2724', '鐵': '#8a5a3a', '網': '#5a86a8', '罟': '#4f7a9c', '罾': '#446e90', '路': '#c9b27a', '門': '#9a7a55', '井': '#4a6f8f',
     '棉': '#e8e2d0', '礫': '#b9b4a8', '磚': '#9a5a40', '墟': '#8a8378', '窗': '#c09a6a', '沼': '#6b6a3c', '棧': '#9a6b45', '床': '#a06a4a', '橋': '#9a6b45', '漁': '#5a86a8', '麻': '#a9b07a', '偶': '#b08a5a', '櫃': '#7a4e2d', '舟': '#7a4e2d',
-    '塔': '#2a2724', '寺': '#5a3e2b', '船': '#5a3e2b', '泉': '#4a6f8f', '墓': '#6e6c75', '洞': '#2a2724', '燈': '#e0a020'
+    '塔': '#2a2724', '寺': '#5a3e2b', '船': '#5a3e2b', '泉': '#4a6f8f', '墓': '#6e6c75', '洞': '#2a2724', '燈': '#e0a020',
+    '漠': '#e3cf98', '丘': '#d6bb7a', '池': '#5f9cc0', '棗': '#7d9a55', '熔': '#d2502a', '岩': '#5d5a62', '曜': '#2b2133', '川': '#5f9cc0', '湖': '#5a92b8', '湯': '#8cc3d0', '窟': '#3a3028'   // v0.38
   };
 
   // 光照（v0.31；v0.36 改成射線）：每道光從燈芯往外射線，碰到磚、門、墟的邊就停，圍出一個多邊形——影子的邊沿著牆角斜斜射出去，不是一格一格的方塊。
@@ -259,7 +260,9 @@
         const d = DB[ch];
         const lit = ch === '灶' && world.stoveLit(x, y);
         const lr = ch === '燈' && world.isBig(x, y) ? 10 : d.light;   // 島外那盞燈塔照得最遠（v0.37 起燈都多照一格：燈 6、燈塔 10）
-        if (lr > 0 || burning || lit) lights.push({ x, y, r: Math.max(lr, burning ? 2.5 : 0, lit ? 3 : 0), c: burning || d.kind === 'fire' ? FIRE : lit ? STOVE : lr >= 9 ? BEACON : LAMP });
+        let lavaSkip = false;   // 熔岩連成一片：每二乘二只點一盞（那一塊裡第一格熔岩，半徑 4），光差不多、算得少到四分之一；落單的熔岩照樣亮（v0.38）
+        if (d.lava) { const bx = x & ~1, by = y & ~1; for (const [cx, cy] of [[bx, by], [bx + 1, by], [bx, by + 1], [bx + 1, by + 1]]) if (DB[world.get(cx, cy)].lava) { lavaSkip = cx !== x || cy !== y; break; } }
+        if (!lavaSkip && (lr > 0 || burning || lit)) lights.push({ x, y, r: Math.max(d.lava ? 4 : lr, burning ? 2.5 : 0, lit ? 3 : 0), c: burning || d.kind === 'fire' || d.lava ? FIRE : lit ? STOVE : lr >= 9 ? BEACON : LAMP });
         if (ch === '白' || world.isBig(x, y) || (ch === '舟' && world.shipCells.has(U.key(x, y)))) continue;      // 大字地標、停著的船整體另畫
         const r = U.hash2(x, y, 99);
         let rot = ((r & 255) / 255 - 0.5) * 0.16, scale = (0.84 + ((r >>> 8) & 255) / 255 * 0.16) * d.vis[0];
@@ -404,7 +407,7 @@
       // —— 霧障：一片片白霧順著風飄
       if (world.fogs.size || this.fogSeen.size) this.drawFog(g, ox, oy, x0, x1, y0, y1, dt, now);
       // —— 夜色與光：光照圖平滑放大蓋上去；光源再點一個亮芯
-      const dark = g.darkness();
+      const dark = g.viewDark();   // 洞窟裡白天也黑（v0.38）
       this.rainA = (this.rainA || 0) + ((world.raining() ? 1 : 0) - (this.rainA || 0)) * Math.min(1, dt / 1.5);   // 起雨收雨各淡入淡出一息半
       const glowK = Math.max(dark, 0.55 * this.rainA);   // 下雨的白天，燈也透出一點微光（v0.31）
       if (g.torchLit()) lights.push({ x: p.x, y: p.y, cx: p.rx + 0.5, cy: p.ry + 0.5, r: 3, c: TORCH });
@@ -509,41 +512,65 @@
       const dk = g.darkness(); if (dk > 0.02) { m.fillStyle = 'rgba(12,16,36,' + (0.35 * dk) + ')'; m.fillRect(0, 0, S, S); }
     }
 
-    // 全島地圖：走過的地方才有墨，地標蓋朱印
+    // 全圖：走過的地方才有墨，地標蓋朱印（v0.38：紙大到 2500×2500，地圖照走過的範圍縮放——只在本島時跟以前一樣大，出了海就拉遠）
     drawBigMap(g, cv) {
-      const w = g.world, p = g.player, R = G.SEA_EDGE, N = R * 2, S = cv.width, px = S / N;
-      const m = cv.getContext('2d');
-      m.fillStyle = '#efe5cf'; m.fillRect(0, 0, S, S);
-      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
-        const x = i - R, y = j - R;
-        if (!w.isSeen(x, y)) continue;
-        const ch = w.get(x, y);
-        m.fillStyle = MINI[ch] || '#999'; m.globalAlpha = 0.9;
-        m.fillRect(i * px, j * px, px + 0.4, px + 0.4);
+      const w = g.world, p = g.player, S = cv.width, m = cv.getContext('2d'), CHK = 16;
+      let x0 = -G.HOME_R, y0 = -G.HOME_R, x1 = G.HOME_R, y1 = G.HOME_R;
+      for (const k of w.explored.keys()) { const [cx, cy] = U.unkey(k); x0 = Math.min(x0, cx * CHK); y0 = Math.min(y0, cy * CHK); x1 = Math.max(x1, cx * CHK + CHK - 1); y1 = Math.max(y1, cy * CHK + CHK - 1); }
+      x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+      const N = Math.min(2 * G.WORLD_R, Math.ceil(Math.max(x1 - x0, y1 - y0) * 1.06) + 8), px = S / N;
+      const ox = Math.round((x0 + x1) / 2 - N / 2), oy = Math.round((y0 + y1) / 2 - N / 2);
+      const X = (x) => (x - ox) * px, Y = (y) => (y - oy) * px, F = (k, min) => Math.max(min, Math.round(px * k)) + 'px ' + FONT;
+      this.mapView = { ox, oy, N, px };   // 測試看得到這張圖畫了多大的範圍
+      // 底：走過的地形畫在一張快取的畫布上，範圍、看過的格數、地上的字一變才重畫
+      const key = ox + ',' + oy + ',' + N + ',' + S + ',' + w.explored.size + ',' + w.ver;   // 同一塊裡多看見幾格不會改 key，所以另外每兩秒重畫一次
+      if (!this.mapBase || this.mapBase.width !== S) { this.mapBase = document.createElement('canvas'); this.mapBase.width = this.mapBase.height = S; this.mapKey = ''; }
+      if (this.mapKey !== key || (this.mapAt || 0) + 2000 < performance.now()) {
+        this.mapKey = key; this.mapAt = performance.now();
+        const b = this.mapBase.getContext('2d'), step = px >= 1 ? 1 : px >= 0.5 ? 2 : px >= 0.25 ? 4 : 8;
+        b.fillStyle = '#efe5cf'; b.fillRect(0, 0, S, S); b.globalAlpha = 0.9;
+        for (const [k, bits] of w.explored) {
+          const [cx, cy] = U.unkey(k), bx = cx * CHK, by = cy * CHK;
+          if (bx + CHK < ox || by + CHK < oy || bx > ox + N || by > oy + N) continue;
+          for (let j = 0; j < CHK; j += step) for (let i = 0; i < CHK; i += step) {
+            const ii = Math.min(CHK - 1, i + (step >> 1)), jj = Math.min(CHK - 1, j + (step >> 1)), n = jj * CHK + ii;
+            if (!(bits[n >> 3] & (1 << (n & 7)))) continue;
+            b.fillStyle = MINI[w.get(bx + ii, by + jj)] || '#999';
+            b.fillRect(X(bx + i), Y(by + j), step * px + 0.4, step * px + 0.4);
+          }
+        }
+        b.globalAlpha = 1;
       }
-      m.globalAlpha = 1;
+      m.drawImage(this.mapBase, 0, 0);
       m.fillStyle = 'rgba(200,198,192,0.85)';
-      for (const f of w.fogs.values()) for (const k of f.cells) { const [x, y] = U.unkey(k); if (w.isSeen(x, y)) m.fillRect((x + R) * px, (y + R) * px, px + 0.4, px + 0.4); }
+      for (const f of w.fogs.values()) for (const k of f.cells) { const [x, y] = U.unkey(k); if (w.isSeen(x, y)) m.fillRect(X(x), Y(y), px + 0.4, px + 0.4); }
+      m.textAlign = 'center'; m.textBaseline = 'middle';
+      // 外島：登上過的寫島名（v0.38）
+      for (const id in (p.isles || {})) { const [ci, cj] = U.unkey(id), isl = G.isleAt(ci, cj, w.seed); if (!isl) continue; m.font = F(5, 12); m.fillStyle = 'rgba(28,26,23,0.8)'; m.fillText(L(isl.name), X(isl.cx), Y(isl.cy - isl.R * 0.85)); }
       // 碑
-      m.font = Math.round(px * 2.6) + 'px ' + FONT; m.textAlign = 'center'; m.textBaseline = 'middle'; m.fillStyle = '#1c1a17';
-      for (const s of w.steles.values()) if (w.isSeen(s.x, s.y)) m.fillText('碑', (s.x + R + 0.5) * px, (s.y + R + 0.5) * px);
+      m.font = F(2.6, 9); m.fillStyle = '#1c1a17';
+      for (const s of w.steles.values()) if (w.isSeen(s.x, s.y)) m.fillText('碑', X(s.x + 0.5), Y(s.y + 0.5));
       // 地標：大字 + 朱印名
+      const k2 = Math.max(1, 3 / Math.max(px, 0.01));   // 拉遠時地標別縮到看不見
       for (const pl of w.places) {
         if (!pl.seen) continue;
-        const cx = (pl.x + pl.w / 2 + R) * px, cy = (pl.y + pl.h / 2 + R) * px;
-        m.font = Math.round(px * 4.2) + 'px ' + FONT; m.fillStyle = pl.ch ? (DB[pl.ch].ink) : '#5a3e2b';
+        const cx = X(pl.x + pl.w / 2), cy = Y(pl.y + pl.h / 2), u = Math.max(px, 0.75);
+        m.font = F(4.2, 11); m.fillStyle = pl.ch ? (DB[pl.ch].ink) : '#5a3e2b';
         m.fillText(L(pl.ch || '村'), cx, cy);
+        if (k2 > 3.5) continue;   // 拉得很遠時只寫地標字，不蓋印
         const read = p.places && p.places[pl.id] === 2;
-        m.fillStyle = read ? '#b4392a' : 'rgba(180,57,42,0.45)'; m.fillRect(cx + px * 2.4, cy - px * 2.2, px * 3.2, px * 3.2);
-        m.fillStyle = '#f7efe0'; m.font = Math.round(px * 2.4) + 'px ' + FONT; m.fillText(L(pl.name), cx + px * 4.0, cy - px * 0.5);
+        m.fillStyle = read ? '#b4392a' : 'rgba(180,57,42,0.45)'; m.fillRect(cx + u * 2.4, cy - u * 2.2, u * 3.2, u * 3.2);
+        m.fillStyle = '#f7efe0'; m.font = F(2.4, 8); m.fillText(L(pl.name), cx + u * 4.0, cy - u * 0.5);
       }
       // 家、人
-      if (p.home) { m.fillStyle = '#9a6b45'; m.beginPath(); m.arc((p.home.x + R + 0.5) * px, (p.home.y + R + 0.5) * px, px * 1.2, 0, 7); m.fill(); }
-      m.font = Math.round(px * 4) + 'px ' + FONT; m.fillStyle = '#1c1a17'; m.fillText('人', (p.x + R + 0.5) * px, (p.y + R + 0.5) * px);
-      m.fillStyle = '#b4392a'; m.beginPath(); m.arc((p.x + R + 1.3) * px, (p.y + R + 1.3) * px, px * 0.6, 0, 7); m.fill();
-      // 北
-      m.font = Math.round(px * 3.5) + 'px ' + FONT; m.fillStyle = '#4a4238'; m.fillText('北', S - px * 5, px * 5);
-      m.strokeStyle = '#4a4238'; m.lineWidth = 1.5; m.beginPath(); m.moveTo(S - px * 5, px * 8); m.lineTo(S - px * 5, px * 14); m.stroke();
+      if (p.home) { m.fillStyle = '#9a6b45'; m.beginPath(); m.arc(X(p.home.x + 0.5), Y(p.home.y + 0.5), Math.max(2.5, px * 1.2), 0, 7); m.fill(); }
+      m.font = F(4, 13); m.fillStyle = '#1c1a17'; m.fillText('人', X(p.x + 0.5), Y(p.y + 0.5));
+      m.fillStyle = '#b4392a'; m.beginPath(); m.arc(X(p.x + 0.5) + Math.max(4, px * 0.8), Y(p.y + 0.5) + Math.max(4, px * 0.8), Math.max(2, px * 0.6), 0, 7); m.fill();
+      // 北、比例
+      m.font = F(3.5, 14); m.fillStyle = '#4a4238'; m.fillText('北', S - 22, 20);
+      m.strokeStyle = '#4a4238'; m.lineWidth = 1.5; m.beginPath(); m.moveTo(S - 22, 32); m.lineTo(S - 22, 52); m.stroke();
+      const bar = [10, 25, 50, 100, 250, 500].find(v => v * px >= 50) || 500;
+      m.beginPath(); m.moveTo(14, S - 16); m.lineTo(14 + bar * px, S - 16); m.stroke(); m.font = '12px ' + FONT; m.textAlign = 'left'; m.fillText(bar + ' 格', 14, S - 28);
     }
   }
 

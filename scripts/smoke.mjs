@@ -50,7 +50,7 @@ const result = await page.evaluate(async () => {
   g.warnEnabled = false; w.fogStep = 1e9;   // 數值提醒的彈窗與霧障的挪動也先關掉，各自的測試再開
   g.ents.snuffP = 0; g.ents.dashT = 1e9;   // 魄吹燈與撲燈也是真隨機、真時間：專門的測試自己開
   // ============ A. 島與採集 ============
-  ok('the island is twice the old area: radius 85, sea edge 113, deep water beyond', G.ISLAND_R === 85 && G.SEA_EDGE === 113 && w.get(0, G.ISLAND_R + 20) === '淼' && w.get(-(G.ISLAND_R + 25), 0) === '淼');
+  ok('v0.38: the old island keeps radius 85; the paper is 2500×2500 and the sea around the home island is deep', G.ISLAND_R === 85 && G.WORLD_R === 1250 && w.get(0, 160) === '淼' && w.get(-170, 0) === '淼' && w.get(0, 1300) === '淼');
   ok('eight landmarks placed', w.places.length === 8, w.places.map(x => x.name).join(''));
   ok('five steles', w.steles.size === 5);
   const sp0 = [p.x, p.y]; await press('KeyD', 600); await sleep(300);
@@ -775,7 +775,9 @@ const result = await page.evaluate(async () => {
   const deep = w.get(p.x + 1, p.y); w.set(p.x + 1, p.y, '淼');
   ok('sailing passes deep water', g.pass(p.x + 1, p.y)); w.set(p.x + 1, p.y, deep);
   p.x = p.rx = 0; p.y = p.ry = G.SEA_EDGE + 1; await sleep(200);
-  ok('reaching the sea edge triggers the voyage ending', p.crossed && !hidden('voyage'));
+  ok('v0.38: the old sea edge (113) is open water now, not the end of the paper', !p.crossed && hidden('voyage'), [p.crossed]);
+  p.x = p.rx = 0; p.y = p.ry = G.WORLD_R; await sleep(200);
+  ok('reaching the edge of the 2500×2500 paper triggers the voyage ending', p.crossed && !hidden('voyage'));
   document.getElementById('voyage-back').click(); await sleep(50);
   ok('can turn back', g.paused === false && hidden('voyage'));
   let coastY = G.SEA_EDGE; while (coastY > 0 && G.DB[w.base(0, coastY)].kind === 'water') coastY--;   // 沿 +y 找到海岸，在岸外八格死
@@ -1518,8 +1520,8 @@ const result = await page.evaluate(async () => {
     ok('v0.32: meeting a small house the fog turns aside, wraps round it with the same area, and never enters', (fh.turned || 0) >= 1 && Math.abs(Math.cos(fh.ang)) < 0.9 && wrapped && inside === 0, [fh.turned, fh.ang, wrapped, inside]);
     w.removeFog(fh.id); clear(10, w.base(fx, fy));
     for (let dy = -10; dy <= 10; dy++) for (let dx = -10; dx <= 10; dx++) w.set(fx + dx, fy + dy, w.base(fx + dx, fy + dy));
-    const fe = w.addFog(null, w.time + DAY, false, window.World.newFogShape(18), [0.5, G.SEA_EDGE - 3.5]); fe.ang = Math.PI / 2; w.placeFog(fe, fe.x, fe.y, fe.age);
-    ok('v0.32: at the edge of the sea a fog turns back toward the island instead of drifting off the paper', Math.sin(fe.ang) < 0, fe.ang);
+    const fe = w.addFog(null, w.time + DAY, false, window.World.newFogShape(18), [0.5, G.WORLD_R - 3.5]); fe.ang = Math.PI / 2; w.placeFog(fe, fe.x, fe.y, fe.age);
+    ok('v0.32/v0.38: at the edge of the paper a fog turns back toward the island instead of drifting off', Math.sin(fe.ang) < 0, fe.ang);
     w.removeFog(fe.id); }
   { const gx = p.x + 3, gy = p.y + 3, keepT = []; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 4; dx++) { keepT.push([gx + dx, gy + dy, w.get(gx + dx, gy + dy)]); w.set(gx + dx, gy + dy, '草'); }
     w.set(gx, gy, '燈'); setDay(0.9); const hat0 = p.worn['帽']; p.worn['帽'] = { n: '燈帽', c: 1, fuel: 100 }; g.ents.list = g.ents.list.filter(e => e.type !== '魄');
@@ -1615,6 +1617,73 @@ const result = await page.evaluate(async () => {
     const r0 = U.trueRand, cb = w.onWeather, ra = w.rainUntil, rn = w.nextRainAt; w.onWeather = null; U.trueRand = () => 0; w.rainUntil = 0; w.nextRainAt = w.time; w.step(p.x, p.y); const rainLen = w.rainUntil - w.time;
     U.trueRand = r0; w.onWeather = cb; w.rainUntil = ra; w.nextRainAt = rn;
     ok('v0.37: things counted in days follow the longer day (the shortest rain is a quarter of 360 = 90 s)', Math.abs(rainLen - 90) <= 0.5, rainLen); }
+  // ============ v0.38：本島往外擴四成五（原本的地一格不動）、2500×2500 的紙與外島、新地形 ============
+  { const sd = w.seed, home0 = { x: p.x, y: p.y }, il = G.islet(sd);
+    let same = true, oldLand = 0, newLand = 0, inner = true, isletSame = true;
+    for (let y = -125; y <= 125; y++) for (let x = -125; x <= 125; x++) {
+      const a = G.oldTile(x, y, sd), b = G.baseTile(x, y, sd), la = G.DB[a].kind !== 'water';
+      if (la) { oldLand++; if (a !== b) same = false; }
+      if (G.DB[b].kind !== 'water') newLand++;
+      if (!la && Math.hypot(x, y) < 0.55 * 85 && a !== b) inner = false;
+      if (Math.hypot(x - il.cx, y - il.cy) <= 14 && a !== b) isletSame = false;
+    }
+    ok('v0.38: every tile of the old island stays exactly as it was (old saves keep their land)', same, oldLand);
+    ok('v0.38: the island grows outward (seed 7: ' + oldLand + ' → ' + newLand + ' land tiles)', newLand / oldLand > 1.2 && newLand / oldLand < 1.9, newLand / oldLand);
+    ok('v0.38: ponds deep inside the island and the lighthouse islet with its causeway are untouched', inner && isletSame);
+    const pls = w.places.map(q => q.id + '@' + q.x + ',' + q.y).join(' ');
+    ok('v0.38: landmarks, steles and the spawn sit exactly where they were before', pls === 'ta@-12,14 si@-31,-17 cun@-26,-21 chuan@-53,-27 quan@18,23 mu@-29,-2 dong@20,33 deng@-93,-27' && [...w.steles.keys()].join(' ') === '21,0 -7,35 -43,20 -33,-49 47,-12' && g.spawn.x === 3 && g.spawn.y === -1, [pls, g.spawn]);
+    const all = G.isles(sd), kinds = {}; for (const i of all) kinds[i.kind] = (kinds[i.kind] || 0) + 1;
+    ok('v0.38: about seventy outer islands of five kinds dot the 2500×2500 sea, none near home', all.length >= 50 && all.length <= 95 && Object.keys(kinds).length === 5 && all.every(i => G.isleOf(i.cx, i.cy, sd) === i && Math.hypot(i.cx, i.cy) >= 330), [all.length, kinds]);
+    const sig = { '漠': '漠丘池棗', '火': '熔岩曜', '川': '川湖', '雪': '窟湯', '青': '草木' }, found = {};
+    for (const k in sig) { const i = all.filter(q => q.kind === k).sort((a, b) => b.R - a.R)[0]; const got = new Set(); for (let y = Math.floor(i.cy - i.R); y <= i.cy + i.R; y++) for (let x = Math.floor(i.cx - i.R); x <= i.cx + i.R; x++) got.add(G.baseTile(x, y, sd)); found[k] = [...sig[k]].filter(c => got.has(c)).join(''); }
+    ok('v0.38: each kind of island has its own terrain (漠丘池棗 / 熔岩曜 / 川湖 / 窟 / 草木)', found['漠'].length >= 3 && found['火'] === '熔岩曜' && found['川'] === '川湖' && found['雪'].indexOf('窟') >= 0 && found['青'] === '草木', found);
+    // 登上一座外島
+    const ri = all.filter(q => q.kind === '火').sort((a, b) => b.R - a.R)[0]; let spot = null;
+    for (let r = 0; r < ri.R && !spot; r++) for (let a = 0; a < 360 && !spot; a += 10) { const x = Math.round(ri.cx + Math.cos(a * Math.PI / 180) * r), y = Math.round(ri.cy + Math.sin(a * Math.PI / 180) * r), d = G.DB[w.get(x, y)]; if (d.walk > 0 && d.kind !== 'water' && !w.nearChar(x, y, '熔', 2)) spot = [x, y]; }
+    const c0 = p.cour, n0 = Object.keys(p.isles || {}).length;
+    p.x = p.rx = spot[0]; p.y = p.ry = spot[1]; p.sailing = false; p.swimming = false; g.updateStats(0.01);
+    ok('v0.38: stepping onto an outer island for the first time names it and gives courage', (p.isles || {})[ri.id] === 1 && Object.keys(p.isles).length === n0 + 1 && p.cour > c0 && toasts().indexOf('登上火島') >= 0, [p.cour - c0, spot]);
+    g.hudSig = ''; g.updateHUD(); ok('v0.38: the status bar says which island you are on', document.getElementById('status').textContent.indexOf('火島 · ') >= 0, document.getElementById('status').textContent.slice(0, 80));
+    w.markSeen(p.x, p.y, 9); const tb = performance.now(); g.renderer.drawBigMap(g, document.getElementById('bigmap')); const mapMs = performance.now() - tb, mv = g.renderer.mapView;
+    ok('v0.38: the big map widens to take in the far island and the home island, and draws quickly', mv.N > 400 && mv.ox <= -G.HOME_R && mv.ox + mv.N >= p.x && mapMs < 400, [mv, Math.round(mapMs)]);
+    p.cour = c0; delete p.isles[ri.id]; p.x = p.rx = home0.x; p.y = p.ry = home0.y; g.renderer.drawBigMap(g, document.getElementById('bigmap'));
+    w.revealAll(0, 0); ok('v0.38: from the tower you see the whole grown island', w.isSeen(G.HOME_R - 3, 0) && w.isSeen(0, -(G.HOME_R - 3)));
+    // 新地形：在家附近鋪一小塊試
+    const X = home0.x + 34, Y = home0.y + 4, patch = (ch) => { for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) w.set(X + dx, Y + dy, ch); };
+    patch('草'); p.x = p.rx = X; p.y = p.ry = Y; p.sailing = false; p.swimming = false; calm(); p.caveK = 0; p.heatT = 0; p.poisonT = 0;
+    w.set(X, Y, '漠'); setDay(0.5); p.sta = 50; g.updateStats(1); const staD = 50 - p.sta;
+    ok('v0.38: in the desert by day stamina drains (−0.4 a second) instead of recovering', Math.abs(staD - 0.4) < 0.02, staD);
+    setDay(0.9); const fw = (g.wornWarm() ? 0.5 : 1) * (g.torchLit() ? 0.4 : 1); p.warm = 60; g.updateStats(1); const wD = 60 - p.warm;
+    w.set(X, Y, '草'); p.warm = 60; g.updateStats(1); const wG = 60 - p.warm;
+    ok('v0.38: and at night the desert is colder than grass (warmth −0.8 a second more)', Math.abs((wD - wG) - 0.8 * fw) < 0.02, [wD, wG, fw]);
+    setDay(0.5); calm(); w.set(X + 1, Y, '熔'); p.hp = 80; p.hurtT = 0; p.warm = 50; g.updateStats(1);
+    ok('v0.38: right next to lava you get burned (−1.5 a second) but it keeps you warm', Math.abs(p.hp - 78.5) < 0.02 && p.warm > 53, [p.hp, p.warm]);
+    w.set(X + 1, Y, '草'); w.set(X, Y, '湯'); p.hp = 50; p.san = 50; p.warm = 50; p.hurtT = 0; g.updateStats(1);
+    ok('v0.38: soaking in a hot spring warms you and restores life and calm', p.hp > 50.9 && p.san > 50.15 && p.warm > 53, [p.hp, p.san, p.warm]);
+    w.set(X, Y, '窟'); for (let i = 0; i < 6; i++) g.updateStats(0.5); const cd = g.viewDark(), dd0 = g.darkness();
+    w.set(X, Y, '草'); for (let i = 0; i < 6; i++) g.updateStats(0.5);
+    ok('v0.38: in a cave it is dark even at noon and light again outside (ghosts and beasts still go by the sun)', dd0 < 0.05 && cd > 0.8 && g.viewDark() < 0.1, [dd0, cd, g.viewDark()]);
+    face(1, 0); w.set(X + 1, Y, '川'); g.addItem('玻璃瓶', 1); hold('玻璃瓶'); const fw0 = g.count('淡水瓶'), sw0 = g.count('海水瓶'); g.action = null; g.pressGather();
+    ok('v0.38: a bottle dipped in a river comes up with fresh water, not sea water', g.count('淡水瓶') === fw0 + 1 && g.count('海水瓶') === sw0, g.msgText);
+    g.addItem('竹筏', 1); ok('v0.38: a raft floats on rivers and lakes too', g.pass(X + 1, Y)); g.removeItem('竹筏', 1);
+    w.set(X + 1, Y, '曜'); g.finishGather({ x: X + 1, y: Y, ch: '曜', t: 0, dur: 0 });
+    ok('v0.38: an obsidian vein gives 黑曜石 and leaves 岩', g.count('黑曜石') === 1 && w.get(X + 1, Y) === '岩');
+    g.addItem('黑曜石', 1); g.addItem('木', 1); g.addItem('麻', 1); p.sta = 100; g.craft('obsidian'); const ob = p.tools.find(t => t.n === '曜刃');
+    ok('v0.38: two 黑曜石, a 木 and a 麻 make an 曜刃 that hits for 60', !!ob && G.ITEMS['曜刃'].dmg === 60 && G.ITEMS['曜刃'].tool === '刀' && g.count('黑曜石') === 0, ob);
+    if (ob) { p.tool = p.tools.indexOf(ob); ob.dur = 3; g.addItem('石子', 2); const st0 = g.count('石子'); g.craft('regrind'); ok('v0.38: an 曜刃 cannot be reground — it is brittle', ob.dur === 3 && g.count('石子') === st0 && g.msgText.indexOf('磨不回來') >= 0, g.msgText); p.tools.splice(p.tools.indexOf(ob), 1); p.tool = -1; g.removeItem('石子', 2); }
+    g.addItem('棗', 1); hold('棗'); p.food = 50; g.useItem(); ok('v0.38: a date is food (+15) and never ferments', Math.abs(p.food - 65) < 0.01 && !G.ITEMS['棗'].ferment, p.food);
+    w.set(X + 2, Y, '窟'); const spi = g.ents.habitat('蛛', X + 2, Y, false); w.set(X + 2, Y, '丘'); const sna = g.ents.habitat('蛇', X + 2, Y, false); w.set(X + 2, Y, '漠'); const wol = g.ents.habitat('狼', X + 2, Y, true);
+    ok('v0.38: spiders live in caves, snakes in dunes, and wolves roam the desert at night', spi && sna && wol, [spi, sna, wol]);
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) w.set(X + dx, Y + dy, w.base(X + dx, Y + dy));
+    g.removeItem('淡水瓶', 9); g.removeItem('玻璃瓶', 9); g.removeItem('黑曜石', 9); g.removeItem('木', 1); g.removeItem('麻', 1); p.x = p.rx = home0.x; p.y = p.ry = home0.y; calm(); p.food = 100; p.warm = 100;
+    // 舊存檔：船停在長出來的新陸地上 → 挪到最近的海
+    let ext = null; for (let r = 60; r < 125 && !ext; r++) for (let a = 0; a < 360 && !ext; a += 3) { const x = Math.round(Math.cos(a * Math.PI / 180) * r), y = Math.round(Math.sin(a * Math.PI / 180) * r); if (G.DB[G.oldTile(x, y, sd)].kind === 'water' && G.DB[G.oldTile(x, y + 1, sd)].kind === 'water' && G.DB[G.baseTile(x, y, sd)].kind !== 'water' && G.DB[G.baseTile(x, y + 1, sd)].kind !== 'water') ext = [x, y]; }
+    const sv = JSON.parse(JSON.stringify(w.serialize())); sv.ships = { [ext[0] + ',' + ext[1]]: { kind: '孤帆', hp: 100, skulls: [], repairs: 0, cells: [[ext[0], ext[1]], [ext[0], ext[1] + 1]] } }; sv.diff[ext[0] + ',' + ext[1]] = '舟'; sv.diff[ext[0] + ',' + (ext[1] + 1)] = '舟';
+    const w6 = new window.World(sd); w6.restore(sv, g.day()); const sh = [...w6.ships.values()][0];
+    ok('v0.38: a ship an old save left where new land grew is moved to the nearest sea, the land under it restored', w6.movedShips === 1 && !!sh && sh.cells.every(([x, y]) => G.DB[w6.base(x, y)].kind === 'water') && w6.get(ext[0], ext[1]) === G.baseTile(ext[0], ext[1], sd), [w6.movedShips, sh && sh.cells, ext]);
+    g.save(); const svo = JSON.parse(localStorage.getItem('xieyi.save.v5')); delete svo.player.isleNews; g.load(svo);
+    ok('v0.38: loading a save from before the expansion tells you the island grew and the sea filled with islands', toasts().indexOf('島長大了') >= 0 && p.isleNews === true);
+  }
   // ============ v0.37：鑿掉的鐵礦七到十日後在原地長回來（那時是石、草、白紙才行） ============
   { const X = p.x + 22, Y = p.y + 22, K = (x, y) => x + ',' + y, c0 = p.cour, r0 = U.trueRand;
     for (let i = 0; i < 4; i++) w.set(X + i, Y, '鐵');

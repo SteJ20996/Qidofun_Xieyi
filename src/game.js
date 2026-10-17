@@ -35,6 +35,8 @@
   const TURTLE_SAN = 30;                      // 殺龜不祥：愜意掉三十
   // 雪域（v0.18）：離雪 SNOW_R 格內待超過 SNOW_GRACE 息，暖開始多掉，越待掉越快（起步每息 SNOW_RATE，每多待一息再加 SNOW_RAMP，封頂 SNOW_MAX）；
   // 烤的東西下肚有熱氣：HEAT_PER_MEAL 息內凍不傷命，累積到 HEAT_CAP 為止
+  // v0.38 外島的地形：漠白天力不回反掉、夜裡更冷；熔岩一格內燙傷；溫泉泡著回命回愜意；洞窟白天也黑；第一次登上一座外島長膽氣
+  const DESERT_STA = 0.4, DESERT_COLD = 0.8, LAVA_BURN = 1.5, SPRING_HP = 1, SPRING_SAN = 0.3, CAVE_DARK = 0.88, ISLE_COUR = 10;
   const SNOW_R = 5, SNOW_GRACE = 5, SNOW_RATE = 1, SNOW_RAMP = 0.1, SNOW_MAX = 4, HEAT_PER_MEAL = 90, HEAT_CAP = 150;
   // 魄（v0.20）：手裡的光被吹熄後 SNUFF_TIME 息才點得著；魄兩格內燈帽的蠟燭燒 HAT_GHOST_BURN 倍；
   // 屋裡（covered）沒燈、ROOM_DREAD_R 格內有魄，愜意每息掉 ROOM_DREAD；第 GHOST_FAST_NIGHT 夜起每四夜魄快一成，最多快 GHOST_FAST_MAX 倍
@@ -93,7 +95,7 @@
       this.mapAcc = 0;
       this.player = { x: 0, y: 0, rx: 0, ry: 0, fx: 0, fy: 1, fromX: 0, fromY: 0, moveT: 0, stepDur: 0.2,
         hp: 100, hpMax: 100, food: 100, warm: 100, sta: 100, staMax: 100, san: 100, cour: 0, pillsMade: 0, pillsEaten: 0,
-        hurtT: 0, atkT: 0, bag: [], sel: 0, tools: [], tool: -1, worn: { '襯': null, '褲': null, '甲': null, '盔': null, '靴': null, '帽': null }, hitWin: { start: -99, n: 0 }, totemOff: false, craftLog: {}, pouches: 0, noGhostUntil: 0, inFog: 0, ship: null, swimming: false, swimT: 0, home: null, readSteles: [], places: {}, creatures: [], raftTaken: false, dragon: false, finished: false,
+        hurtT: 0, atkT: 0, bag: [], sel: 0, tools: [], tool: -1, worn: { '襯': null, '褲': null, '甲': null, '盔': null, '靴': null, '帽': null }, hitWin: { start: -99, n: 0 }, totemOff: false, craftLog: {}, pouches: 0, noGhostUntil: 0, inFog: 0, ship: null, swimming: false, swimT: 0, home: null, readSteles: [], isles: {}, isleNews: true, places: {}, creatures: [], raftTaken: false, dragon: false, finished: false,
         deaths: 0, dead: false, warned: {}, warnLow: {}, burn: {}, lastDay: 1,
         poisonT: 0, poisonPer: 0, heatT: 0, snowT: 0, snuffT: 0, biteN: 0, biteLast: -99, zeroSan: 0, insane: false, ctrl: true, ctrlT: 0, knock: 0, sailing: false, crossed: false, decayAt: 0 };
       this.stats = { gathered: 0, crafted: 0, kills: 0, read: 0, nights: 0, bites: 0 };
@@ -128,6 +130,7 @@
     daylight() { const t = this.dayT(); return U.smoothstep(DAWN - TWILIGHT, DAWN + TWILIGHT, t) * (1 - U.smoothstep(DUSK - TWILIGHT, DUSK + TWILIGHT, t)); }
     duskSoon() { const t = this.dayT(); return t > DUSK - 0.12 && t < DUSK; }   // 黃昏：鳥歸巢、鹿往泉走
     darkness() { return 1 - this.daylight(); }
+    viewDark() { return Math.max(this.darkness(), (this.player.caveK || 0) * CAVE_DARK); }   // 看得見多少：洞窟裡白天也黑（v0.38）；魄、獸的晝夜照 darkness()
     isNight() { const t = this.dayT(); return t >= DUSK || t < DAWN; }   // 凌晨與晚上：與 daylight() 過半的界線一致
     ghostNight() { return this.darkness() > 0.5 && this.nightNo() >= this.diff.ghost && this.world.time >= (this.player.noGhostUntil || 0); }
     peaceDays() { const left = (this.player.noGhostUntil || 0) - this.world.time; return left > 0 ? Math.ceil(left / DAY - 1e-6) : 0; }
@@ -292,8 +295,8 @@
     hatLight() { const h = this.hat(); return h && h.fuel > 0 ? ITEMS['燈帽'].light : 0; }
     lightRadius() { return Math.max(this.heldLight(), this.hatLight()); }
     hasLight() { return this.lightRadius() > 0; }
-    torchLit() { return this.darkness() > 0.5 && this.hasLight(); }
-    playerLight() { return 4.5 - 1.5 * this.darkness() + this.lightRadius(); }
+    torchLit() { return this.viewDark() > 0.5 && this.hasLight(); }
+    playerLight() { return 4.5 - 1.5 * this.viewDark() + this.lightRadius(); }
     canAct() { const p = this.player; return !p.dead && p.knock <= 0 && p.ctrl; }
     vignette() {
       const p = this.player;
@@ -362,8 +365,10 @@
     content() { const p = this.player; return p.food >= CONTENT_AT && p.warm >= CONTENT_AT && p.sta >= p.staMax * CONTENT_AT / 100; }   // 飽暖力都九成以上
     snowDrain() { const p = this.player; return p.snowT > SNOW_GRACE ? Math.min(SNOW_MAX, SNOW_RATE + SNOW_RAMP * (p.snowT - SNOW_GRACE)) : 0; }   // 雪域每息多掉的暖：第六息 1.1、第二十息 2.5、三十五息起封頂 4
     updateStats(dt) {
-      const p = this.player, w = this.world, dark = this.darkness(), m = this.mult();
+      const p = this.player, w = this.world, m = this.mult();
       const tile = w.get(p.x, p.y), td = DB[tile];
+      p.caveK = U.clamp((p.caveK || 0) + ((td.cave ? 1 : 0) - (p.caveK || 0)) * Math.min(1, dt * 1.5), 0, 1);   // 進出洞窟，眼前一兩息內暗下來、亮回去
+      const dark = this.viewDark(), desert = td.desert && !p.sailing;
       const drain = this.ironDrain();
       p.food = Math.max(0, p.food - dt * 0.14 * drain * this.diff.hunger);   // 簡單餓得慢兩成（v0.37）
       const nearSnow = w.nearChar(p.x, p.y, '雪', SNOW_R);   // 雪域：五格內待久了越來越冷
@@ -375,12 +380,21 @@
       else {
         dw = dark > 0.5 ? -0.7 : 1.5;
         if (tile === '雪') dw -= 1.2;
+        if (desert && dark > 0.5) { dw -= DESERT_COLD; if (!p.warned.desertNight) { p.warned.desertNight = true; this.toast('大漠夜寒', '太陽一落，沙漠冷得刺骨，暖每息再 −' + DESERT_COLD + '。生個火、穿上內襯。'); } }
         if (p.snowT > SNOW_GRACE) { dw -= this.snowDrain(); if (!p.warned.snow) { p.warned.snow = true; this.toast('寒氣逼人', '離雪域太近，暖越掉越快。離遠些、生個火；或吃口烤的，熱氣九十息內凍不傷命。'); } }
         if (td.kind === 'water') dw -= 1.0;
         if (dw < 0) { if (this.wornWarm()) dw *= 0.5; if (this.torchLit()) dw *= 0.4; }
       }
       p.warm = U.clamp(p.warm + dw * dt, 0, 100);
       if (w.nearChar(p.x, p.y, '泉', 1)) { p.hp = Math.min(p.hpMax, p.hp + 2 * dt); p.warm = Math.min(100, p.warm + 1.5 * dt); }
+      if (tile === '湯') {           // 泡溫泉：暖（旁邊兩格就暖，見 heatNear）、命、愜意都回
+        p.hp = Math.min(p.hpMax, p.hp + SPRING_HP * dt); p.san = Math.min(100, p.san + this.sanUp(SPRING_SAN * dt));
+        if (!p.warned.spring) { p.warned.spring = true; this.toast('泡溫泉', '暖烘烘的：命每息 +' + SPRING_HP + '、愜意 +' + SPRING_SAN + '，旁邊兩格也暖。'); }
+      }
+      if (!p.sailing && w.nearChar(p.x, p.y, '熔', 1)) {   // 貼著熔岩：燙傷
+        p.hp = Math.max(0, p.hp - LAVA_BURN * dt); p.hurtT = Math.max(p.hurtT, 1);
+        if (!p.warned.lava) { p.warned.lava = true; this.toast('燙！', '貼著熔岩站，命每息 −' + LAVA_BURN + '。退開一格就好；兩格內取暖倒是不錯。'); }
+      } else if (p.warned.lava && !w.nearChar(p.x, p.y, '熔', 3)) p.warned.lava = false;
       // 手裡的光會燒
       const hs = this.held(), hit = hs && ITEMS[hs.n];
       if (p.snuffT > 0) { p.snuffT = Math.max(0, p.snuffT - dt); if (!p.snuffT && hit && hit.light) this.message('手裡的「' + hs.n + '」又點著了。'); }
@@ -394,7 +408,12 @@
         if (hat.fuel <= 0) { this.toast('燈帽暗了', '蠟燭燒完了。選中蠟燭按 V 續上。'); this.barSig = ''; } }
       // 力：每兩息回一點；愜意：每十五息掉一點
       if (p.swimming) p.sta = Math.max(0, p.sta - 0.25 * SWIM_DRAIN * dt);       // 游泳：力不回，反而掉
+      else if (desert && dark <= 0.5 && !this.indoors()) {   // 大漠的白天：烈日當頭，力不回反掉
+        p.sta = Math.max(0, p.sta - DESERT_STA * dt);
+        if (!p.warned.desertDay) { p.warned.desertDay = true; this.toast('烈日當頭', '大漠的白天，力不回反掉（每息 −' + DESERT_STA + '）。找綠洲、走陰涼的岩丘，或趁夜趕路——夜裡又冷。'); }
+      }
       else p.sta = Math.min(p.staMax, p.sta + 0.5 * m * dt);
+      if (!desert) { p.warned.desertDay = false; p.warned.desertNight = false; }
       if (this.diff.god.sta && this.hasGod()) p.sta = Math.max(0, p.sta - this.diff.god.sta * dt);   // 困難：神兵壓身，力慢慢掉
       if (p.swimming) { p.swimT -= dt; if (p.swimT <= 0) { p.hp = 0; this.die('溺'); return; } }
       if (tile === '沼' && !p.sailing) {           // 陷在沼裡：力不回反掉、身子發冷；力耗光就跟累倒一樣掉命
@@ -459,8 +478,9 @@
         if (!p.decayAt) p.decayAt = w.time + this.decayDays() * DAY;
         else if (w.time >= p.decayAt) { this.decayCourage(); p.decayAt = w.time + this.decayDays() * DAY; }
       } else p.decayAt = 0;
-      // 渡海：開到海的盡頭
-      if (p.sailing && !p.crossed && Math.hypot(p.x, p.y) > G.SEA_EDGE) this.crossSea();
+      // 渡海：開出這張紙（v0.38 起 2500×2500）
+      if (p.sailing && !p.crossed && (p.x < -G.WORLD_R || p.y < -G.WORLD_R || p.x >= G.WORLD_R || p.y >= G.WORLD_R)) this.crossSea();   // v0.38：整張紙 2500×2500，開出方框才是渡海
+      if (!p.sailing && !p.swimming && td.kind !== 'water') { const isl = G.isleOf(p.x, p.y, this.seed); if (isl && !(p.isles || {})[isl.id]) this.landIsle(isl); }
       if (p.hp <= 0) this.die(p.food <= 0 ? '餓' : p.warm <= 0 ? '凍' : p.sta <= 0 ? '累' : p.poisonT > 0 ? '毒' : '傷');
     }
     die(cause) {
@@ -896,7 +916,7 @@
       const w = this.world, p = this.player, ax = ox === undefined ? p.x : ox, ay = oy === undefined ? p.y : oy;
       if (ch === '水' && w.raw(x, y) === '灘' && w.raw(ax, ay) === '灘') return true;   // 漲潮困在灘上：可涉水走到別的灘
       if (ch === '台') { const here = w.get(ax, ay); if (here !== '台' && here !== '階') return false; }   // 台要從階或台走上去（下台可以直接跳）
-      return d.walk > 0 || ch === '燈' || (ch === '水' && this.has('竹筏'));   // 燈：人跨得過（獸照 canStand 過不去，魄本來就穿磚）
+      return d.walk > 0 || ch === '燈' || ('水川湖池'.indexOf(ch) >= 0 && this.has('竹筏'));   // 竹筏：淺水與河湖池（v0.38）   // 燈：人跨得過（獸照 canStand 過不去，魄本來就穿磚）
     }
     handleMove(dt) {
       const p = this.player;
@@ -1051,6 +1071,7 @@
       const ch = w.get(t.x, t.y), d = DB[ch], hs = this.held();
       // 空瓶取水
       if (hs && hs.n === '玻璃瓶') {
+        if (d.fresh || ch === '湯') { this.removeItem('玻璃瓶', 1); this.addItem('淡水瓶', 1); this.message('取了一瓶淡水（' + G.biomeName(ch) + '的水是淡的）。'); SFX.absorb(); return; }
         if (d.kind === 'water') { this.removeItem('玻璃瓶', 1); this.addItem('海水瓶', 1); this.message('取了一瓶海水。'); SFX.absorb(); return; }
         if (ch === '泉' || ch === '井') { this.removeItem('玻璃瓶', 1); this.addItem('淡水瓶', 1); this.message('取了一瓶淡水。'); SFX.absorb(); return; }
       }
@@ -1338,7 +1359,7 @@
         const bad = cells.find(([x, y]) => w.raw(x, y) !== '水' || w.get(x, y) !== '水' || w.shipCells.has(U.key(x, y)) || w.placeAt(x, y) || w.netAt(x, y));
         if (bad) { this.message(kind + '要 ' + k.w + '×' + k.h + ' 格真的淺水才放得下，面前那格是船身的' + (kind === '方舟' ? '左邊中間' : '上頭') + '。'); fail(); return; }
         w.addShip(t.x, t.y, World.newShip(kind)); this.removeItem(name, 1);
-        this.toast(kind + '下水了', '面向它按 E 上船。命 ' + k.hp + '，船頭放得下 ' + k.slots + ' 個首骨。深水亦可渡，開到海的盡頭便渡海而去。'); SFX.write();
+        this.toast(kind + '下水了', '面向它按 E 上船。命 ' + k.hp + '，船頭放得下 ' + k.slots + ' 個首骨。深水亦可渡；海上散著七十來座外島，開出這張紙的邊（2500 格見方）便渡海而去。'); SFX.write();
         this.fx.push({ type: 'write', x: t.x, y: t.y, ch: '舟', color: DB['舟'].ink, t: 0, dur: 0.35 });
         return;
       }
@@ -1599,6 +1620,7 @@
       }
       if (r.regrind) {
         const s = this.activeTool(); if (!s) { this.message('具欄裡要選中一把工具（P 換）。'); SFX.fail(); return; }
+        if (ITEMS[s.n].brittle) { this.message('「' + s.n + '」是黑曜石磨的，鋒利但脆，磨不回來；鈍了就碎，再做一把。'); SFX.fail(); return; }
         const tung = !!ITEMS[s.n].tung, god = GODS.indexOf(s.n) >= 0, extraSta = god ? (r.sta + 5) * GOD_FIX - r.sta : tung ? 5 : 0, food = god ? 10 * GOD_FIX : tung ? 10 : 0;   // 鎢鋼具重磨耗力八、飽十；神兵兩倍（力十六、飽二十）
         if (p.sta < r.sta + extraSta) { this.message('力氣不夠，歇一歇（鎢鋼具要力 ' + (r.sta + extraSta) + '）。'); SFX.fail(); return; }
         if (food && p.food < food) { this.message(god ? '太餓了，修不動神兵。' : '太餓了，磨不動鎢鋼。'); SFX.fail(); return; }
@@ -1723,7 +1745,7 @@
       w.removeShip(U.key(ax, ay));
       p.ship = { kind: rec.kind, hp: rec.hp, skulls: this.shipSkulls(rec), repairs: rec.repairs || 0 };
       p.fromX = p.x; p.fromY = p.y; p.x = ax; p.y = ay; p.moveT = 0.2; p.stepDur = 0.2; p.sailing = true;
-      this.toast('上了' + rec.kind, this.shipText(p.ship) + '。深水亦可渡，開到海的盡頭便渡海而去；撞上岸就靠岸。海上有蜃。');
+      this.toast('上了' + rec.kind, this.shipText(p.ship) + '。深水亦可渡，海上有外島可登，開出這張紙的邊便渡海而去；撞上岸就靠岸。海上有蜃。');
     }
     crossSea() {
       const p = this.player; p.crossed = true; this.paused = true;
@@ -1733,6 +1755,13 @@
     }
 
     // ---------- 探索 ----------
+    landIsle(isl) {      // 第一次登上一座外島（v0.38）：記下來、長膽氣、告訴玩家這是哪種島
+      const p = this.player; p.isles = p.isles || {}; p.isles[isl.id] = 1;
+      const n = Object.keys(p.isles).length, gain = this.addCourage(ISLE_COUR, 'isle');
+      const what = { '漠': '大漠黃沙：白天力不回、夜裡冷；綠洲有池水椰棗。', '火': '火山：熔岩燙人、兩格內暖；岩裡有黑曜石。', '川': '河湖縱橫，水是淡的，林木茂密。', '雪': '冰雪寒地：山腹有洞窟（要帶光），山腳有溫泉。', '青': '尋常的山林田野。' }[isl.kind];
+      this.toast('登上' + isl.name + '（第 ' + n + ' 座）', what + (gain > 0 ? ' 膽氣 +' + fmt(this.shown('isle', gain)) + '。' : ''), 7000); SFX.learn();
+    }
+    placeName() { const p = this.player, isl = G.isleOf(p.x, p.y, this.seed); return (isl ? isl.name + ' · ' : '') + G.biomeName(this.world.get(p.x, p.y)); }
     discover(pl) {
       const p = this.player;
       if (p.places[pl.id]) return;
@@ -2040,7 +2069,7 @@
         for (const [k, , v] of this.vitalFracs()) { const el = $(k + 'fill').parentNode; el.classList.toggle('warn', v < WARN_LIGHT); el.classList.toggle('low', v < WARN_POP); }   // 不到五成亮燈，不到四分之一轉紅
         $('hplabel').innerHTML = '命<br>' + Math.round(p.hp) + (p.hpMax > 100 ? '<small>／' + Math.round(p.hpMax) + '</small>' : ''); $('foodlabel').innerHTML = '飽<br>' + Math.round(p.food); $('warmlabel').innerHTML = '暖<br>' + Math.round(p.warm) + (p.heatT > 0 ? '<small>熱 ' + Math.ceil(p.heatT) + '</small>' : ''); $('stalabel').innerHTML = '力<br>' + Math.round(p.sta); $('sanlabel').innerHTML = '愜<br>' + Math.round(p.san);
         const nn = this.nightNo();
-        $('status').innerHTML = '<b>第 ' + this.day() + ' 日</b> &nbsp;' + this.shichen() + ' ' + (this.daylight() > 0.5 ? '日' : '月') + (w.raining() ? '雨' : '') + (this.isNight() ? '<span class="dim">（第 ' + nn + ' 夜' + (nn >= this.diff.ghost ? '，魄夜' : '') + '）</span>' : '') + ' &nbsp;·&nbsp; ' + w.tideName() + ' &nbsp;·&nbsp; ' + (p.sailing ? '船上 · ' + (p.ship ? p.ship.kind + ' ' + Math.round(p.ship.hp) + '/' + this.shipMax(p.ship) : '') + (this.shipWarded() ? ' · 船頭' + this.shipSkullName() + ' ' + this.wardDays() + ' 日' : '') : p.swimming ? '<b style="color:#b4392a">落水 · 還有 ' + Math.ceil(p.swimT) + ' 息</b>' : G.biomeName(w.get(p.x, p.y))) + (this.peaceDays() ? ' &nbsp;·&nbsp; <span class="dim">龜卜 · ' + this.peaceDays() + ' 日無魄</span>' : '') + ' &nbsp;·&nbsp; <span class="dim">(' + p.x + ', ' + p.y + ') · ' + this.diff.name + '</span>';
+        $('status').innerHTML = '<b>第 ' + this.day() + ' 日</b> &nbsp;' + this.shichen() + ' ' + (this.daylight() > 0.5 ? '日' : '月') + (w.raining() ? '雨' : '') + (this.isNight() ? '<span class="dim">（第 ' + nn + ' 夜' + (nn >= this.diff.ghost ? '，魄夜' : '') + '）</span>' : '') + ' &nbsp;·&nbsp; ' + w.tideName() + ' &nbsp;·&nbsp; ' + (p.sailing ? '船上 · ' + (p.ship ? p.ship.kind + ' ' + Math.round(p.ship.hp) + '/' + this.shipMax(p.ship) : '') + (this.shipWarded() ? ' · 船頭' + this.shipSkullName() + ' ' + this.wardDays() + ' 日' : '') : p.swimming ? '<b style="color:#b4392a">落水 · 還有 ' + Math.ceil(p.swimT) + ' 息</b>' : this.placeName()) + (this.peaceDays() ? ' &nbsp;·&nbsp; <span class="dim">龜卜 · ' + this.peaceDays() + ' 日無魄</span>' : '') + ' &nbsp;·&nbsp; <span class="dim">(' + p.x + ', ' + p.y + ') · ' + this.diff.name + '</span>';
       }
       const lv = this.level(), daysLeft = p.decayAt ? Math.max(1, Math.ceil((p.decayAt - w.time) / DAY - 1e-6)) : 0;
       const cs = p.cour + '|' + lv + '|' + daysLeft + '|' + (this.hasGod() ? 1 : 0);
@@ -2078,7 +2107,8 @@
       else {
         s = '面前：' + (ch === '白' ? '白紙' : '<b>' + ch + '</b>') + (w.isBurning(t.x, t.y) ? ' <i class="fire">燃燒中</i>' : '') + ((ch === '灶' || ch === '鼎') ? (w.stoveLit(t.x, t.y) ? ' <i class="fire">火旺 ' + Math.round(w.stoveFuel(t.x, t.y)) + ' 息</i>' : ' <i>冷的，先添柴</i>') : '');
         const tool = this.heldTool();
-        if (hs && hs.n === '玻璃瓶' && d.kind === 'water') s += ' · <kbd>E</kbd> 取海水';
+        if (hs && hs.n === '玻璃瓶' && (d.fresh || ch === '湯')) s += ' · <kbd>E</kbd> 取淡水';
+        else if (hs && hs.n === '玻璃瓶' && d.kind === 'water') s += ' · <kbd>E</kbd> 取海水';
         else if (tool === '鋤' && (ch === '土' || ch === '草')) s += ' · <kbd>E</kbd> 鋤成田';
         else if (d.yield) {
           const need = d.need && tool !== d.need;
@@ -2117,7 +2147,7 @@
       try {
         localStorage.setItem(Game.slotKey(this.slot), JSON.stringify({ v: 5, seed: this.seed, diff: this.diff.key, savedAt: Date.now(), brief: this.brief(), world: this.world.serialize(), ents: this.ents.serialize(),
           player: { x: p.x, y: p.y, fx: p.fx, fy: p.fy, hp: p.hp, food: p.food, warm: p.warm, sta: p.sta, staMax: p.staMax, san: p.san, cour: p.cour, bag: p.bag, sel: p.sel, home: p.home, readSteles: p.readSteles,
-            places: p.places, creatures: p.creatures, raftTaken: p.raftTaken, dragon: p.dragon, finished: p.finished, deaths: p.deaths, burn: p.burn, lastDay: p.lastDay, poisonT: p.poisonT, heatT: p.heatT, poisonPer: p.poisonPer, sailing: p.sailing, tools: p.tools, tool: p.tool, decayAt: p.decayAt, worn: p.worn, hitWin: p.hitWin, totemOff: p.totemOff, pouches: p.pouches, noGhostUntil: p.noGhostUntil, sanBoostUntil: U.r4(p.sanBoostUntil || 0), hpMax: p.hpMax, pillsMade: p.pillsMade, pillsEaten: p.pillsEaten, inFog: p.inFog, ship: p.ship, swimming: p.swimming, swimT: p.swimT }, stats: this.stats }));
+            places: p.places, isles: p.isles, isleNews: p.isleNews, creatures: p.creatures, raftTaken: p.raftTaken, dragon: p.dragon, finished: p.finished, deaths: p.deaths, burn: p.burn, lastDay: p.lastDay, poisonT: p.poisonT, heatT: p.heatT, poisonPer: p.poisonPer, sailing: p.sailing, tools: p.tools, tool: p.tool, decayAt: p.decayAt, worn: p.worn, hitWin: p.hitWin, totemOff: p.totemOff, pouches: p.pouches, noGhostUntil: p.noGhostUntil, sanBoostUntil: U.r4(p.sanBoostUntil || 0), hpMax: p.hpMax, pillsMade: p.pillsMade, pillsEaten: p.pillsEaten, inFog: p.inFog, ship: p.ship, swimming: p.swimming, swimT: p.swimT }, stats: this.stats }));
       } catch (err) { /* 隱私模式等情況下存不了，就算了 */ }
     }
     load(s) {
@@ -2125,9 +2155,22 @@
       this.world.restore(s.world || {}, s.brief && s.brief.day);
       this.ents.restore(s.ents);
       const sp = s.player || {};
-      for (const k of ['x', 'y', 'fx', 'fy', 'hp', 'food', 'warm', 'sta', 'staMax', 'san', 'cour', 'bag', 'sel', 'home', 'readSteles', 'places', 'creatures', 'raftTaken', 'dragon', 'finished', 'deaths', 'burn', 'lastDay', 'poisonT', 'poisonPer', 'heatT', 'sailing', 'tools', 'tool', 'decayAt', 'worn', 'hitWin', 'totemOff', 'pouches', 'noGhostUntil', 'sanBoostUntil', 'hpMax', 'pillsMade', 'pillsEaten', 'inFog', 'ship', 'swimming', 'swimT']) if (sp[k] !== undefined) p[k] = sp[k];
+      for (const k of ['x', 'y', 'fx', 'fy', 'hp', 'food', 'warm', 'sta', 'staMax', 'san', 'cour', 'bag', 'sel', 'home', 'readSteles', 'places', 'isles', 'isleNews', 'creatures', 'raftTaken', 'dragon', 'finished', 'deaths', 'burn', 'lastDay', 'poisonT', 'poisonPer', 'heatT', 'sailing', 'tools', 'tool', 'decayAt', 'worn', 'hitWin', 'totemOff', 'pouches', 'noGhostUntil', 'sanBoostUntil', 'hpMax', 'pillsMade', 'pillsEaten', 'inFog', 'ship', 'swimming', 'swimT']) if (sp[k] !== undefined) p[k] = sp[k];
       if (p.sailing && !p.ship) p.ship = World.newShip('孤帆');     // 舊存檔在船上：給一條滿命的孤帆
       if (p.ship && !p.ship.kind) p.ship = { kind: '孤帆', hp: Math.min(p.ship.hp, G.SHIPS['孤帆'].hp), skulls: p.ship.skull && p.ship.ward > this.world.time ? [[p.ship.skull, p.ship.ward]] : [], repairs: 0 };   // v0.11 的船
+      // v0.38 擴島：存檔時在海上（船上或落水）、那裡現在長成了陸地——落水的就算上了岸，船上的挪到最近的海；新陸地上的魚散了
+      const W = this.world, wet = (x, y) => { const t = W.get(x, y); return DB[t].kind === 'water' && t !== '舟'; };
+      if (p.swimming && !wet(p.x, p.y)) { p.swimming = false; p.swimT = 0; }
+      if (p.sailing && p.ship && !G.SHIPS[p.ship.kind].off.every(([dx, dy]) => wet(p.x + dx, p.y + dy))) {
+        const fits = (x, y) => G.SHIPS[p.ship.kind].off.every(([dx, dy]) => wet(x + dx, y + dy));
+        let spot = null; for (let r = 1; r <= 60 && !spot; r++) for (let i = -r; i <= r && !spot; i++) for (const [x, y] of [[p.x + i, p.y - r], [p.x + i, p.y + r], [p.x - r, p.y + i], [p.x + r, p.y + i]]) if (!spot && fits(x, y)) spot = [x, y];
+        if (spot) { p.x = p.rx = spot[0]; p.y = p.ry = spot[1]; W.movedShips = (W.movedShips || 0) + 1; }
+      }
+      this.ents.list = this.ents.list.filter(e => !((e.type === '魚' || e.type === '蜃') && DB[W.get(e.x, e.y)].kind !== 'water'));
+      if (!sp.isleNews) {         // 舊存檔第一次讀進 v0.38：說一聲島長大了、海上多了許多島
+        p.isleNews = true;
+        this.toast('島長大了', '這座島往外長了一圈新地（原本的地一格沒動），四面海上也浮出了 ' + G.isles(this.seed).length + ' 座外島：漠島、火島、川島、雪島、青島。膽氣八重造船，就能去看看。' + (W.movedShips ? '你的船停的地方長成了陸地，已挪到最近的海上。' : ''), 12000);
+      } else if (W.movedShips) this.toast('船挪了位置', '船停的地方長成了陸地，已挪到最近的海上。', 8000);
       const rename = (list) => { for (const it of list || []) if (it && it.n === '大船') it.n = '孤帆'; };   // v0.11 的大船就是現在的孤帆
       rename(p.bag); for (const l of this.world.chests.values()) rename(l); for (const l of this.world.bags.values()) rename(l);
       if ((s.ents || []).some(e => e.t === '蜃')) {              // 沒解決的蜃：讀檔後牠散了，但膽氣減五重

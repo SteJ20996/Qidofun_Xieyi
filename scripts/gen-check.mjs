@@ -1,5 +1,5 @@
 // 多種子生成檢查：每座島都要「玩得下去」——出生點走得到基本資源、八處地標都在且走得到、
-// 山裡有煤有鐵、燈塔只有退潮走得到。不用瀏覽器，直接在 Node 裡載入 util／glyphs／world。
+// 山裡有煤有鐵、燈塔只有退潮走得到；v0.38 起另查：原本的陸地一格不動、陸地平均多四成五、外島五種都有。不用瀏覽器，直接在 Node 裡載入 util／glyphs／world。
 // 用法：node scripts/gen-check.mjs [種子數=40] [起始種子=1]
 import vm from 'node:vm';
 import fs from 'node:fs';
@@ -8,10 +8,10 @@ const G = globalThis.G, World = globalThis.World, DB = G.DB, DAY = World.DAY;
 const N = +process.argv[2] || 40, S0 = +process.argv[3] || 1;
 // v0.11 起島的面積加倍：可達範圍與礦的下限跟著加倍
 const NEED = { '木林森': 30, '草': 60, '石山磊': 20, '礫': 8, '棉': 6, '麻': 3, '果': 4 }, ORE = { '煤': 32, '鐵': 32 }, REACH = 3000;
-let bad = 0;
+let bad = 0, sumOld = 0, sumNew = 0;
 
 function reach(w, sp, dig) {      // 從出生點能走到的格子（用遊戲自己的 walkable，所以潮汐算在內）；dig 時山石礦也算能過（有鎬）
-  const seen = new Set([sp.x + ',' + sp.y]), q = [[sp.x, sp.y]], R = G.SEA_EDGE;
+  const seen = new Set([sp.x + ',' + sp.y]), q = [[sp.x, sp.y]], R = G.HOME_R + 10;   // v0.38 島擴了，照本島的範圍
   while (q.length) {
     const [x, y] = q.shift();
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
@@ -42,8 +42,18 @@ for (let seed = S0; seed < S0 + N; seed++) {
     if (!ok) probs.push(pl.id === 'deng' ? '燈塔不是「只有退潮走得到」（退潮 ' + touches(low, pl.x, pl.y, pl.w, pl.h) + '，漲潮 ' + touches(high, pl.x, pl.y, pl.w, pl.h) + '）' : '地標「' + pl.name + '」走不到');
   }
   if (w.steles.size !== 5) probs.push('碑只有 ' + w.steles.size + ' 塊');
+  // v0.38：原本的陸地一格不動；擴出去的陸地；外島
+  let oldLand = 0, newLand = 0, moved = 0;
+  for (let y = -140; y <= 140; y++) for (let x = -140; x <= 140; x++) { const a = G.oldTile(x, y, seed), b = G.baseTile(x, y, seed); if (DB[a].kind !== 'water') { oldLand++; if (a !== b) moved++; } if (DB[b].kind !== 'water') newLand++; }
+  if (moved) probs.push('原本的陸地有 ' + moved + ' 格變了');
+  if (newLand < oldLand * 1.15) probs.push('陸地只多了 ' + Math.round((newLand / oldLand - 1) * 100) + '%');
+  sumOld += oldLand; sumNew += newLand;
+  const kinds = new Set(G.isles(seed).map(i => i.kind)); if (kinds.size < 5) probs.push('外島只有 ' + [...kinds].join('') + ' 幾種');
   if (probs.length) { bad++; console.log('種子 ' + seed + '：' + probs.join('；')); }
   else console.log('種子 ' + seed + '：好。可達 ' + low.size + ' 格，木 ' + cnt['木林森'] + ' 草 ' + cnt['草'] + ' 石 ' + cnt['石山磊'] + ' 棉 ' + cnt['棉'] + ' 麻 ' + cnt['麻'] + ' 果 ' + cnt['果'] + ' 煤 ' + cnt['煤'] + ' 鐵 ' + cnt['鐵']);
 }
+const ratio = sumNew / sumOld;
+console.log('v0.38 本島陸地平均：' + Math.round(sumOld / N) + ' → ' + Math.round(sumNew / N) + ' 格（×' + ratio.toFixed(3) + '）');
+if (Math.abs(ratio - 1.45) > 0.05) { bad++; console.log('陸地平均多了 ' + Math.round((ratio - 1) * 100) + '%，不是四成五上下'); }
 console.log(bad ? ('有 ' + bad + ' 座島有問題') : ('全部 ' + N + ' 座島都玩得下去'));
 process.exit(bad ? 1 : 0);

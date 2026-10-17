@@ -79,8 +79,9 @@
       if (type === '鹿') return '林木草竹棉麻果'.indexOf(ch) >= 0;
       if (type === '虎') return ch === '森' || (night && ch === '林');
       if (type === '豹') return ch === '森' || ch === '林';
-      if (type === '狼') return night && '草田沙棉麻'.indexOf(ch) >= 0;
-      if (type === '蛇') return ch === '草' && this.nearWood(x, y);          // 草木之交
+      if (type === '狼') return night && '草田沙棉麻漠'.indexOf(ch) >= 0;        // 漠島的夜裡也有狼（v0.38）
+      if (type === '蛇') return (ch === '草' && this.nearWood(x, y)) || ch === '丘';   // 草木之交；漠島的沙丘裡也藏著（v0.38）
+      if (type === '蛛') return ch === '窟';                                   // 洞窟裡的蜘蛛（v0.38；草裡的照舊是除草驚出來的）
       if (type === '豬') return '林竹'.indexOf(ch) >= 0 || (ch === '草' && this.nearWood(x, y));   // 林邊
       if (type === '牛') return ch === '草' && !this.nearWood(x, y);         // 開闊的草原
       if (type === '蟾' || type === '龜') return d.walk > 0 && d.kind !== 'object' && this.nearWater(x, y);
@@ -112,7 +113,7 @@
     spawnCaps(night, bm) {
       const frac = (v) => Math.floor(v) + (Math.random() < v - Math.floor(v) ? 1 : 0);
       const caps = { '鳥': night ? 4 : 10, '鹿': 6, '魚': frac(8 * FISH_RATE), '虎': night ? Math.ceil(3 * bm) : 2, '豹': night ? Math.ceil(2 * bm) : 1, '狼': night ? Math.ceil(3 * bm) : 0, '蛇': Math.ceil(2 * bm), '蟾': 3 };
-      caps['鷹'] = frac(2 * EAGLE_RATE); caps['龜'] = 1; caps['豬'] = 2; caps['牛'] = 2;
+      caps['鷹'] = frac(2 * EAGLE_RATE); caps['龜'] = 1; caps['豬'] = 2; caps['牛'] = 2; caps['蛛'] = 2;   // 蛛：只在洞窟裡生（v0.38）
       return caps;
     }
     climbOk(e, nx, ny) { return this.world.get(nx, ny) !== '台' || STAIRS.indexOf(this.world.get(e.x, e.y)) >= 0; }   // 上台要從階或台上來（v0.35，跟人一樣）
@@ -190,7 +191,7 @@
       const R = G.ISLAND_R * 0.8; let best = null, bd = Infinity;
       for (let dy = -TURTLE_SEA_R; dy <= TURTLE_SEA_R; dy++) for (let dx = -TURTLE_SEA_R; dx <= TURTLE_SEA_R; dx++) {
         const x = e.x + dx, y = e.y + dy, dd = dx * dx + dy * dy; if (dd >= bd) continue;
-        if (DB[this.world.get(x, y)].kind === 'water' && Math.hypot(x, y) > R) { bd = dd; best = { x, y }; }
+        const dw = DB[this.world.get(x, y)]; if (dw.kind === 'water' && !dw.fresh && Math.hypot(x, y) > R) { bd = dd; best = { x, y }; }   // 河湖池是淡水，不算海（v0.38）
       }
       return best;
     }
