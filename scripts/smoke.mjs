@@ -578,19 +578,16 @@ const result = await page.evaluate(async () => {
     { for (const id of [...w.fogs.keys()]) w.removeFog(id); const X = p.x, Y = p.y + 3;
       for (let dx = -7; dx <= 7; dx++) for (let dy = 0; dy <= 10; dy++) w.set(X + dx, Y + dy, '草');
       unarm(); p.worn['帽'] = null; g.removeItem('火把', 99); g.removeItem('蠟燭', 99); p.sel = 0;
-      const fog = w.addFog([X + ',' + (Y + 5), (X + 1) + ',' + (Y + 5), (X + 2) + ',' + (Y + 5), (X + 1) + ',' + (Y + 6), (X + 1) + ',' + (Y + 4)], w.time + DAY);
-      const shapeOf = () => { const cs = [...fog.cells].map(k => k.split(',').map(Number)), mx = Math.min(...cs.map(c => c[0])), my = Math.min(...cs.map(c => c[1])); return cs.map(([x, y]) => (x - mx) + ':' + (y - my)).sort().join('|'); };
-      const dirs = new Set(); let sizes = true, land = true, conn = true, morphs = 0, shape0 = shapeOf();
+      const fog = w.addFog(null, w.time + DAY, false, window.World.newFogShape(18), [X + 1.5, Y + 5.5]);
+      const rel = () => { const cs = [...fog.cells].map(k => k.split(',').map(Number)), mx = Math.min(...cs.map(c => c[0])), my = Math.min(...cs.map(c => c[1])); return cs.map(([x, y]) => (x - mx) + ':' + (y - my)).sort().join('|'); };
+      const dirs = new Set(); let sizes = true, land = true, moves = 0, morphs = 0, last = rel();
       for (let i = 0; i < 40; i++) {
-        w.moveFog(fog, X, Y - 30);
-        if (fog.dir) dirs.add(fog.dir.join(','));
-        const cells = [...fog.cells].map(k => k.split(',').map(Number)); if (cells.length !== 5) sizes = false; if (!cells.every(([x, y]) => w.fogLand(x, y))) land = false;
-        const set = new Set(fog.cells), first = fog.cells.values().next().value, seen = new Set([first]), stack = [first];
-        while (stack.length) { const [x, y] = stack.pop().split(',').map(Number); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const k = (x + dx) + ',' + (y + dy); if (set.has(k) && !seen.has(k)) { seen.add(k); stack.push(k); } } }
-        if (seen.size !== 5) conn = false;
-        const sh = shapeOf(); if (sh !== shape0) morphs++; shape0 = sh;
+        const gx = fog.gx, gy = fog.gy; w.moveFog(fog, X, Y - 30);
+        if (fog.gx !== gx || fog.gy !== gy) { moves++; dirs.add((Math.round(Math.atan2(fog.gy - gy, fog.gx - gx) / (Math.PI / 4)) + 8) % 8); }
+        const cells = [...fog.cells].map(k => k.split(',').map(Number)); if (cells.length < 5 || cells.length > 30) sizes = false; if (!cells.every(([x, y]) => w.fogLand(x, y))) land = false;
+        fog.age += 90; const sh = rel(); if (sh !== last) morphs++; last = sh;
       }
-      ok('with no light a fog drifts in several directions (slants included), keeps five connected cells on land, and changes shape now and then', dirs.size >= 3 && [...dirs].some(d => d.indexOf('0') < 0) && sizes && land && conn && morphs > 0, [[...dirs], sizes, land, conn, morphs]);
+      ok('with no light a fog drifts in several directions, keeps 5–30 cells on land, and keeps changing shape', dirs.size >= 3 && moves >= 20 && sizes && land && morphs >= 10, [[...dirs], moves, sizes, land, morphs]);
       w.removeFog(fog.id); }
   }
   // v0.20：魄加強——身上的光只逼得退、地上的光三格內才煙滅；撲燈、吹熄手裡的光、燈帽燒三倍；夜越深越多越快、蝕心更狠；屋外有魄而屋裡沒燈愜意緩掉
@@ -918,7 +915,7 @@ const result = await page.evaluate(async () => {
     w.fogP = 1; w.fogPlan = []; const d0 = Math.floor(w.time / DAY); w.fogDay = d0; w.time = (d0 + 1) * DAY + 1; w.step(p.x, p.y);
     const planned = w.fogPlan.length; w.time = (d0 + 2) * DAY - 0.001; w.step(p.x, p.y); w.fogP = 0;   // 到當日最後一刻：兩場都該起了
     const fs = [...w.fogs.values()];
-    ok('a new day rolls twice for fog (odds forced to 1): two patches of 5–12 connected land tiles, none on the player', planned === 2 && fs.length === 2 && fs.every(f => f.cells.size >= 5 && f.cells.size <= 12 && connected(f) && !near1(f) && [...f.cells].every(k => { const [x, y] = k.split(',').map(Number); return w.fogLand(x, y); })), [planned, fs.map(f => f.cells.size), w.fogMiss, w.fogNoSeed, p.x, p.y, w.get(p.x, p.y)]);
+    ok('a new day rolls twice for fog (odds forced to 1): two patches of 10–30 land tiles (v0.31: about eighteen tiles of area), none on the player', planned === 2 && fs.length === 2 && fs.every(f => f.cells.size >= 10 && f.cells.size <= 30 && f.shape.area >= 16 && f.shape.area <= 20 && !near1(f) && [...f.cells].every(k => { const [x, y] = k.split(',').map(Number); return w.fogLand(x, y); })), [planned, fs.map(f => f.cells.size), w.fogMiss, w.fogNoSeed, p.x, p.y, w.get(p.x, p.y)]);
     const shapes = new Set(); for (let i = 0; i < 10; i++) { const f = w.spawnFog(p.x, p.y); if (!f) continue; const cs = [...f.cells].map(k => k.split(',').map(Number)), mx = Math.min(...cs.map(c => c[0])), my = Math.min(...cs.map(c => c[1])); shapes.add(cs.map(([x, y]) => (x - mx) + ':' + (y - my)).sort().join(' ')); }
     ok('fog shapes vary', shapes.size >= 4, shapes.size);
     for (const id of [...w.fogs.keys()]) w.removeFog(id);
@@ -1058,24 +1055,26 @@ const result = await page.evaluate(async () => {
     w.time = t0; p.cour = c0; for (const n of ['肉', '磚', '虎首骨', '狼首骨']) g.removeItem(n, 99); }
   // —— 霧障會動：慢慢挪，躲著光；沒光就亂飄
   { const X = p.x, Y = p.y; for (const id of [...w.fogs.keys()]) w.removeFog(id);
-    for (let dx = 0; dx <= 14; dx++) for (let dy = -2; dy <= 2; dy++) w.set(X + dx, Y + dy, '草');
+    for (let dx = -2; dx <= 18; dx++) for (let dy = -6; dy <= 6; dy++) w.set(X + dx, Y + dy, '草');
     unarm(); p.worn['帽'] = null; g.removeItem('火把', 99); g.removeItem('蠟燭', 99); p.sel = 0;   // 手裡頭上都沒光
     ok('a fresh world moves fog every six seconds', new window.World(3).fogStep === 6 && !g.hasLight());
-    const fog = w.addFog([(X + 6) + ',' + Y, (X + 7) + ',' + Y, (X + 7) + ',' + (Y + 1)], w.time + DAY);
-    const cellsOf = () => [...fog.cells].map(k => k.split(',').map(Number));
+    const fog = w.addFog(null, w.time + DAY, false, window.World.newFogShape(18), [X + 9.5, Y + 0.5]);
     w.set(X + 3, Y, '燈');
-    const moved1 = w.moveFog(fog, X, Y); const c1 = cellsOf();
-    ok('a lamp within ten tiles pushes the fog away: every cell shifts one step east (straight or slanting)', moved1 && c1.length === 3 && c1.every(([x]) => x >= X + 7) && !w.fogAt(X + 6, Y), c1);
-    w.set(X + 3, Y, '草'); p.x = p.rx = X + 12; p.y = p.ry = Y; g.addItem('火把', 1); hold('火把');
-    const moved2 = g.hasLight() && w.moveFog(fog, p.x, p.y); const c2 = cellsOf();
-    ok('a torch in the player\'s hand counts as light: the fog backs away west', moved2 && c2.every(([x]) => x <= X + 7), c2);
+    const xa = fog.gx, moved1 = w.moveFog(fog, X, Y);
+    ok('a lamp within ten tiles pushes the fog away: it moves about a tile east', moved1 && fog.gx > xa + 0.8, [xa, fog.gx]);
+    w.set(X + 3, Y, '草'); p.x = p.rx = X + 15; p.y = p.ry = Y; g.addItem('火把', 1); hold('火把');
+    const xb = fog.gx, moved2 = g.hasLight() && w.moveFog(fog, p.x, p.y);
+    ok('a torch in the player\'s hand counts as light: the fog backs away west', moved2 && fog.gx < xb - 0.8, [xb, fog.gx]);
     unarm(); g.removeItem('火把', 9); p.sel = 0; p.x = p.rx = X; p.y = p.ry = Y;
-    const before = JSON.stringify(cellsOf()); const moved3 = w.moveFog(fog, X, Y); const c3 = cellsOf();
-    ok('with no light around the fog still drifts one step and stays on land', moved3 && c3.length === 3 && c3.every(([x, y]) => w.fogLand(x, y)) && JSON.stringify(c3) !== before, c3);
-    fog.moveAt = w.time; w.fogStep = 1000; const c4 = JSON.stringify(cellsOf()); w.step(p.x, p.y);
-    ok('the world tick moves fogs on the fog clock and winds it up again', JSON.stringify(cellsOf()) !== c4 && fog.moveAt > w.time + 500 && fog.moveAt < w.time + 1500 && [...fog.cells].every(k => w.fogCells.get(k) === fog.id), fog.moveAt - w.time);
+    const before = [...fog.cells].join(';'); const moved3 = w.moveFog(fog, X, Y);
+    ok('with no light around the fog still drifts and stays on land', moved3 && [...fog.cells].every(k => { const [x, y] = k.split(',').map(Number); return w.fogLand(x, y); }) && [...fog.cells].join(';') !== before);
+    fog.moveAt = w.time; w.fogStep = 1000; const ang0 = fog.ang; w.step(p.x, p.y);
+    ok('the world tick turns fogs on the fog clock and winds it up again', fog.ang !== ang0 && fog.moveAt > w.time + 500 && fog.moveAt < w.time + 1500 && [...fog.cells].every(k => w.fogCells.get(k) === fog.id), fog.moveAt - w.time);
+    w.fogStep = 6; fog.moveAt = w.time + 99; const fx0 = fog.x, fy0 = fog.y, gx0 = fog.gx; for (let i = 0; i < 10; i++) w.tick(0.2, p.x, p.y);
+    const drift = Math.hypot(fog.x - fx0, fog.y - fy0);
+    ok('v0.31: fog drifts continuously, a sixth of a tile per second, not a tile at a time', (drift > 0.25 && drift < 0.42) || fog.gx === gx0, drift);
     const w2 = new window.World(w.seed); w2.restore(w.serialize()); const f2 = [...w2.fogs.values()][0];
-    ok('a restored fog gets a fresh move clock', !!f2 && f2.moveAt > w2.time, f2 && f2.moveAt - w2.time);
+    ok('a restored fog gets a fresh move clock, and keeps its place and shape', !!f2 && f2.moveAt > w2.time && Math.abs(f2.x - fog.x) < 1e-3 && f2.shape.n === fog.shape.n && f2.cells.size === fog.cells.size, f2 && f2.moveAt - w2.time);
     w.fogStep = 1e9; w.removeFog(fog.id); }
   // —— 數值燈與提醒：不到五成亮燈，不到四分之一彈窗；困難只亮燈
   { const bar = (k) => document.getElementById(k + 'fill').parentNode, title = () => document.getElementById('warn-title').textContent;
@@ -1288,7 +1287,7 @@ const result = await page.evaluate(async () => {
     await press('KeyL'); ok('L again switches to the other one, moving it from the bag into the tool bar', held() === '燭龍焚溟' && !p.bag.some(s => s.n === '燭龍焚溟') && p.tools.length === 3);
     await press('KeyL'); ok('and back again', held() === '九閽鳴雷');
     await press('KeyP'); ok('P puts the god weapon away: the stone knife held before is back in hand', held() === '石刀' && g.msgText.indexOf('收起「九閽鳴雷」') >= 0, g.msgText);
-    await press('KeyP'); ok('P with an ordinary tool in hand still cycles the tool bar', held() === '九閽鳴雷');
+    await press('KeyP'); ok('v0.31: P with an ordinary weapon in hand cycles the weapons only (god weapons stay on L): the knife was the only one, so the hand is empty', !g.activeTool() && g.msgText.indexOf('空手') >= 0, g.msgText);
     p.tool = -1; await press('KeyL'); await press('KeyP'); ok('drawn from empty hands, P leaves them empty again', p.tool === -1 && g.msgText.indexOf('空手') >= 0, g.msgText);
     p.tool = 0; await press('KeyY'); ok('Y without a slingshot says how to make one and keeps the knife', held() === '石刀' && g.msgText.indexOf('沒有彈弓') >= 0, g.msgText);
     p.bag.push({ n: '彈弓', c: 1, dur: 80 }); g.barSig = ''; await press('KeyY'); ok('Y takes the slingshot from the bag into the hand', held() === '彈弓' && !p.bag.some(s => s.n === '彈弓'));
@@ -1435,6 +1434,57 @@ const result = await page.evaluate(async () => {
     ok('v0.29: a 窗 put onto the red window replaces it', w.get(T().x, T().y) === '窗' && !w.wallHurt(T().x, T().y) && g.count('窗') === n0 - 1);
     g.pressPlace(); ok('…but a whole window is left alone', g.count('窗') === n0 - 1);
     g.removeItem('窗', 9); w.set(T().x, T().y, '草'); }
+  // ============ v0.31：具欄分武器與農具、P 換武器 O 換農具、舊石器磨回石子、光照圖、雨裡的燈、霧順著飄 ============
+  { const keepT = p.tools, keepI = p.tool; p.tools = []; p.tool = -1;
+    for (const n of ['石鎬', '石劍', '石斧', '石刀']) p.tools.push({ n, c: 1, dur: 40 });
+    g.barSig = ''; g.buildBag(); await sleep(30);
+    const order = p.tools.map(s => s.n).join(''), labels = [...document.querySelectorAll('#toolbar .rowlabel')].map(l => l.textContent).join('');
+    ok('v0.31: the tool bar has two parts — weapons first (武), then farm tools (農) — sharing the same six slots', order === '石劍石刀石鎬石斧' && labels === '武農' && document.querySelectorAll('#toolbar .slot').length === g.toolSlots(), [order, labels]);
+    const seq = []; for (let i = 0; i < 3; i++) { await press('KeyP', 20); seq.push(g.activeTool() ? g.activeTool().n : '空'); }
+    for (let i = 0; i < 3; i++) { await press('KeyO', 20); seq.push(g.activeTool() ? g.activeTool().n : '空'); }
+    await press('KeyO', 20); await press('KeyP', 20); seq.push(g.activeTool() ? g.activeTool().n : '空');
+    ok('v0.31: P goes through the weapons then empty hand; O through the farm tools; P from a farm tool picks the first weapon', seq.join(',') === '石劍,石刀,空,石鎬,石斧,空,石劍', seq);
+    g.addItem('鋼鎬', 1); g.barSig = ''; g.buildBag();
+    ok('v0.31: a new farm tool goes into the farm part, and the weapon in hand stays in hand', p.tools.map(s => s.n).join('') === '石劍石刀石鎬石斧鋼鎬' && g.activeTool().n === '石劍', p.tools.map(s => s.n));
+    hold('石刀'); const peb0 = g.count('石子'); p.sta = 50; g.craft('crush');
+    ok('v0.31: the stone knife in hand is ground back into two pebbles', !p.tools.some(s => s.n === '石刀') && g.count('石子') === peb0 + 2 && !g.activeTool());
+    p.tools = p.tools.filter(s => s.n === '鋼鎬'); p.tool = 0; p.bag.push({ n: '石斧', c: 1, dur: 12 }); p.sta = 50; g.craft('crush');
+    ok('v0.31: with no stone tool in hand, one from the bag is ground instead (the steel pick in hand is left alone)', g.count('石子') === peb0 + 4 && !p.bag.some(s => s.n === '石斧') && g.activeTool() && g.activeTool().n === '鋼鎬', bag());
+    p.bag = p.bag.filter(s => ['石刀', '石鎬', '石鋤', '石劍', '石斧'].indexOf(s.n) < 0); p.tools = []; p.tool = -1; g.craft('crush');
+    ok('v0.31: nothing to grind: a clear message and nothing taken', g.count('石子') === peb0 + 4 && g.msgText.indexOf('石器') >= 0);
+    ok('v0.31: 研磨石器 sits in the 工具 recipes', G.RECIPES.find(r => r.id === 'crush').cat === '工具');
+    p.tools = keepT; p.tool = keepI; g.barSig = ''; g.buildBag(); g.removeItem('石子', 4); }
+  { const R = g.renderer, ax = p.x + 30, ay = p.y + 30;
+    for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) w.set(ax + dx, ay + dy, '草');
+    const open1 = R.sight(w, ax, ay, 4); w.set(ax + 2, ay, '磚'); const walled = R.sight(w, ax, ay, 4), again = R.sight(w, ax, ay, 4);
+    const W = 9, at = (v, dx, dy) => v[(dy + 4) * W + dx + 4];
+    ok('v0.31: light sight — nothing in the way means all lit; a brick hides what is behind it; the answer is cached until the ground changes', open1 === null && walled && at(walled, 2, 0) === 1 && at(walled, 3, 0) === 0 && at(walled, 0, 3) === 1 && again === walled, walled && [at(walled, 2, 0), at(walled, 3, 0)]);
+    w.set(ax + 2, ay, '草'); ok('…and a changed ground invalidates it', R.sight(w, ax, ay, 4) === null);
+    for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) w.set(ax + dx, ay + dy, w.base(ax + dx, ay + dy));
+    const lx = p.x + 2, ly = p.y - 1, was = w.get(lx, ly); w.set(lx, ly, '燈'); setDay(0.5); w.rainUntil = w.time + DAY; await sleep(1900);
+    const dayRain = R.lastLm; w.rainUntil = 0; R.rainA = 0; await sleep(120); const dayDry = R.lastLm;
+    ok('v0.31: in daytime rain a lamp still glows faintly; on a dry day there is no light layer at all', !!dayRain && dayRain.glow && !dayDry, [!!dayRain, dayRain && dayRain.glow, !!dayDry]);
+    setDay(0.9); await sleep(120); const nightLm = R.lastLm;
+    ok('v0.31: at night the light map carries the darkness and the lamp\'s warm glow', !!nightLm && nightLm.glow && nightLm.cols > 0 && R.lmDark.width === nightLm.cols, nightLm && [nightLm.cols, nightLm.rows]);
+    w.set(lx, ly, was); setDay(0.53); }
+  { const fx = p.x - 16, fy = p.y; for (let dy = -9; dy <= 9; dy++) for (let dx = -9; dx <= 9; dx++) w.set(fx + dx, fy + dy, '草');
+    const ns = []; for (let i = 0; i < 40; i++) ns.push(window.World.newFogShape(18).n);
+    ok('v0.31: fog shapes run from round (power near 2) to square (power near 6)', Math.min(...ns) < 2.8 && Math.max(...ns) > 5, [Math.min(...ns), Math.max(...ns)]);
+    const f = w.addFog(null, w.time + DAY, false, window.World.newFogShape(18), [fx + 0.5, fy + 0.5]), cov = w.fogCoverage(f);
+    const area = cov.reduce((a, e) => a + e.c, 0), counted = [...f.cells], byKey = new Map(cov.map(e => [e.k, e.c]));
+    ok('v0.31: a fog covers about eighteen tiles of area; a tile counts once more than 5% of it is covered; at most thirty count', Math.abs(area - 18) < 1.6 && counted.length <= 30 && counted.length >= 18 && counted.every(k => byKey.get(k) > 0.05) && cov.filter(e => e.c > 0.05).length >= counted.length, [area, counted.length]);
+    w.removeFog(f.id);
+    const room = (half) => { for (let dy = -half - 1; dy <= half + 1; dy++) for (let dx = -half - 1; dx <= half + 1; dx++) w.set(fx + dx, fy + dy, Math.max(Math.abs(dx), Math.abs(dy)) === half + 1 ? '磚' : '草'); };
+    room(2); const f5 = w.addFog(null, w.time + DAY, false, window.World.newFogShape(18), [fx + 0.5, fy + 0.5]);
+    const inSmall = [...f5.cells].filter(k => { const [x, y] = k.split(',').map(Number); return Math.abs(x - fx) <= 2 && Math.abs(y - fy) <= 2; }).length;
+    w.removeFog(f5.id); room(3); const f7 = w.addFog(null, w.time + DAY, false, window.World.newFogShape(18), [fx + 0.5, fy + 0.5]);
+    const inBig = [...f7.cells].filter(k => { const [x, y] = k.split(',').map(Number); return Math.abs(x - fx) <= 3 && Math.abs(y - fy) <= 3; }).length;
+    ok('v0.31: fog stays out of a walled room of 45 tiles or less (5×5 = 25), but drifts into a bigger one (7×7 = 49)', inSmall === 0 && inBig > 10, [inSmall, inBig]);
+    w.removeFog(f7.id); room(4); for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) w.set(fx + dx, fy + dy, w.base(fx + dx, fy + dy));
+    const fg = w.addFog(null, w.time + DAY, false, window.World.newFogShape(18), [p.x - 6.5, p.y + 0.5]);
+    await sleep(100); const seen = g.renderer.fogSeen.has(fg.id) && (fg._cov || []).length > 0;
+    w.removeFog(fg.id); await sleep(80); const fading = g.renderer.fogSeen.has(fg.id) && fg._fade < 1;
+    ok('v0.31: the renderer draws the fog from its coverage, and a fog that is gone fades out instead of vanishing', seen && fading, [seen, fading]); }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
   // —— 三格存檔：第一格沿用舊鍵；每格帶摘要

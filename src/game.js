@@ -42,6 +42,8 @@
   // 台：撲上來的獸撞在台邊，掉命上限的 PLATFORM_RECOIL、慢 PLATFORM_SLOW 息
   const SLING_RANGE = 9, SLING_DMG = 6, SLING_CD = 0.8, SLING_PREY = '鹿虎豹狼蛇蛛蟾鷹龜蜃豬牛', PROVOKE_TIME = 20, PLATFORM_RECOIL = 0.1, PLATFORM_SLOW = 5;
   const SAN_REST = 0.1, CONTENT_AT = 90;   // 飽、暖、力都在九成以上：愜意不掉，反而每息回 0.1×倍率（v0.21）
+  const CRUSH_PEBBLES = 2, STONE_TOOLS = ['石刀', '石鎬', '石鋤', '石劍', '石斧'];   // 舊石器磨回石子（v0.31）
+  const FARM_KINDS = '鎬鋤斧';   // 具欄分兩段（v0.31）：武器（刀、劍、彈弓、神兵）在前、農具（鎬、鋤、斧）在後，共用原來的格數；P 換武器、O 換農具
   const REGRIND_CAP = 8, MEND_STA = 3, CAST_COST = [1, 2, 4, 7];   // CAST_COST：撒一網網到 0／1／2／3 條以上各耗幾點耐久   // 1、2、4、8 法則的上限：重磨的石子、加固漁網的棉麻（MEND_STA 是面向網按 F 加固的耗力）                      // 同一把工具重磨：第一次石子一、再來二、四、八，八為上限（rg 記在那把工具上）
   const CLOTH_FUEL = 50;                      // 舊布製品（內襯、布褲、布甲、布帽、布靴）丟進灶裡當柴：一件五十息（v0.21 前一百二十）
   const FAT_P = 0.25;   // v0.28：斃野豬、野牛得油脂的機會（真隨機）
@@ -817,13 +819,32 @@
       p.tool = p.tool + d; if (p.tool >= n) p.tool = -1; else if (p.tool < -1) p.tool = n - 1;
       this.message(p.tool < 0 ? '空手。' : '手持「' + p.tools[p.tool].n + '」。'); this.buildBag();
     }
+    toolGroup(n) { const t = ITEMS[n] && ITEMS[n].tool; return t && FARM_KINDS.indexOf(t) >= 0 ? 'farm' : 'weapon'; }   // 鎬鋤斧是農具，其餘（刀劍彈弓神兵）是武器
+    sortTools() {   // 武器在前、農具在後（穩定排序，同一段裡照放進來的先後）；手上那把跟著走
+      const p = this.player, cur = p.tools[p.tool] || null, w = (s) => (this.toolGroup(s.n) === 'farm' ? 1 : 0);
+      if (p.tools.every((s, i) => i === 0 || w(p.tools[i - 1]) <= w(s))) return;
+      p.tools.sort((a, b) => w(a) - w(b)); p.tool = cur ? p.tools.indexOf(cur) : -1;
+    }
+    cycleGroup(group) {   // P 換武器、O 換農具：同一段裡輪著換，換到最後一把之後是空手；從另一段或空手按下去，拿這段的第一把。神兵有 L，不在 P 的輪替裡
+      const p = this.player; this.sortTools();
+      const idx = []; p.tools.forEach((s, i) => { if (this.toolGroup(s.n) === group && GODS.indexOf(s.n) < 0) idx.push(i); });
+      if (!idx.length) { this.message(group === 'farm' ? '沒有農具。石一、石子一、木一可磨鎬、鋤、斧。' : '沒有武器。石一、石子一、木一可磨刀、劍；木二麻三做彈弓。'); return; }
+      const at = idx.indexOf(p.tool); p.tool = at < 0 ? idx[0] : at + 1 < idx.length ? idx[at + 1] : -1;
+      this.prevTool = null; this.barSig = '';
+      this.message(p.tool < 0 ? '空手。' : '手持「' + p.tools[p.tool].n + '」。'); this.buildBag();
+    }
+    stoneToCrush() {   // 要磨回石子的那把：手上是石器就是它，否則囊裡第一把石器
+      const p = this.player, s = this.activeTool();
+      if (s && STONE_TOOLS.indexOf(s.n) >= 0) return { s, from: 'tools' };
+      const b = p.bag.find(x => STONE_TOOLS.indexOf(x.n) >= 0); return b ? { s: b, from: 'bag' } : null;
+    }
     // 神兵與彈弓各有專鍵（v0.26）：L 拿出神兵（手上已是神兵就換另一件）、P 收回；Y 拿出彈弓、再按收起。
     // 收回時回到拿出前手上那把（拿出前是空手、或那把已經不在了就空手）；在神兵與彈弓之間換來換去不改記著的那把。
     isSpecial(s) { return !!s && (GODS.indexOf(s.n) >= 0 || s.n === '彈弓'); }
     takeOut(names) {   // 拿出 names 裡的一件（具欄優先，沒有就從囊移進具欄）；回傳那件、沒有回 null、具欄滿了回 false
       const p = this.player, cur = this.activeTool();
       let i = p.tools.findIndex(s => names.indexOf(s.n) >= 0 && s !== cur);
-      if (i < 0) { const b = p.bag.findIndex(s => names.indexOf(s.n) >= 0); if (b < 0) return null; if (!this.equipFromBag(b)) return false; i = p.tools.length - 1; }
+      if (i < 0) { const b = p.bag.findIndex(s => names.indexOf(s.n) >= 0); if (b < 0) return null; const s = p.bag[b]; if (!this.equipFromBag(b)) return false; i = p.tools.indexOf(s); }   // 移進具欄後會排序，用那件找回位置
       if (!this.isSpecial(cur)) this.prevTool = cur;
       p.tool = i; this.barSig = ''; this.buildBag(); SFX.write(); return p.tools[i];
     }
@@ -1358,7 +1379,7 @@
       if (s.n === '錦囊') {
         if (p.pouches >= MAX_POUCHES) { this.message('已經用了六個錦囊，囊再大也背不動了。'); SFX.fail(); return; }
         this.removeItem('錦囊', 1); p.pouches++; this.barSig = ''; this.buildBag();
-        this.toast('錦囊用了', '囊多了兩格、具欄多了一格：現在 ' + this.slots() + ' 格與 ' + this.toolSlots() + ' 格。最多四個。'); SFX.learn(); return;
+        this.toast('錦囊用了', '囊多了兩格、具欄多了一格：現在 ' + this.slots() + ' 格與 ' + this.toolSlots() + ' 格。最多六個。'); SFX.learn(); return;
       }
       if (s.n === '蠟燭') {
         const hat = this.anyHat();
@@ -1403,7 +1424,7 @@
       const el = $('craft'); el.classList.toggle('hidden'); this.keys.clear();
       if (!el.classList.contains('hidden')) this.buildCraft();
     }
-    canCraft(r) { const need = this.needOf(r); for (const n in need) if (this.count(n) < need[n]) return false; return true; }
+    canCraft(r) { if (r.crush) return !!this.stoneToCrush(); const need = this.needOf(r); for (const n in need) if (this.count(n) < need[n]) return false; return true; }
     regrindCost(s) { return Math.min(REGRIND_CAP, Math.pow(2, (s && s.rg) || 0)); }   // 1、2、4、8、8……
     needOf(r) { if (r.regrind) { const s = this.activeTool(); return this.fixCost(s) || { '石子': this.regrindCost(s) }; } if (r.mend) { const k = this.mendCost(this.heldNet()); return { '棉': k, '麻': k }; } return r.need; }   // 重磨的料看手上那把磨過幾次；加固看手裡那張網固過幾次
     mendCost(x) { return Math.min(REGRIND_CAP, Math.pow(2, (x && x.rf) || 0)); }   // 加固漁網：棉麻各 1、2、4、8、8……（x 是網的記錄或囊裡那疊）
@@ -1457,14 +1478,16 @@
         const locked = r.level && this.level() < r.level;
         const row = document.createElement('div'); row.className = 'recipe' + (this.canCraft(r) && p.sta >= r.sta && !locked ? '' : ' cant');
         const need = this.needOf(r);
-        const needs = Object.keys(need).map(n => '<span class="' + (this.count(n) >= need[n] ? 'ok' : 'lack') + '">' + n + ' ' + this.count(n) + '/' + need[n] + '</span>').join(' ');
+        const crush = r.crush ? this.stoneToCrush() : null;
+        const needs = r.crush ? (crush ? '<span class="ok">' + (crush.from === 'tools' ? '手上' : '囊裡') + '的「' + crush.s.n + '」</span>' : '<span class="lack">要有一把石器</span>')
+          : Object.keys(need).map(n => '<span class="' + (this.count(n) >= need[n] ? 'ok' : 'lack') + '">' + n + ' ' + this.count(n) + '/' + need[n] + '</span>').join(' ');
         const owned = r.out && ITEMS[r.out] && ITEMS[r.out].slot && this.ownedPiece(r.out);
         const spent = r.id === 'pouch' && p.pouches >= MAX_POUCHES;   // 錦囊：六個都用了就標「已用完」，再造也沒用
         if (spent) row.classList.add('cant');
-        const title = (r.out ? r.out + (r.n > 1 ? ' ×' + r.n : '') : (r.regrind ? '重磨' : r.mend ? '加固' : '磨礪')) + (owned ? ' <i class="dim">已有</i>' : '') + (spent ? ' <i class="dim">已用完</i>' : '');
+        const title = (r.out ? r.out + (r.n > 1 ? ' ×' + r.n : '') : (r.regrind ? '重磨' : r.mend ? '加固' : r.crush ? '研磨石器 → 石子 ×' + CRUSH_PEBBLES : '磨礪')) + (owned ? ' <i class="dim">已有</i>' : '') + (spent ? ' <i class="dim">已用完</i>' : '');
         let btns = '';
         if (r.choose) btns = r.choose.map(c => '<button data-r="' + r.id + '" data-c="' + c + '">' + c + '</button>').join('');
-        else btns = '<button data-r="' + r.id + '"' + (spent ? ' disabled' : '') + '>' + (spent ? '已用完' : r.regrind ? '磨' : r.mend ? '固' : owned ? '翻新' : '造') + '</button>';
+        else btns = '<button data-r="' + r.id + '"' + (spent ? ' disabled' : '') + '>' + (spent ? '已用完' : r.regrind ? '磨' : r.mend ? '固' : r.crush ? '碎' : owned ? '翻新' : '造') + '</button>';
         // 樹的線：每一層一欄。上幾層還有弟妹的畫直線，這一層畫 ├ 或 └ 接過來；自己那一欄底下還有衍生的就往下拉一截，沒有就空著（每列的品名才對得齊）
         const tree = node.depth ? node.guides.map(g => '<i class="' + (g ? 'pipe' : 'blank') + '"></i>').join('') + '<i class="' + (node.last ? 'elbow' : 'tee') + '"></i>' : '';
         if (node.depth) row.classList.add('child'); if (node.kids) row.classList.add('parent');
@@ -1479,11 +1502,17 @@
       if (p.swimming) { this.message('游泳時做不了東西，先上岸。'); return; }
       if (r.level && this.level() < r.level) { this.message('膽氣不夠：要第 ' + r.level + ' 重。'); SFX.fail(); return; }
       if (r.id === 'pouch' && p.pouches >= MAX_POUCHES) { this.message('六個錦囊都用了，囊再大也背不動，不用再織。'); SFX.fail(); return; }
-      if (!this.canCraft(r)) { this.message('材料不夠。'); SFX.fail(); return; }
+      if (!this.canCraft(r)) { this.message(r.crush ? '手上或囊裡要有一把石器（石刀、石鎬、石鋤、石劍、石斧）才能研磨。' : '材料不夠。'); SFX.fail(); return; }
       if (p.sta < r.sta) { this.message('力氣不夠，歇一歇。'); SFX.fail(); return; }
       let out = r.out, n = r.n || 1;
       if (r.choose) { if (!choice) { this.message('選一個方向：刀、鎬、鋤、劍、斧。'); return; } out = choice; }
       if (r.choose && ITEMS[out] && ITEMS[out].tung && p.food < 10) { this.message('太餓了，鍛不動鎢鋼。'); SFX.fail(); return; }
+      if (r.crush) {   // 舊石器磨回石子二（v0.31）
+        const c = this.stoneToCrush(); if (!c) { this.message('手上或囊裡要有一把石器（石刀、石鎬、石鋤、石劍、石斧）。'); SFX.fail(); return; }
+        if (c.from === 'tools') { const i = p.tools.indexOf(c.s); p.tools.splice(i, 1); p.tool = -1; } else p.bag.splice(p.bag.indexOf(c.s), 1);
+        this.addItem('石子', CRUSH_PEBBLES); p.sta -= r.sta; this.barSig = ''; this.afterCraft(r);
+        this.message('「' + c.s.n + '」磨回了石子 ' + CRUSH_PEBBLES + '。' + (c.from === 'tools' ? '空手。' : '')); SFX.fuse(); this.buildCraft(); this.buildBag(); return;
+      }
       if (r.mend) {   // 加固手裡那張網：耐久回滿，棉麻各 1、2、4、8
         const s = this.heldNet(); if (!s) { this.message('囊裡要選中一張漁網（放著的網面向按 F 也能固）。'); SFX.fail(); return; }
         const size = DB[ITEMS[s.n].tile].net, max = this.world.netDur(size);
@@ -1771,7 +1800,8 @@
           case 'KeyF': case 'Enter': this.pressPlace(); break;
           case 'KeyV': this.useItem(); break;
           case 'KeyR': this.sleep(); break;
-          case 'KeyP': { const h = this.activeTool(); if (h && GODS.indexOf(h.n) >= 0) this.putAway(); else this.cycleTool(1); break; }   // 拿著神兵時 P 收回
+          case 'KeyP': { const h = this.activeTool(); if (h && GODS.indexOf(h.n) >= 0) this.putAway(); else this.cycleGroup('weapon'); break; }   // P 換武器；拿著神兵時 P 收回
+          case 'KeyO': this.cycleGroup('farm'); break;   // O 換農具（v0.31；N 是靜音）
           case 'KeyL': this.drawGod(); break;
           case 'KeyY': this.toggleSling(); break;
           case 'KeyN': this.message(SFX.toggle() ? '已靜音' : '聲音已開'); break;
@@ -1862,14 +1892,18 @@
         bar.appendChild(el);
       }
       const tb = $('toolbar'); tb.innerHTML = '';
+      this.sortTools();
+      const nWeap = p.tools.filter(s => this.toolGroup(s.n) !== 'farm').length, mkTag = (t, tip) => { const l = document.createElement('span'); l.className = 'rowlabel sub'; l.textContent = t; l.title = tip; return l; };
+      tb.appendChild(mkTag('武', '武器：刀、劍、彈弓、神兵。P 換'));
       for (let i = 0; i < this.toolSlots(); i++) {
+        if (i === nWeap) tb.appendChild(mkTag('農', '農具：鎬、鋤、斧。O 換'));
         const s = p.tools[i], el = document.createElement('div');
         el.className = 'slot bag tool' + (s ? '' : ' empty') + (s && i === p.tool ? ' sel' : '');
         if (s) {
           const it = ITEMS[s.n];
           el.innerHTML = '<span class="ch' + (s.n.length > 1 ? ' word' : '') + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">耐 ' + s.dur + '</span><i class="ring' + (s.dur / it.dur <= 0.25 ? ' low' : '') + '" style="--p:' + Math.round(100 * s.dur / it.dur) + '%"></i>'; el.classList.add('ringed');
           el.title = it.flavor + '（點一下手持，再點一下空手；右鍵移回囊）';
-        } else el.title = '具欄：工具放這裡，P 換手持';
+        } else el.title = '具欄：武器與農具共用這些格子；P 換武器、O 換農具';
         el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; if (ev.button === 2) { this.unequipToBag(i); return; } p.tool = (p.tool === i) ? -1 : i; this.buildBag(); });
         el.addEventListener('contextmenu', (ev) => ev.preventDefault());
         tb.appendChild(el);
