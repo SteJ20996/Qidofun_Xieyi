@@ -242,7 +242,7 @@
         if (Math.hypot(cxp - px, cyp - py) <= r + Math.max(pl.w, pl.h) / 2) { pl.seen = true; if (this.onDiscover) this.onDiscover(pl); }
       }
     }
-    revealAll(px, py) { this.markSeen(px, py, G.SEA_EDGE); }
+    revealAll(px, py) { this.markSeen(px, py, G.HOME_R); }   // 塔上看得見整座本島（v0.38 島擴了，照 HOME_R）
     seenCount() { let n = 0; for (const b of this.explored.values()) for (const v of b) { let x = v; while (x) { n += x & 1; x >>= 1; } } return n; }
     // 走的人多了，也便成了路
     trample(x, y) {
@@ -453,7 +453,7 @@
       return !!src;
     }
     // 把霧挪到 (x, y)、霧齡 t，重算算作霧的格子。山、海都飄得過去，不回頭（v0.32）；碰到四十五格以內的屋子，形撐開繞過去、方向拐開；
-    // 飄到海的盡頭（離島心 G.SEA_EDGE − FOG_EDGE 外）就轉回島這邊，免得飄出紙外
+    // 飄到紙邊（方框 G.WORLD_R − FOG_EDGE 外；v0.38 前是離島心 113 格）就轉回島心那邊，免得飄出紙外
     placeFog(f, x, y, t) {
       const cov = this.fogCover(f, x, y, t), cells = this.fogCount(cov);
       const dx = x - f.gx, dy = y - f.gy; if (Math.abs(dx) + Math.abs(dy) > 1e-6) f.dir = [Math.sign(Math.round(dx * 10)), Math.sign(Math.round(dy * 10))];
@@ -462,7 +462,7 @@
         const oa = Math.atan2(cov.ly - y, cov.lx - x), d = Math.atan2(Math.sin(f.ang - oa), Math.cos(f.ang - oa));
         if (Math.abs(d) < Math.PI / 2) { f.ang = oa + (d >= 0 ? 1 : -1) * (Math.PI / 2 + 0.35); f.turnAt = this.time + 4; f.turned = (f.turned || 0) + 1; }
       }
-      if (Math.hypot(x, y) > G.SEA_EDGE - FOG_EDGE) { const home = Math.atan2(-y, -x), d = Math.atan2(Math.sin(f.ang - home), Math.cos(f.ang - home)); if (Math.abs(d) > Math.PI / 2) f.ang = home + (U.trueRand() - 0.5) * 0.8; }
+      if (Math.max(Math.abs(x), Math.abs(y)) > G.WORLD_R - FOG_EDGE) { const home = Math.atan2(-y, -x), d = Math.atan2(Math.sin(f.ang - home), Math.cos(f.ang - home)); if (Math.abs(d) > Math.PI / 2) f.ang = home + (U.trueRand() - 0.5) * 0.8; }   // v0.38：紙的方框邊
       return true;
     }
     // 測試與舊介面：定方向後一口氣挪一格的距離
@@ -536,7 +536,7 @@
     heatNear(x, y, r) {
       for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) {
         const d = this.info(x + i, y + j);
-        if (d.kind === 'fire' || this.isBurning(x + i, y + j) || this.stoveLit(x + i, y + j)) return true;
+        if (d.kind === 'fire' || d.heat || this.isBurning(x + i, y + j) || this.stoveLit(x + i, y + j)) return true;   // d.heat：熔岩、溫泉（v0.38）
       }
       return false;
     }
@@ -694,6 +694,16 @@
         this.ships.set(k, rec); for (const [x, y] of rec.cells) this.shipCells.set(U.key(x, y), k);
       }
       for (const [k, v] of this.diff) if (v === '舟' && !this.shipCells.has(k)) { const [x, y] = U.unkey(k), b = this.base(x, y); this.set(x, y, DB[b].kind === 'water' ? b : '水'); }   // 沒有記錄的舟字：還原成水
+      this.movedShips = 0;
+      for (const [ak, rec] of [...this.ships]) {   // v0.38 擴島：舊存檔的船若停在長出來的新陸地上，挪到最近的海
+        if (rec.cells.every(([x, y]) => DB[this.base(x, y)].kind === 'water')) continue;
+        const [ax, ay] = U.unkey(ak); this.removeShip(ak);
+        for (const [x, y] of rec.cells) { const b = this.base(x, y); if (DB[b].kind !== 'water') this.set(x, y, b); }
+        const ok = (x, y) => { const t = this.get(x, y); return DB[t].kind === 'water' && t !== '舟'; };
+        let spot = null;
+        for (let r = 1; r <= 60 && !spot; r++) for (let i = -r; i <= r && !spot; i++) for (const [x, y] of [[ax + i, ay - r], [ax + i, ay + r], [ax - r, ay + i], [ax + r, ay + i]]) if (!spot && this.shipFits(rec.kind, x, y, ok)) spot = [x, y];
+        if (spot) { this.addShip(spot[0], spot[1], rec); this.movedShips++; }
+      }
       this.fogPlan = (s.fogPlan || []).filter(t => typeof t === 'number').map(sh);
       this.fogDay = typeof s.fogDay === 'number' ? s.fogDay : Math.floor(this.time / DAY);
       this.burn = new Map(Object.entries(s.burn || {}).map(([k, v]) => [k, { t: v[0], lvl: v[1] }]));

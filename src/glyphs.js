@@ -8,7 +8,8 @@
   const INK = {
     black: '#1c1a17', water: '#2f5878', deep: '#223f5a', rock: '#4a4f5c', snow: '#7f8ea3',
     plant: '#263428', forest: '#1b261d', red: '#b4392a', gold: '#9c6d12', brown: '#5a3e2b',
-    sand: '#8d7a4b', ash: '#6f6a66', soil: '#6b4a2f', field: '#4f5a2f', beast: '#2a2320', ghost: '#3b3550', cotton: '#6f6a5a', brick: '#7a4a35', hemp: '#5a6a3a', bog: '#4d4a2c'
+    sand: '#8d7a4b', ash: '#6f6a66', soil: '#6b4a2f', field: '#4f5a2f', beast: '#2a2320', ghost: '#3b3550', cotton: '#6f6a5a', brick: '#7a4a35', hemp: '#5a6a3a', bog: '#4d4a2c',
+    desert: '#9a7f45', lava: '#c2461f', basalt: '#3d3a40', obsidian: '#2b2133', river: '#3a6f92', spring: '#4f8aa0', cave: '#3a3028'   // v0.38 外島的新地形
   };
 
   // 字庫（地上的格子）。欄位：
@@ -28,6 +29,18 @@
     '灘': { s: 22, walk: 1.2, kind: 'ground', ink: INK.sand, flavor: '潮退則沙，潮漲則水。' },
     '沼': { s: 8, walk: 0.3, kind: 'ground', bog: true, ink: INK.bog, flavor: '爛泥沼澤，極少見。走進去慢得像拖著腿，力不回反掉（約每息一點五）、身子發冷（每息暖 −0.6）；力耗盡就跟累倒一樣，每息掉命二。獸除了蟾都不進沼。選中木板面向它按 F，鋪成棧道就好走了。' },
     '棧': { s: 12, walk: 1.0, kind: 'object', flam: 0.3, ink: INK.brown, yield: { '木板': 1 }, time: 1.0, place: true, to: '沼', flavor: '鋪在沼上的木板棧道，走起來跟平地一樣。拆了收回木板，底下還是沼。' },
+    // —— v0.38 外島的新地形：漠島（漠丘池棗）、火島（熔岩曜）、川島（川湖）、雪島（湯窟）
+    '漠': { s: 14, walk: 1.0, kind: 'ground', desert: true, ink: INK.desert, yield: { '沙': 1 }, time: 0.8, flavor: '大漠黃沙。白天烈日當頭，力不回反掉（每息約 −0.4）；夜裡冷得刺骨（暖每息再 −0.8）。綠洲的池水、椰棗救得了命。' },
+    '丘': { s: 5, walk: 0.6, kind: 'ground', desert: true, ink: INK.desert, yield: { '沙': 2 }, time: 1.2, to: '漠', flavor: '沙丘，一步一陷，走得慢。蛇藏在丘裡。' },
+    '池': { s: 6, walk: 0, kind: 'water', fresh: true, ink: INK.river, flavor: '綠洲裡的池水，是淡水：空瓶取了就能喝。' },
+    '棗': { s: 12, walk: 0.8, kind: 'plant', flam: 0.5, ink: INK.plant, yield: { '棗': 2 }, time: 0.8, to: '漠', regrow: 240, flavor: '綠洲的椰棗樹。摘之得兩顆棗；曬乾的棗放多久都不會醉。' },
+    '熔': { s: 14, walk: 0, kind: 'rock', lava: true, heat: true, light: 3.5, ink: INK.lava, flavor: '火山口流出的熔岩，照得一片紅。兩格內暖烘烘；貼著它（一格內）會燙傷，命每息 −1.5。魄三格內即煙滅。' },
+    '岩': { s: 8, walk: 0.7, kind: 'rock', ink: INK.basalt, yield: { '石': 1 }, time: 3.0, bonus: { '石子': 0.3 }, fast: '鎬', flavor: '火山冷下來的岩地。跟石地一樣，鎬採之快一倍，偶得石子。' },
+    '曜': { s: 18, walk: 0, kind: 'rock', ink: INK.obsidian, yield: { '黑曜石': 1 }, time: 3.0, need: '鎬', to: '岩', flavor: '黑曜石脈，要用鎬。黑曜石二、木一、麻一，磨成曜刃。' },
+    '川': { s: 3, walk: 0, kind: 'water', fresh: true, ink: INK.river, flavor: '河。淡水：空瓶取了就能喝；有筏可渡，可架橋。河裡也有魚。' },
+    '湖': { s: 12, walk: 0, kind: 'water', fresh: true, ink: INK.river, flavor: '湖。淡水：空瓶取了就能喝；有筏可渡。' },
+    '湯': { s: 12, walk: 0.6, kind: 'ground', spring: true, heat: true, ink: INK.spring, flavor: '溫泉（古稱湯泉）。走進去泡著：暖每息 +4、命 +1、愜意 +0.3；旁邊兩格也暖。空瓶可取淡水。' },
+    '窟': { s: 13, walk: 1.0, kind: 'ground', cave: true, ink: INK.cave, flavor: '山腹裡的洞窟。走進去白天也黑，要帶光；也比外頭涼。窟邊的山壁煤鐵多。' },
     // —— 植物（取走後會長回來）
     '草': { s: 10, walk: 1.0, kind: 'plant', flam: 0.5, ink: INK.plant, yield: { '草': 1 }, time: 0.5, regrow: 30, place: true, flavor: '野草。做磚、搓火把、合藥都要它。除草時偶爾驚出蜘蛛。' },
     '花': { s: 8, walk: 1.0, kind: 'plant', flam: 0.4, ink: INK.red, yield: { '花': 1 }, time: 0.5, regrow: 30, place: true, flavor: '草間一點硃。' },
@@ -101,7 +114,8 @@
   const VIS = { '草': [0.6, 0.42], '花': [0.62, 0.8], '棉': [0.75, 0.85], '麻': [0.72, 0.85], '沙': [0.58, 0.5], '礫': [0.62, 0.6], '田': [0.78, 0.6], '土': [0.6, 0.5], '灰': [0.6, 0.5], '雪': [0.7, 0.55],
     '水': [0.82, 0.8], '淼': [0.95, 0.9], '石': [0.72, 0.85], '山': [1.12, 1], '木': [0.9, 1], '果': [0.9, 1], '竹': [0.85, 0.95], '林': [1.0, 1], '森': [1.08, 1],
     '火': [0.9, 1], '炎': [1.0, 1], '焱': [1.1, 1], '灶': [0.95, 1], '鼎': [1.0, 1], '磚': [0.95, 1], '碑': [1.05, 1], '包': [0.9, 1], '煤': [1.0, 1], '鐵': [1.0, 1], '網': [1.0, 1], '罟': [1.0, 1], '罾': [1.0, 1], '偶': [1.0, 1], '櫃': [0.95, 1], '舟': [1.0, 1],
-    '路': [0.55, 0.45], '墟': [0.88, 0.8], '門': [0.85, 0.9], '井': [0.9, 1] };
+    '路': [0.55, 0.45], '墟': [0.88, 0.8], '門': [0.85, 0.9], '井': [0.9, 1],
+    '漠': [0.6, 0.5], '丘': [0.78, 0.7], '池': [0.82, 0.8], '棗': [0.9, 1], '熔': [1.0, 1], '岩': [0.74, 0.85], '曜': [1.0, 1], '川': [0.85, 0.8], '湖': [0.85, 0.8], '湯': [0.85, 0.9], '窟': [0.82, 0.75] };
   for (const ch in DB) {
     const d = DB[ch];
     d.vis = VIS[ch] || [0.95, 1];
@@ -154,6 +168,8 @@
     '燭龍焚溟': { s: 58, kind: 'tool', tool: '焚', dmg: 120, dur: 199, flavor: '燭龍銜火，焚盡溟海。火屬而克海水，故為神兵。膽氣卅一重方可造、可揮：面向獸按 E，三格內諸獸同受灼燒，海中之物（蜃、龜）一百二十，陸上與天上之物減半。隨身的膽氣減益與九閽鳴雷相同，兩件同帶只算一重。按 L 拿出（手上已是神兵就換另一件）、P 收回。' },
     '九閽鳴雷': { s: 26, kind: 'tool', tool: '鎚', dmg: 120, dur: 199, flavor: '撼地之鎚。膽氣卅一重方可造、可掄：面向獸按 E，三格內諸獸同受一百二十傷。隨身則膽氣減得快（簡單四日、一般三日、困難二日一減，下限廿八／廿七／廿六重；困難另慢慢掉力），兩件神兵同帶也只算一重；低於卅一重掄不動。按 L 拿出、P 收回。' },
     '鐵礦': { s: 21, flavor: '鐵礦石。礦二煤一入旺灶，煉成鐵。' },
+    '棗': { s: 12, kind: 'food', food: { eat: 15 }, flavor: '綠洲的椰棗，曬乾了，放多久都不會醉。飽 +15。' },
+    '黑曜石': { s: 12, kind: 'item', flavor: '火島上鑿來的黑曜石，碎口鋒利如刀。黑曜石二、木一、麻一，磨成曜刃。' },
     '鎢礦': { s: 21, flavor: '鎢礦石，鑿鐵礦脈時十八分之一的機會挖到（真隨機）。鎢礦一、鐵礦二、精煤一入旺灶，煉成鎢鋼。' },
     '精煤': { s: 14, flavor: '八塊煤煉成的精煤。煉鎢鋼、鍛鎢鋼具要它；入灶可燒九百息。' },
     '鎢鋼': { s: 21, flavor: '鎢鋼。可鍛刀鎬鋤劍斧，可打甲盔靴，強過鋼。' },
@@ -170,6 +186,7 @@
     '海水瓶': { s: 36, kind: 'item', flavor: '一瓶海水，鹹，喝不得。放在旺的灶上蒸餾成淡水。' },
     '淡水瓶': { s: 36, kind: 'food', food: { eat: 6, bottle: true }, flavor: '一瓶淡水。飲之解渴（飽 +6）。醉果二合淡水一成果酒。' },
     '果酒': { s: 18, kind: 'food', food: { eat: 12, san: 20, bottle: true }, flavor: '果酒。飽 +12，愜意 +20。' },
+    '曜刃': { s: 18, kind: 'tool', tool: '刀', dmg: 60, dur: 24, brittle: true, flavor: '黑曜石磨的刃。一下六十，比鋼刀還利；但脆，耐久只有二十四，鈍了就碎，磨不回來，再做一把。' },
     '石刀': { s: 7, kind: 'tool', tool: '刀', dmg: 30, dur: 40, flavor: '一下三十。獵鹿一刀，蛇蛛蟾三刀，豹狼六刀，打虎十刀。' },
     '石鎬': { s: 23, kind: 'tool', tool: '鎬', dmg: 15, dur: 40, flavor: '鑿山採石、拆磚，快一倍。' },
     '石鋤': { s: 20, kind: 'tool', tool: '鋤', dmg: 15, dur: 40, flavor: '鋤在手，面向土或草按 E，鋤之成田。' },
@@ -198,7 +215,7 @@
   const CRAFT_CATS = ['全部', '居所', '工具', '神兵', '衣甲', '燈火', '漁船', '食藥', '材料'];
   const CAT_OF = {
     '居所': ['brick', 'door', 'window', 'bed', 'chest', 'stove', 'cauldron', 'scarecrow', 'bridge', 'platform', 'steps'],
-    '工具': ['grind', 'regrind', 'crush', 'forge', 'forgew', 'fan', 'sling'],
+    '工具': ['grind', 'regrind', 'crush', 'forge', 'forgew', 'obsidian', 'fan', 'sling'],
     '神兵': ['hammer', 'seagod'],
     '衣甲': ['lining', 'pants', 'vest', 'cap', 'shoes', 'ironvest', 'helm', 'ironboots', 'wvest', 'whelm', 'wboots'],
     '燈火': ['torch', 'candle', 'candle2', 'lamp', 'hat'],
@@ -223,6 +240,7 @@
     { id: 'stove', out: '灶', n: 1, need: { '石': 6 }, sta: 6, note: '烤食、燒瓶、蒸餾；添木續火' },
     { id: 'cauldron', out: '鼎', n: 1, need: { '鐵': 3, '石': 4, '鎢鋼': 1, '精煤': 2 }, sta: 12, note: '煉丹用，添柴如灶' },
     { id: 'fan', out: '扇', n: 1, need: { '草': 4, '木': 1 }, sta: 2, note: '一次性，吹散一片霧障' },
+    { id: 'obsidian', out: '曜刃', n: 1, need: { '黑曜石': 2, '木': 1, '麻': 1 }, sta: 6, note: '一下六十、耐久二十四；脆，鈍了就碎，磨不回來（v0.38）' },
     { id: 'sling', out: '彈弓', n: 1, need: { '木': 2, '麻': 3 }, sta: 4, note: '射石子：九格內，一下六；被打的獸七格內撲過來' },
     { id: 'seagod', out: '燭龍焚溟', n: 1, need: { '鎢鋼': 4, '精煤': 6, '火把': 4, '海水瓶': 3 }, sta: 60, level: 31, note: '三格內諸獸同受灼燒：海中之物一百二十，陸上天上減半' },
     { id: 'grind', out: null, need: { '石': 1, '石子': 1, '木': 1 }, sta: 8, note: '磨礪：選刀、鎬、鋤、劍、斧', choose: ['石刀', '石鎬', '石鋤', '石劍', '石斧'] },
@@ -288,8 +306,9 @@
   }
   // 鐵礦多 8%（v0.30 使用者定）：零星的礦脈機率 ×1.08；礦叢平均面積 9 + 16×0.4 = 15.4 格 ×1.08 = 16.632，外圈留下的機率因此是 0.477
   const IRON_P = 1.08, IRON_RING = (15.4 * IRON_P - 9) / 16;
-  function naturalTile(x, y, seed) {
-    const { h, m, t } = fields(x, y, seed);
+  function naturalTile(x, y, seed) { const f = fields(x, y, seed); return classify(x, y, seed, f.h, f.m, f.t); }
+  // 照高度、濕度、溫度定一格長什麼（v0.38 從 naturalTile 拆出來，本島擴出去的那圈與外島「青島」也用它）
+  function classify(x, y, seed, h, m, t) {
     const d = U.rand2(x, y, seed + 5);
 
     if (h < 0.33) return '淼';
@@ -350,7 +369,8 @@
     });
     return (oreCache[seed] = m);
   }
-  function baseTile(x, y, seed) {
+  // v0.37 以前的底稿（一格不差）：地標、碑、礦叢、出生點都照它找位置，舊存檔的島才不會變
+  function oldTile(x, y, seed) {
     const il = islet(seed);
     const di = Math.hypot(x - il.cx, y - il.cy);
     if (di <= 6.1) return di < 3.4 ? (U.rand2(x, y, seed + 5) < 0.12 ? '花' : '草') : '沙';
@@ -362,6 +382,117 @@
       if (DB[nat].kind === 'rock' && DB[nat].walk <= 0) return '石';
     }
     return nat;
+  }
+
+  // ---------- v0.38：擴島與群島 ----------
+  // 整張紙 2500×2500 格（x、y 都在 −WORLD_R 到 WORLD_R−1）；開船出了這個方框就是渡海。
+  // 本島：原本的陸地一格不動（舊存檔照舊），從原本的海岸往外再長出約 45% 的陸地——高度照舊，只把往海裡收的那道坡推遠 HOME_K 倍；
+  //       只長在連著外海的水上（島裡的湖塘照舊，homeSea() 從方框邊往裡漫一次記下來），燈塔的小嶼與灘道四周照舊是海（燈塔還是只有退潮走得到）。
+  // 外島：每 ISLE_CELL 格見方一塊，ISLE_P 的機會有一座島，各有主題（漠、火、川、雪、青），離島心 ISLE_CLEAR 格內不放。
+  const WORLD_R = 1250, HOME_K = 1.207, HOME_R = Math.ceil(ISLAND_R * HOME_K) + 10, HOME_BOX = 140, HOME_W = HOME_BOX * 2 + 1;   // HOME_K：八十座島平均陸地多四成五（v0.38 量的）
+  function nearIslet(x, y, seed) {   // 小嶼十四格內、灘道兩側五格內：擴島不長到這裡
+    const il = islet(seed);
+    if (Math.hypot(x - il.cx, y - il.cy) <= 14) return true;
+    const proj = x * il.ux + y * il.uy, perp = Math.abs(x * il.uy - y * il.ux);
+    return perp <= 5 && proj > 0 && proj < il.len + 8;
+  }
+  const homeCache = {};
+  function homeSea(seed) {   // 方框裡每格原本的底稿，與哪些水連著外海（從方框四邊往裡漫）；一座島算一次
+    if (homeCache[seed]) return homeCache[seed];
+    const N = HOME_W, old = new Array(N * N), sea = new Uint8Array(N * N), q = new Int32Array(N * N);
+    for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) old[j * N + i] = oldTile(i - HOME_BOX, j - HOME_BOX, seed);
+    let qh = 0, qt = 0;
+    const push = (k) => { if (!sea[k] && DB[old[k]].kind === 'water') { sea[k] = 1; q[qt++] = k; } };
+    for (let i = 0; i < N; i++) { push(i); push((N - 1) * N + i); push(i * N); push(i * N + N - 1); }
+    while (qh < qt) { const k = q[qh++], x = k % N, y = (k - x) / N; if (x > 0) push(k - 1); if (x < N - 1) push(k + 1); if (y > 0) push(k - N); if (y < N - 1) push(k + N); }
+    return (homeCache[seed] = { old, sea });
+  }
+  function homeTile(x, y, seed) {
+    const hs = homeSea(seed), k = (y + HOME_BOX) * HOME_W + (x + HOME_BOX), t = hs.old[k];
+    if (DB[t].kind !== 'water') return t;                        // 原本的陸地（連灘、小嶼、礦叢）一格不動
+    if (!hs.sea[k] || nearIslet(x, y, seed)) return t;           // 島裡的湖塘、小嶼與灘道四周照舊
+    const dist = Math.hypot(x, y), S = (v) => U.smoothstep(0.55, 1.0, v), f = fields(x, y, seed);
+    const h = f.h + (S(dist / ISLAND_R) - S(dist / (ISLAND_R * HOME_K))) * 0.6;   // 只會比原本高：往海裡收的坡推遠了
+    return classify(x, y, seed, h, f.m, f.t);
+  }
+  const ISLE_CELL = 250, ISLE_P = 0.78, ISLE_CLEAR = 330, ISLE_N = WORLD_R / ISLE_CELL;
+  const ISLE_KINDS = [['漠', 20], ['火', 14], ['川', 24], ['雪', 18], ['青', 24]];
+  const ISLE_NAMES = { '漠': '漠島', '火': '火島', '川': '川島', '雪': '雪島', '青': '青島' };
+  const isleCache = new Map();
+  function isleAt(ci, cj, seed) {   // 第 (ci, cj) 塊方塊裡的島（沒有就 null）
+    const k = seed + ':' + ci + ',' + cj;
+    if (isleCache.has(k)) return isleCache.get(k);
+    let isl = null;
+    if (ci >= -ISLE_N && ci < ISLE_N && cj >= -ISLE_N && cj < ISLE_N && U.rand2(ci, cj, seed + 601) < ISLE_P) {
+      const ox = ci * ISLE_CELL, oy = cj * ISLE_CELL, mg = 40;
+      const cx = Math.round(ox + mg + U.rand2(ci, cj, seed + 607) * (ISLE_CELL - 2 * mg)), cy = Math.round(oy + mg + U.rand2(ci, cj, seed + 613) * (ISLE_CELL - 2 * mg));
+      if (Math.hypot(cx, cy) >= ISLE_CLEAR) {
+        const edge = Math.min(cx - ox, ox + ISLE_CELL - cx, cy - oy, oy + ISLE_CELL - cy);   // 島整個留在自己那塊方塊裡，查一格只要看一座島
+        const R = Math.min(20 + Math.pow(U.rand2(ci, cj, seed + 619), 1.4) * 55, edge / 1.4);
+        let r = U.rand2(ci, cj, seed + 631) * 100, kind = '青';
+        for (const [kk, wgt] of ISLE_KINDS) { if (r < wgt) { kind = kk; break; } r -= wgt; }
+        isl = { id: ci + ',' + cj, ci, cj, cx, cy, R, kind, name: ISLE_NAMES[kind], key: U.hash2(ci, cj, seed + 641) & 0xffff };
+      }
+    }
+    isleCache.set(k, isl); return isl;
+  }
+  function isles(seed) { const out = []; for (let cj = -ISLE_N; cj < ISLE_N; cj++) for (let ci = -ISLE_N; ci < ISLE_N; ci++) { const i = isleAt(ci, cj, seed); if (i) out.push(i); } return out; }
+  function isleOf(x, y, seed) {     // 這格在哪座外島的範圍裡（海上也算，到島半徑的 1.25 倍）
+    const isl = isleAt(Math.floor(x / ISLE_CELL), Math.floor(y / ISLE_CELL), seed);
+    return isl && Math.hypot(x - isl.cx, y - isl.cy) <= isl.R * 1.25 ? isl : null;
+  }
+  function isleTile(x, y, seed) {
+    const isl = isleOf(x, y, seed); if (!isl) return '淼';
+    const q = Math.hypot(x - isl.cx, y - isl.cy) / isl.R, s = seed + 701 + isl.key;
+    let h = U.fbm(x / 34, y / 34, s, 4) * 0.6 + (1 - U.smoothstep(0.2, 1.1, q)) * 0.5 - 0.12;   // 島心高、往外收成海（島心平均約 0.68，起伏 ±0.12）
+    if (isl.kind === '火') h += (1 - U.smoothstep(0, 0.45, q)) * 0.14;                          // 火島另有一座火山錐
+    else if (isl.kind === '青') h -= 0.05;                                                      // 青島低一點，山頂才不會整片是雪
+    if (h < 0.33) return '淼';
+    if (h < 0.395) return '水';
+    const d = U.rand2(x, y, s + 5), m = U.fbm(x / 40 + 300, y / 40 - 300, s + 17, 3);
+    if (isl.kind === '漠') {           // 漠島：大漠、沙丘，零星的綠洲（池、椰棗、草），岩丘裡有一點煤鐵
+      if (h < 0.415) return d < 0.85 ? '漠' : '礫';
+      const oa = U.fbm(x / 16 + 77, y / 16 - 77, s + 23, 2);
+      if (oa > 0.72 && h < 0.64) return oa > 0.77 ? '池' : d < 0.35 ? '棗' : d < 0.8 ? '草' : '漠';
+      if (h > 0.69) return d < 0.5 ? '石' : d < 0.56 ? '煤' : d < 0.6 ? '鐵' : '山';
+      if (U.fbm(x / 9 + 11, y / 9 + 31, s + 29, 2) > 0.6) return '丘';
+      return d < 0.03 ? '石' : d < 0.06 ? '礫' : d < 0.07 ? '木' : '漠';
+    }
+    if (isl.kind === '火') {           // 火島：山頂一口熔岩，四周岩地與黑曜石脈，山腳火山灰、溫泉
+      if (h < 0.415) return d < 0.5 ? '沙' : d < 0.8 ? '岩' : '礫';
+      if (h > 0.8) return '熔';
+      if (h > 0.7) return d < 0.12 ? '曜' : d < 0.15 ? '熔' : '岩';
+      if (h > 0.6) return d < 0.05 ? '曜' : d < 0.7 ? '岩' : d < 0.85 ? '灰' : '石';
+      if (U.fbm(x / 12 + 5, y / 12 - 5, s + 37, 2) > 0.75) return '湯';
+      return d < 0.25 ? '灰' : d < 0.4 ? '岩' : m > 0.5 ? (d < 0.7 ? '木' : '草') : (d < 0.8 ? '草' : '石');
+    }
+    if (isl.kind === '川') {           // 川島：河從山上蜿蜒到海、低處有湖，林木茂密，果棉麻多
+      if (h < 0.415) return d < 0.8 ? '沙' : '礫';
+      if (h > 0.7) return d < 0.04 ? '鐵' : d < 0.09 ? '煤' : d < 0.8 ? '山' : '石';
+      if (Math.abs(U.fbm(x / 42 + 13, y / 42 - 13, s + 43, 3) - 0.5) < 0.009 && h < 0.68) return '川';
+      if (U.fbm(x / 20 - 41, y / 20 + 41, s + 47, 2) > 0.73 && h < 0.6) return '湖';
+      if (m < 0.42) return d < 0.05 ? '果' : d < 0.1 ? '花' : d < 0.14 ? '棉' : d < 0.16 ? '麻' : d < 0.3 ? '木' : '草';
+      if (m < 0.58) return d < 0.06 ? '果' : d < 0.45 ? '木' : d < 0.75 ? '林' : d < 0.8 ? '棉' : '草';
+      return d < 0.5 ? '竹' : d < 0.85 ? '林' : '森';
+    }
+    if (isl.kind === '雪') {           // 雪島：雪原寒地，山腹裡有洞窟（窟裡的山壁煤鐵多），山腳偶有溫泉
+      if (h < 0.415) return d < 0.6 ? '石' : d < 0.85 ? '雪' : '礫';
+      if (h > 0.6) {
+        const cv = U.fbm(x / 11 + 3, y / 11 + 7, s + 53, 3);
+        if (cv > 0.6) return '窟';
+        const nc = cv > 0.54;          // 貼著洞窟的山壁
+        return d < (nc ? 0.1 : 0.03) ? '鐵' : d < (nc ? 0.2 : 0.07) ? '煤' : '山';
+      }
+      if (h > 0.45 && U.fbm(x / 12 + 5, y / 12 - 5, s + 37, 2) > 0.74) return '湯';
+      if (h > 0.52) return d < 0.65 ? '雪' : d < 0.85 ? '石' : '林';
+      return d < 0.35 ? '雪' : d < 0.6 ? '草' : d < 0.85 ? '林' : '石';
+    }
+    return classify(x, y, s, h, m, U.fbm(x / 150 - 700, y / 150 + 700, s + 29, 3));   // 青島：跟本島一樣的尋常地貌
+  }
+  function baseTile(x, y, seed) {
+    if (x < -WORLD_R || y < -WORLD_R || x >= WORLD_R || y >= WORLD_R) return '淼';
+    if (Math.abs(x) <= HOME_BOX && Math.abs(y) <= HOME_BOX) return homeTile(x, y, seed);
+    return isleTile(x, y, seed);
   }
 
   // 五塊碑，由近到遠各講一個活下去的法子；讀碑力氣上限 +10
@@ -387,7 +518,7 @@
     STELES.forEach((s, i) => {
       const a = (i / STELES.length) * Math.PI * 2 + U.rand2(i, 7, seed) * 1.1;
       const tx = Math.round(Math.cos(a) * s.r * ISLAND_R), ty = Math.round(Math.sin(a) * s.r * ISLAND_R);
-      const found = spiralFind(tx, ty, 40, (x, y) => { const d = DB[baseTile(x, y, seed)]; return d.walk > 0 && d.kind !== 'water' && !onCauseway(x, y, seed); });
+      const found = spiralFind(tx, ty, 40, (x, y) => { const d = DB[oldTile(x, y, seed)]; return d.walk > 0 && d.kind !== 'water' && !onCauseway(x, y, seed); });
       if (found) out.push({ x: found[0], y: found[1], hint: s.hint });
     });
     return out;
@@ -416,8 +547,8 @@
   const mainCache = {};
   function mainland(seed) {           // 從島心走得到的底稿格（退潮：灘算沙），用來保證地標走得到
     if (mainCache[seed]) return mainCache[seed];
-    const walk = (x, y) => { const t = baseTile(x, y, seed), d = DB[t === '灘' ? '沙' : t]; return d.walk > 0 && d.kind !== 'water'; };
-    const start = spiralFind(0, 0, 30, (x, y) => '草田土沙'.indexOf(baseTile(x, y, seed)) >= 0) || [0, 0];
+    const walk = (x, y) => { const t = oldTile(x, y, seed), d = DB[t === '灘' ? '沙' : t]; return d.walk > 0 && d.kind !== 'water'; };
+    const start = spiralFind(0, 0, 30, (x, y) => '草田土沙'.indexOf(oldTile(x, y, seed)) >= 0) || [0, 0];
     const seen = new Set([start[0] + ',' + start[1]]), q = [start];
     while (q.length) {
       const [x, y] = q.shift();
@@ -438,14 +569,14 @@
     for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
       const x = x0 + i, y = y0 + j;
       if (taken.has(x + ',' + y)) return false;
-      const ch = baseTile(x, y, seed), d = DB[ch];
+      const ch = oldTile(x, y, seed), d = DB[ch];
       if (want === 'high') { if ('石礫草木田'.indexOf(ch) < 0 || fields(x, y, seed).h < 0.58) return false; }
       else if (want === 'forest') { if ('林木森竹草果棉麻'.indexOf(ch) < 0) return false; }
       else if (want === 'grass') { if ('草田花木果棉麻'.indexOf(ch) < 0) return false; }
       else if (want === 'beach') { if (ch !== '沙' && ch !== '礫') return false; }
       else if (want === 'mountain') {
         if ('石礫草木'.indexOf(ch) < 0) return false;
-        let near = false; for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, 1]]) if (baseTile(x + dx, y + dy, seed) === '山') near = true;
+        let near = false; for (const [dx, dy] of [[0, -1], [-1, 0], [1, 0], [0, 1]]) if (oldTile(x + dx, y + dy, seed) === '山') near = true;
         if (!near) return false;
       } else if (d.walk <= 0) return false;
     }
@@ -487,9 +618,10 @@
       '草': '草原', '花': '花野', '棉': '棉田', '麻': '麻田', '木': '疏林', '果': '果林', '林': '林地', '森': '深林', '竹': '竹林', '田': '田野',
       '土': '荒土', '灰': '焦土', '白': '白紙', '火': '火場', '炎': '火場', '焱': '火場', '灶': '灶邊', '鼎': '鼎邊', '磚': '磚邊', '床': '床邊', '櫃': '櫃邊', '偶': '稻草人旁',
       '燈': '燈下', '橋': '橋上', '漁': '魚梁', '舟': '船邊', '包': '荷包', '煤': '煤層', '鐵': '鐵礦脈', '網': '網邊', '罟': '網邊', '罾': '網邊', '碑': '古碑', '囊': '囊', '路': '小路', '塔': '塔下', '寺': '寺中', '船': '船邊',
-      '泉': '泉邊', '墓': '墓前', '洞': '洞口', '井': '井邊', '墟': '村中', '門': '門口' })[ch] || ch;
+      '泉': '泉邊', '墓': '墓前', '洞': '洞口', '井': '井邊', '墟': '村中', '門': '門口',
+      '漠': '大漠', '丘': '沙丘', '池': '綠洲', '棗': '綠洲', '熔': '熔岩邊', '岩': '岩地', '曜': '黑曜石脈', '川': '河邊', '湖': '湖畔', '湯': '溫泉', '窟': '洞窟' })[ch] || ch;
   }
 
   RECIPES.forEach(r => { r.cat = '材料'; for (const c in CAT_OF) if (CAT_OF[c].indexOf(r.id) >= 0) r.cat = c; });
-  root.G = { INK, DB, ITEMS, TOOL_NAMES, RECIPES, CRAFT_CATS, COOK, item, baseTile, fields, islet, stelePlan, placePlan, PLACES, biomeName, ISLAND_R, SEA_EDGE, SHIPS };
+  root.G = { INK, DB, ITEMS, TOOL_NAMES, RECIPES, CRAFT_CATS, COOK, item, baseTile, fields, islet, stelePlan, placePlan, PLACES, biomeName, ISLAND_R, SEA_EDGE, SHIPS, oldTile, WORLD_R, HOME_R, HOME_K, isleAt, isleOf, isles, ISLE_CELL, ISLE_NAMES };
 })();
