@@ -14,9 +14,9 @@
     '塔': '#2a2724', '寺': '#5a3e2b', '船': '#5a3e2b', '泉': '#4a6f8f', '墓': '#6e6c75', '洞': '#2a2724', '燈': '#e0a020'
   };
 
-  // 光照（v0.31）：夜色與暖光先畫在一張低解析度的「光照圖」上（每格 LM_S×LM_S 個取樣點），再平滑放大蓋上去；
-  // 光被磚、門、墟擋，視線按地上的字的版本（world.ver）快取，不用每幀重算。各種光的顏色：
-  const LM_S = 2, LAMP = [255, 192, 96], BEACON = [255, 214, 130], FIRE = [255, 138, 58], STOVE = [255, 158, 70], TORCH = [255, 172, 82], DRAGON = [236, 214, 160];
+  // 光照（v0.31；v0.36 改成射線）：每道光從燈芯往外射線，碰到磚、門、墟的邊就停，圍出一個多邊形——影子的邊沿著牆角斜斜射出去，不是一格一格的方塊。
+  // 夜色與暖光畫在一張每格 LM_PX 點的小畫布上（多邊形裁切＋放射漸層），再平滑放大蓋上去；多邊形按地上的字的版本（world.ver）與燈芯位置快取。各種光的顏色：
+  const LM_PX = 10, LAMP = [255, 192, 96], BEACON = [255, 214, 130], FIRE = [255, 138, 58], STOVE = [255, 158, 70], TORCH = [255, 172, 82], DRAGON = [236, 214, 160];
   const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
   class Renderer {
@@ -29,7 +29,7 @@
       this.pattern = null;
       this.lmDark = document.createElement('canvas'); this.lmGlow = document.createElement('canvas');   // 光照圖：夜色、暖光
       this.lmDarkCtx = this.lmDark.getContext('2d'); this.lmGlowCtx = this.lmGlow.getContext('2d');
-      this.sightCache = new Map(); this.fogSeen = new Map();
+      this.sightCache = new Map(); this.shapeCache = new Map(); this.fogSeen = new Map();
       this.puff = this.makeSprite(64, [[0, 'rgba(248,247,242,1)'], [0.6, 'rgba(240,238,232,0.56)'], [1, 'rgba(240,238,232,0)']]);   // 一團霧
       this.bloom = this.makeSprite(64, [[0, 'rgba(255,236,190,0.9)'], [0.35, 'rgba(255,200,120,0.45)'], [1, 'rgba(255,180,90,0)']]);  // 光源的芯
       this.camX = 0; this.camY = 0; this.camInit = false;
@@ -92,56 +92,79 @@
       if (this.sightCache.size > 600) this.sightCache.clear();
       this.sightCache.set(key, { ver, vis }); return vis;
     }
-    // 光照圖：每個取樣點算出還剩幾成夜色（多盞光相乘，跟以前一層層挖洞一樣）與染上的暖光，寫進兩張小圖
-    lightMap(g, ox, oy, x0, x1, y0, y1, lights, dark, glowK, now) {
-      const T = this.tile, S = LM_S, world = g.world, p = g.player;
-      const cols = (x1 - x0 + 1) * S, rows = (y1 - y0 + 1) * S, N = cols * rows;
-      if (!this.lmBuf || this.lmBuf.n !== N) this.lmBuf = { n: N, rem: new Float32Array(N), gre: new Float32Array(N), cr: new Float32Array(N), cg: new Float32Array(N), cb: new Float32Array(N), wt: new Float32Array(N) };
-      if (this.lmDark.width !== cols || this.lmDark.height !== rows) {
-        for (const c of [this.lmDark, this.lmGlow]) { c.width = cols; c.height = rows; }
-        this.lmImgD = this.lmDarkCtx.createImageData(cols, rows); this.lmImgG = this.lmGlowCtx.createImageData(cols, rows);
-        const D = this.lmImgD.data; for (let q = 0; q < D.length; q += 4) { D[q] = 12; D[q + 1] = 16; D[q + 2] = 36; }
+    // 一道光照得到的範圍（v0.36）：從燈芯 (cx, cy) 對每個牆角射三條線（正中與左右各偏一點），找最近碰到的擋光邊，連成多邊形；
+    // 被照到的擋光格子本身（旁邊有看得見的亮處）另記成方塊一起照亮。附近沒有擋光的字就回 null（整個圓都亮）
+    lightShape(world, cx, cy, r) {
+      const key = Math.round(cx * 8) + ',' + Math.round(cy * 8) + ',' + Math.ceil(r), ver = world.ver || 0, hit = this.shapeCache.get(key);
+      if (hit && hit.ver === ver) return hit.shape;
+      const R = Math.ceil(r) + 1, lx = Math.floor(cx), ly = Math.floor(cy);
+      const op = (x, y) => { const d = DB[world.get(x, y)]; return !!(d && d.opaque); };
+      const hs = new Map(), vs = new Map();   // 擋光格子的外緣：橫的照 y、直的照 x 分組，之後把相連的併成一條
+      const addH = (y, x, side) => { const k = y + ':' + side; if (!hs.has(k)) hs.set(k, []); hs.get(k).push(x); };
+      const addV = (x, y, side) => { const k = x + ':' + side; if (!vs.has(k)) vs.set(k, []); vs.get(k).push(y); };
+      for (let y = ly - R; y <= ly + R; y++) for (let x = lx - R; x <= lx + R; x++) {
+        if (!op(x, y)) continue;
+        if (!op(x, y - 1)) addH(y, x, 0); if (!op(x, y + 1)) addH(y + 1, x, 1);
+        if (!op(x - 1, y)) addV(x, y, 0); if (!op(x + 1, y)) addV(x + 1, y, 1);
       }
-      const B = this.lmBuf; B.rem.fill(1); B.gre.fill(1); B.cr.fill(0); B.cg.fill(0); B.cb.fill(0); B.wt.fill(0);
-      const add = (lx, ly, cx, cy, r, glow, col) => {
-        if (r <= 0) return;
-        const R = Math.ceil(r) + 1, W = 2 * R + 1, vis = this.sight(world, lx, ly, R);
-        const i0 = Math.max(0, Math.floor((cx - r - x0) * S)), i1 = Math.min(cols - 1, Math.ceil((cx + r - x0) * S));
-        const j0 = Math.max(0, Math.floor((cy - r - y0) * S)), j1 = Math.min(rows - 1, Math.ceil((cy + r - y0) * S));
-        for (let j = j0; j <= j1; j++) {
-          const sy = y0 + (j + 0.5) / S, dy = sy - cy, ty = Math.floor(sy) - ly + R;
-          for (let i = i0; i <= i1; i++) {
-            const sx = x0 + (i + 0.5) / S, dx = sx - cx, d = Math.sqrt(dx * dx + dy * dy) / r;
-            if (d >= 1) continue;
-            if (vis) { const tx = Math.floor(sx) - lx + R; if (tx < 0 || ty < 0 || tx >= W || ty >= W || !vis[ty * W + tx]) continue; }
-            const k = j * cols + i;
-            B.rem[k] *= 1 - (d < 0.55 ? 1 - 0.545 * d : 0.7 * smooth((1 - d) / 0.45));
-            if (glow) { const a = glow * (1 - d) * (1 - d * 0.35); B.gre[k] *= 1 - a; B.cr[k] += col[0] * a; B.cg[k] += col[1] * a; B.cb[k] += col[2] * a; B.wt[k] += a; }
+      let shape = null;
+      if (hs.size || vs.size) {
+        const segs = [], merge = (list) => { list.sort((a, b) => a - b); const out = []; let s0 = list[0], e0 = list[0] + 1; for (let i = 1; i < list.length; i++) { if (list[i] === e0) e0++; else { out.push([s0, e0]); s0 = list[i]; e0 = list[i] + 1; } } out.push([s0, e0]); return out; };
+        for (const [k, list] of hs) { const y = +k.split(':')[0]; for (const [a, b] of merge(list)) segs.push([a, y, b, y]); }
+        for (const [k, list] of vs) { const x = +k.split(':')[0]; for (const [a, b] of merge(list)) segs.push([x, a, x, b]); }
+        const B = r + 1.5, bx0 = cx - B, by0 = cy - B, bx1 = cx + B, by1 = cy + B;   // 外框：射線最遠到這裡
+        segs.push([bx0, by0, bx1, by0], [bx1, by0, bx1, by1], [bx1, by1, bx0, by1], [bx0, by1, bx0, by0]);
+        const angs = []; const seen = new Set();
+        for (const sg of segs) for (const [px, py] of [[sg[0], sg[1]], [sg[2], sg[3]]]) { const k = px + ',' + py; if (seen.has(k)) continue; seen.add(k); const a = Math.atan2(py - cy, px - cx); angs.push(a - 1e-4, a, a + 1e-4); }
+        angs.sort((a, b) => a - b);
+        const poly = new Float64Array(angs.length * 2);
+        for (let i = 0; i < angs.length; i++) {
+          const dx = Math.cos(angs[i]), dy = Math.sin(angs[i]); let best = Infinity;
+          for (const sg of segs) {   // 射線與線段的交點：原點 + t·方向 = 線段起點 + u·（終點 − 起點）
+            const ex = sg[2] - sg[0], ey = sg[3] - sg[1], den = dx * ey - dy * ex; if (Math.abs(den) < 1e-12) continue;
+            const qx = sg[0] - cx, qy = sg[1] - cy, t = (qx * ey - qy * ex) / den, u = (qx * dy - qy * dx) / den;
+            if (t > 0 && u >= -1e-9 && u <= 1 + 1e-9 && t < best) best = t;
           }
+          if (!isFinite(best)) best = B; poly[i * 2] = cx + dx * best; poly[i * 2 + 1] = cy + dy * best;
         }
+        const vis = this.sight(world, lx, ly, R), W = 2 * R + 1, rects = [];   // 被照到的擋光格子：整格亮
+        if (vis) for (let j = -R; j <= R; j++) for (let i = -R; i <= R; i++) if (vis[(j + R) * W + i + R] && op(lx + i, ly + j)) rects.push(lx + i, ly + j);
+        shape = { poly, rects };
+      }
+      if (this.shapeCache.size > 400) this.shapeCache.clear();
+      this.shapeCache.set(key, { ver, shape }); return shape;
+    }
+    // 光照圖：夜色那張先鋪滿夜色，每道光在它照得到的多邊形裡挖一個放射漸層的洞（多道光一層層挖，跟以前一樣）；暖光那張照同樣的形狀塗上光的顏色
+    lightMap(g, ox, oy, x0, x1, y0, y1, lights, dark, glowK, now) {
+      const T = this.tile, P = LM_PX, world = g.world, p = g.player;
+      const cols = (x1 - x0 + 1) * P, rows = (y1 - y0 + 1) * P;
+      if (this.lmDark.width !== cols || this.lmDark.height !== rows) for (const c of [this.lmDark, this.lmGlow]) { c.width = cols; c.height = rows; }
+      const dc = this.lmDarkCtx, gc = this.lmGlowCtx, toX = (x) => (x - x0) * P, toY = (y) => (y - y0) * P;
+      const clipTo = (c, sh) => {   // 照得到的形：多邊形加上被照到的牆格（同一個繞向，合起來就是聯集）
+        c.beginPath(); const pl = sh.poly; c.moveTo(toX(pl[0]), toY(pl[1])); for (let i = 2; i < pl.length; i += 2) c.lineTo(toX(pl[i]), toY(pl[i + 1])); c.closePath();
+        for (let i = 0; i < sh.rects.length; i += 2) c.rect(toX(sh.rects[i]), toY(sh.rects[i + 1]), P, P);
+        c.clip();
       };
-      add(p.x, p.y, p.rx + 0.5, p.ry + 0.5, g.playerLight(), 0, null);   // 身邊看得見的一圈（不帶暖光）
-      for (const l of lights) add(l.x, l.y, l.cx === undefined ? l.x + 0.5 : l.cx, l.cy === undefined ? l.y + 0.5 : l.cy, l.r + 0.25 * Math.sin(now * 6 + l.x * 3 + l.y), 0.24, l.c || LAMP);
-      const D = this.lmImgD.data, Gd = this.lmImgG.data, dA = 0.8 * dark * 255, gA = glowK * 255;
-      let gi0 = cols, gi1 = -1, gj0 = rows, gj1 = -1;   // 有暖光的範圍：只畫這一塊
-      for (let j = 0, k = 0, q = 3; j < rows; j++) for (let i = 0; i < cols; i++, k++, q += 4) {
-        D[q] = dA * B.rem[k];
-        const ga = 1 - B.gre[k];
-        if (ga > 0.004) {
-          const wt = B.wt[k]; Gd[q - 3] = B.cr[k] / wt; Gd[q - 2] = B.cg[k] / wt; Gd[q - 1] = B.cb[k] / wt; Gd[q] = ga * gA;
-          if (i < gi0) gi0 = i; if (i > gi1) gi1 = i; if (j < gj0) gj0 = j; if (j > gj1) gj1 = j;
-        } else Gd[q] = 0;
+      const spot = (c, cx, cy, r, stops) => { const X = toX(cx), Y = toY(cy), Rr = r * P, gr = c.createRadialGradient(X, Y, 0, X, Y, Rr); for (const [o, col] of stops) gr.addColorStop(o, col); c.fillStyle = gr; c.fillRect(X - Rr, Y - Rr, Rr * 2, Rr * 2); };
+      const CUT = [[0, 'rgba(0,0,0,1)'], [0.55, 'rgba(0,0,0,0.7)'], [0.75, 'rgba(0,0,0,0.33)'], [0.9, 'rgba(0,0,0,0.08)'], [1, 'rgba(0,0,0,0)']];
+      const each = (fn) => {   // 每道光（含人身邊看得見的那一圈）：照得到的形與畫法
+        fn(p.rx + 0.5, p.ry + 0.5, g.playerLight(), null);
+        for (const l of lights) fn(l.cx === undefined ? l.x + 0.5 : l.cx, l.cy === undefined ? l.y + 0.5 : l.cy, l.r + 0.25 * Math.sin(now * 6 + l.x * 3 + l.y), l.c || LAMP);
+      };
+      const inView = (cx, cy, r) => cx + r >= x0 && cx - r <= x1 + 1 && cy + r >= y0 && cy - r <= y1 + 1;
+      if (dark > 0.02) {
+        dc.globalCompositeOperation = 'source-over'; dc.clearRect(0, 0, cols, rows); dc.fillStyle = 'rgba(12,16,36,' + (0.8 * dark) + ')'; dc.fillRect(0, 0, cols, rows);
+        dc.globalCompositeOperation = 'destination-out';
+        each((cx, cy, r) => { if (r <= 0 || !inView(cx, cy, r)) return; const sh = this.lightShape(world, cx, cy, r); dc.save(); if (sh) clipTo(dc, sh); spot(dc, cx, cy, r, CUT); dc.restore(); });
+        dc.globalCompositeOperation = 'source-over';
       }
-      if (dark > 0.02) this.lmDarkCtx.putImageData(this.lmImgD, 0, 0);
-      const glow = gi1 >= 0, c = T / S, X = ox + x0 * T, Y = oy + y0 * T;
-      let gb = null;
-      if (glow) {
-        gi0 = Math.max(0, gi0 - 1); gj0 = Math.max(0, gj0 - 1); gi1 = Math.min(cols - 1, gi1 + 1); gj1 = Math.min(rows - 1, gj1 + 1);
-        const gw = gi1 - gi0 + 1, gh = gj1 - gj0 + 1;
-        this.lmGlowCtx.putImageData(this.lmImgG, 0, 0, gi0, gj0, gw, gh);
-        gb = [gi0, gj0, gw, gh, X + gi0 * c, Y + gj0 * c, gw * c, gh * c];
-      }
-      return { cols, rows, x: X, y: Y, w: cols * c, h: rows * c, glow, gb, cell: c, gre: B.gre };
+      gc.clearRect(0, 0, cols, rows); let glow = false;
+      each((cx, cy, r, col) => {
+        if (!col || r <= 0 || !inView(cx, cy, r)) return; glow = true;
+        const sh = this.lightShape(world, cx, cy, r), c = col[0] + ',' + col[1] + ',' + col[2];
+        gc.save(); if (sh) clipTo(gc, sh); spot(gc, cx, cy, r, [[0, 'rgba(' + c + ',0.24)'], [0.35, 'rgba(' + c + ',0.14)'], [0.7, 'rgba(' + c + ',0.045)'], [1, 'rgba(' + c + ',0)']]); gc.restore();
+      });
+      return { cols, rows, x: ox + x0 * T, y: oy + y0 * T, w: (x1 - x0 + 1) * T, h: (y1 - y0 + 1) * T, glow, px: P / T };
     }
     // 霧障（v0.31）：霧是一塊連續的形，每幀照它此刻的位置與形狀算出每格蓋了幾成，蓋得多的格子濃、邊上蓋一點的淡，
     // 那一團霧畫在蓋到的部分的中心，所以看起來是整片順著風飄過去、邊緣一直在變；新起的霧淡入，散掉或吹散的霧淡出
@@ -391,7 +414,7 @@
         ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low';   // 雙線性就夠平滑；'high' 在軟體繪圖下很慢
         if (dark > 0.02) ctx.drawImage(this.lmDark, 0, 0, lm.cols, lm.rows, lm.x, lm.y, lm.w, lm.h);
         if (lm.glow) {
-          const b = lm.gb; if (dark > 0.02) ctx.drawImage(this.lmGlow, b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]);   // 白天下雨只在雨幕上透一層（見下）
+          if (dark > 0.02) { ctx.globalAlpha = glowK; ctx.drawImage(this.lmGlow, 0, 0, lm.cols, lm.rows, lm.x, lm.y, lm.w, lm.h); }   // 白天下雨只在雨幕上透一層（見下）
           ctx.globalCompositeOperation = 'lighter';
           for (const l of lights) {
             const px = ox + (l.cx === undefined ? l.x + 0.5 : l.cx) * T, py = oy + (l.cy === undefined ? l.y + 0.5 : l.cy) * T;
@@ -408,7 +431,7 @@
         ctx.save(); ctx.globalAlpha = this.rainA;
         ctx.fillStyle = 'rgba(70,80,100,' + (0.12 + 0.06 * dark) + ')'; ctx.fillRect(0, 0, w, h);
         ctx.strokeStyle = dark > 0.5 ? 'rgba(210,220,240,0.6)' : 'rgba(40,50,75,0.6)'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
-        const warm = [], lit = lm && lm.glow ? lm : null, lcols = lit ? lit.cols : 0, lrows = lit ? lit.rows : 0;
+        const warm = [], lit = lm && lm.glow ? lm : null, lcols = lit ? lit.cols : 0, lrows = lit ? lit.rows : 0, gpx = lit ? this.lmGlowCtx.getImageData(0, 0, lcols, lrows).data : null;   // 雨絲照不照得到燈：看暖光那張的濃淡
         ctx.beginPath();
         const n = Math.min(380, Math.floor(w * h / 3000)), span = h + 60, wide = w + 80, drift = now * 520;
         for (let i = 0; i < n; i++) {
@@ -416,7 +439,7 @@
           const by = ((r >>> 16) & 4095) / 4096 * span, bx = ((r >>> 4) & 4095) / 4096 * wide;
           const yy = pm(by + drift * (0.85 + (r & 7) / 24) + oy * 0.5, span) - 30;
           const px = pm(bx - yy * 0.22 + ox * 0.5, wide) - 40;
-          if (lit) { const li = Math.floor((px - lit.x) / lit.cell), lj = Math.floor((yy - lit.y) / lit.cell); if (li >= 0 && lj >= 0 && li < lcols && lj < lrows && lit.gre[lj * lcols + li] < 0.93) { warm.push(px, yy, len); continue; } }
+          if (lit) { const li = Math.floor((px - lit.x) * lit.px), lj = Math.floor((yy - lit.y) * lit.px); if (li >= 0 && lj >= 0 && li < lcols && lj < lrows && gpx[(lj * lcols + li) * 4 + 3] > 16) { warm.push(px, yy, len); continue; } }
           ctx.moveTo(px, yy); ctx.lineTo(px - len * 0.22, yy + len);
         }
         ctx.stroke();
@@ -425,7 +448,7 @@
           for (let i = 0; i < warm.length; i += 3) { ctx.moveTo(warm[i], warm[i + 1]); ctx.lineTo(warm[i] - warm[i + 2] * 0.22, warm[i + 1] + warm[i + 2]); }
           ctx.stroke();
         }
-        if (lit) { const b = lit.gb; ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = (dark > 0.02 ? 0.5 : 0.9) * this.rainA; ctx.imageSmoothingEnabled = true; ctx.drawImage(this.lmGlow, b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]); }
+        if (lit) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = (dark > 0.02 ? 0.5 : 0.9) * this.rainA * glowK; ctx.imageSmoothingEnabled = true; ctx.drawImage(this.lmGlow, 0, 0, lit.cols, lit.rows, lit.x, lit.y, lit.w, lit.h); }
         ctx.restore();
       }
       // —— 紙邊的舊色，以及身體的訊號：掉血泛紅、中毒泛綠、神志不清泛藍
