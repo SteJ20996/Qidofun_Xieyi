@@ -1594,6 +1594,26 @@ const result = await page.evaluate(async () => {
     ok('v0.34: either mouse button on the tile beside you acts like E (gathers), never places', w.get(X + 1, Y) === '草' && !!g.action && g.action.type === 'gather', [w.get(X + 1, Y), g.action && g.action.type]);
     g.action = null; g.removeItem('磚', 9);
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) w.set(X + dx, Y + dy, w.base(X + dx, Y + dy)); }
+  // ============ v0.36：製作樹——同一層的品名在同一欄，子層稍微往後縮；後面各欄每列對齊 ============
+  { g.addItem('燈帽', 1); g.toggleCraft(); g.craftCat = '全部'; g.buildCraft(); await sleep(60);
+    const rows = [...document.querySelectorAll('#craft-list .recipe')], info = rows.map(r => ({ depth: r.querySelectorAll('.tree i').length - 1, x: Math.round(r.querySelector('b').getBoundingClientRect().left), sta: Math.round(r.querySelector('.sta').getBoundingClientRect().left), choose: r.classList.contains('choose'), btn: Math.round(r.querySelector('.btns').getBoundingClientRect().left) }));
+    const xs = {}; for (const r of info) (xs[r.depth] = xs[r.depth] || new Set()).add(r.x);
+    const steps = Object.keys(xs).map(Number).sort((a, b) => a - b), cols = steps.map(d => [...xs[d]]);
+    ok('v0.36: every item of the same depth starts in the same column (1 and 10 alike), each deeper level a small step further in', cols.every(c => c.length === 1) && steps.length >= 2 && steps.every((d, i) => i === 0 || (cols[i][0] - cols[i - 1][0] > 8 && cols[i][0] - cols[i - 1][0] < 30)), cols);
+    ok('v0.36: the stamina and button columns line up on every row (a wider 翻新 button no longer pushes them)', new Set(info.map(r => r.sta)).size === 1 && new Set(info.filter(r => !r.choose).map(r => r.btn)).size === 1, [[...new Set(info.map(r => r.sta))], [...new Set(info.filter(r => !r.choose).map(r => r.btn))]]);
+    ok('v0.36: the forge rows are named for what they make', G.RECIPES.find(r => r.id === 'forge').title === '鍛鋼具' && G.RECIPES.find(r => r.id === 'forgew').title === '鍛鎢鋼具');
+    g.toggleCraft(); g.removeItem('燈帽', 9); }
+  // ============ v0.36：光是從燈芯射出去的線，碰到牆角斜斜地切開，不是一格一格的方塊 ============
+  { const R = g.renderer, lx = p.x - 30, ly = p.y - 30; for (let dy = -7; dy <= 7; dy++) for (let dx = -7; dx <= 7; dx++) w.set(lx + dx, ly + dy, '草');
+    for (let dx = -1; dx <= 1; dx++) w.set(lx + dx, ly - 2, '磚');
+    const sh = R.lightShape(w, lx + 0.5, ly + 0.5, 6);
+    const inside = (x, y) => { const pl = sh.poly; let c = false; for (let i = 0, j = pl.length - 2; i < pl.length; j = i, i += 2) { const xi = pl[i], yi = pl[i + 1], xj = pl[j], yj = pl[j + 1]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) c = !c; } return c; };
+    const behind = inside(lx + 0.5, ly - 3.5), pastEnd = inside(lx + 5.5, ly - 3.5), near = inside(lx + 0.5, ly + 2.5), split = !inside(lx + 4.05, ly - 3.2) && inside(lx + 4.6, ly - 3.2);   // 斜邊從牆的右下角 45° 射出去：在 lx+4.2 處把同一格切開
+    ok('v0.36: a lamp\'s light is a polygon cast from the wick: right behind a wall is dark, past the wall\'s end the slanting ray gets through', !!sh && sh.poly.length > 16 && !behind && pastEnd && near && sh.rects.length >= 3, [behind, pastEnd, near, sh && sh.rects.length]);
+    ok('…and the shadow edge runs on the slant from the wall\'s corner, cutting through a tile rather than along tile lines', split, [inside(lx + 4.05, ly - 3.2), inside(lx + 4.6, ly - 3.2)]);
+    const again = R.lightShape(w, lx + 0.5, ly + 0.5, 6); w.set(lx + 5, ly + 5, '石'); const fresh = R.lightShape(w, lx + 0.5, ly + 0.5, 6);
+    ok('…cached until the ground changes', again === sh && fresh !== sh);
+    for (let dy = -7; dy <= 7; dy++) for (let dx = -7; dx <= 7; dx++) w.set(lx + dx, ly + dy, w.base(lx + dx, ly + dy)); }
   // ============ v0.35：玩家看得到的數一律整數，零頭攢著補（每下 53.13 → −53 −53 −53 −53 −54 …） ============
   { const pd = g.ents.add('豹', p.x + 30, p.y + 30, { moveT: 99, calm: 99 }); pd.hp = 1000; const seq = [];
     for (let i = 0; i < 8; i++) { pd.hp -= 53.13; seq.push(g.shown('dmg', 53.13, pd)); }

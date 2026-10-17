@@ -1583,7 +1583,7 @@
       this.craftTree().forEach((node, i) => {
         const r = node.r;
         const locked = r.level && this.level() < r.level;
-        const row = document.createElement('div'); row.className = 'recipe' + (this.canCraft(r) && p.sta >= r.sta && !locked ? '' : ' cant');
+        const row = document.createElement('div'); row.className = 'recipe' + (r.choose ? ' choose' : '') + (this.canCraft(r) && p.sta >= r.sta && !locked ? '' : ' cant');
         const need = this.needOf(r);
         const crush = r.crush ? this.stoneToCrush() : null;
         const needs = r.crush ? (crush ? '<span class="ok">' + (crush.from === 'tools' ? '手上' : '囊裡') + '的「' + crush.s.n + '」</span>' : '<span class="lack">要有一把石器</span>')
@@ -1591,7 +1591,7 @@
         const owned = r.out && ITEMS[r.out] && ITEMS[r.out].slot && this.ownedPiece(r.out);
         const spent = r.id === 'pouch' && p.pouches >= MAX_POUCHES;   // 錦囊：六個都用了就標「已用完」，再造也沒用
         if (spent) row.classList.add('cant');
-        const title = (r.out ? r.out + (r.n > 1 ? ' ×' + r.n : '') : (r.regrind ? '重磨' : r.mend ? '加固' : r.crush ? '研磨石器 → 石子 ×' + CRUSH_PEBBLES : '磨礪')) + (owned ? ' <i class="dim">已有</i>' : '') + (spent ? ' <i class="dim">已用完</i>' : '');
+        const title = (r.out ? r.out + (r.n > 1 ? ' ×' + r.n : '') : (r.title || (r.regrind ? '重磨' : r.mend ? '加固' : r.crush ? '研磨石器 → 石子 ×' + CRUSH_PEBBLES : '磨礪'))) + (owned ? ' <i class="dim">已有</i>' : '') + (spent ? ' <i class="dim">已用完</i>' : '');
         let btns = '';
         if (r.choose) btns = r.choose.map(c => '<button data-r="' + r.id + '" data-c="' + c + '">' + c + '</button>').join('');
         else btns = '<button data-r="' + r.id + '"' + (spent ? ' disabled' : '') + '>' + (spent ? '已用完' : r.regrind ? '磨' : r.mend ? '固' : r.crush ? '碎' : owned ? '翻新' : '造') + '</button>';
