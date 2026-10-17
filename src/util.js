@@ -67,5 +67,7 @@
     if (c && c.getRandomValues) { const a = new Uint32Array(1); c.getRandomValues(a); return a[0] / 4294967296; }
     return Math.random();
   };
+  // v0.29：所有數值的計算精確到小數點後四位，只有顯示到畫面上才四捨五入
+  U.r4 = function (x) { return Math.round(x * 1e4) / 1e4; };
   root.U = U;
 })();

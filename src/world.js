@@ -5,7 +5,10 @@
   const U = root.U, G = root.G, DB = G.DB;
   const CH = 16;                 // 區塊邊長（格）
   const STEP = 0.5;              // 模擬步長（秒）
-  const DAY = 375;               // 一晝夜（秒），潮汐隨之起落；v0.17 從 240 加長到 300、v0.28 再加四分之一，要跟 game.js 的 DAY 一致
+  const DAY = 300;               // 一晝夜（秒），潮汐隨之起落；v0.29 回到三百秒、一日從午夜算起（天亮 0.25、天黑 0.75），要跟 game.js 的 DAY 一致
+  const MORNING = 0.26;
+  // 牆的耐久（v0.29，不顯示，只計算）：野牛撞一下扣 1。磚 4，撞到剩一半就成了「墟」；墟（村裡的殘垣也是）2；窗、門 2，剩一半時字變色
+  const WALL_HP = { '磚': 4, '墟': 2, '窗': 2, '門': 2 };          // 開局、讀舊存檔時的時刻：大清早（天亮之後一點點）
   const STOVE_CAP = 999, SHELF_SLOTS = 4;   // 灶與鼎的火最多存 999 息（v0.21，原 900）；灶的柴架四格
   const NET_DUR = { 1: 30, 2: 90, 3: 240 };   // 漁網的耐久：小中大各能取幾條魚（v0.17.1），取完就破、不再進魚，棉麻加固回滿
   const TIDE_WET = 0.7;          // 灘一天裡有七成時間在水下（退潮 0.12–0.42）；放在灘上的網魚來得慢，間隔除以這個數
@@ -57,7 +60,7 @@
         }
         pl.seen = false;
       }
-      this.time = 30;            // 世界時間（秒），從清晨開始
+      this.time = DAY * MORNING; // 世界時間（秒），從大清早開始
       this.acc = 0; this.seenAcc = 0;
       this.rng = U.mulberry32(this.seed ^ 0x5bd1e995);
       this.onDiscover = null;    // 回調：首次看見某處地標
@@ -73,6 +76,7 @@
       this.fogDay = Math.floor(this.time / DAY);   // 已經擲過的那一日（第一日不起霧）
       this.fogSeq = 0; this.fogP = FOG_P; this.fogStep = FOG_STEP;
       this.playerLit = () => false;   // 回調：玩家手裡（或帽上）有沒有光，霧障躲光用
+      this.wallHp = new Map();        // 撞過的牆還剩多少耐久："x,y" -> 數（沒撞過的不記，照 WALL_HP）
       this.roomCache = new Map();     // "x,y" -> 圍起來的格數（超過 MAX_ROOM 記 MAX_ROOM+1，磚上門上水裡記 Infinity）；每步與每次改格清掉
       this.roomLimitFor = () => 0;    // 回調：某種生靈被多小的屋子擋住（0 ＝ 擋不住），game 依難度給
       this.onFog = null;         // 回調：起了一片霧
@@ -101,7 +105,7 @@
       return this.chunk(cx, cy)[(y - cy * CH) * CH + (x - cx * CH)];
     }
     // 潮汐：灘在退潮時是沙，漲潮時是水
-    tideLow() { const t = (this.time % DAY) / DAY; return t > 0.12 && t < 0.42; }
+    tideLow() { const t = (this.time % DAY) / DAY; return t > 0.37 && t < 0.67; }   // 白天裡的一段退潮（v0.29 一日改從午夜算，跟著挪了 0.25）
     tideName() { return this.tideLow() ? '退潮' : '漲潮'; }
     get(x, y) {
       const d = this.diff.get(U.key(x, y));
@@ -113,6 +117,7 @@
     set(x, y, ch) {
       const k = U.key(x, y), old = this.get(x, y);
       if (this.roomCache.size) this.roomCache.clear();
+      if (old !== ch) this.wallHp.delete(k);   // 換了字，舊的耐久就不算了
       if (ch === this.base(x, y)) this.diff.delete(k); else this.diff.set(k, ch);
       if (DB[ch].flam <= 0) this.burn.delete(k);
       if ((old === '灶' || old === '鼎') && ch !== '灶' && ch !== '鼎') this.stoves.delete(k);
@@ -226,7 +231,7 @@
     }
     extinguish(x, y) { this.burn.delete(U.key(x, y)); }
 
-    // 兩格之間看不看得見（v0.28）：中間的格子（不算兩端）有擋光的字——磚、門、殘牆——就看不見；窗不擋
+    // 兩格之間看不看得見（v0.28）：中間的格子（不算兩端）有擋光的字——磚、門、墟——就看不見；窗不擋
     clear(x0, y0, x1, y1) {
       let x = x0, y = y0; const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
       let err = dx + dy;
@@ -401,6 +406,15 @@
       }
       return true;
     }
+    // 牆挨野牛撞一下：回傳 'broken'（塌了）、'ruined'（磚成了墟）、'cracked'（窗門剩一半，字變色）或 'hit'
+    hitWall(x, y) {
+      const ch = this.get(x, y), full = WALL_HP[ch]; if (!full) return null;
+      const k = U.key(x, y), hp = (this.wallHp.has(k) ? this.wallHp.get(k) : full) - 1;
+      if (hp <= 0) return 'broken';
+      if (ch === '磚' && hp <= full / 2) { this.set(x, y, '墟'); this.wallHp.set(k, hp); return 'ruined'; }
+      this.wallHp.set(k, hp); return hp <= full / 2 && (ch === '窗' || ch === '門') ? 'cracked' : 'hit';
+    }
+    wallHurt(x, y) { const k = U.key(x, y), full = WALL_HP[this.get(x, y)]; return !!full && this.wallHp.has(k) && this.wallHp.get(k) <= full / 2; }   // 窗門剩一半：畫成另一個顏色
     // 圍住這格的屋子的四面（v0.28，算窗佔幾成）：從這格順著能走的格子漫延，碰到的不能走的格子就是四面，"x,y" -> 字；ROOM_LIMIT 格內圍不住回 null
     roomShell(x, y) {
       const seen = new Set([U.key(x, y)]), q = [[x, y]], shell = new Map();
@@ -409,6 +423,7 @@
         const [cx, cy] = q.shift();
         for (const [dx, dy] of N4) { const nx = cx + dx, ny = cy + dy, k = U.key(nx, ny); if (seen.has(k) || shell.has(k)) continue; if (this.passable(nx, ny)) { seen.add(k); q.push([nx, ny]); } else shell.set(k, this.get(nx, ny)); }
       }
+      shell.area = seen.size;   // 屋內面積（能走的格數，含人站的那格）
       return shell;
     }
     // 小屋：從這格順著能走的格子四向漫延（門算磚），數圍起來有幾格；超過 MAX_ROOM 就回 MAX_ROOM+1，磚上、門上、水裡回 Infinity
@@ -545,30 +560,38 @@
     // ---------- 存檔：只存差異層，世界本身可以從種子重新長出來 ----------
     serialize() {
       const diff = {}; for (const [k, v] of this.diff) diff[k] = v;
-      const burn = {}; for (const [k, v] of this.burn) burn[k] = [Math.round(v.t * 10) / 10, v.lvl];
-      const timers = {}; for (const [k, v] of this.timers) timers[k] = [v.to, Math.round(v.at), v.from || '灰'];
-      const scarecrows = {}; for (const [k, v] of this.scarecrows) scarecrows[k] = Math.round(v);
+      const burn = {}; for (const [k, v] of this.burn) burn[k] = [U.r4(v.t), v.lvl];
+      const timers = {}; for (const [k, v] of this.timers) timers[k] = [v.to, U.r4(v.at), v.from || '灰'];
+      const scarecrows = {}; for (const [k, v] of this.scarecrows) scarecrows[k] = U.r4(v);
       const chests = {}; for (const [k, v] of this.chests) chests[k] = v;
       const shelves = {}; for (const [k, v] of this.shelves) if (v.length) shelves[k] = v.map(s => [s.n, s.c]);
-      const nets = {}; for (const [k, v] of this.nets) nets[k] = [v.size, v.x, v.y, v.fish, Math.round(v.t), (v.under || []).join(''), v.dur === undefined ? NET_DUR[v.size] : v.dur, v.rf || 0];
-      const stoves = {}; for (const [k, v] of this.stoves) stoves[k] = Math.round(v);
+      const nets = {}; for (const [k, v] of this.nets) nets[k] = [v.size, v.x, v.y, v.fish, U.r4(v.t), (v.under || []).join(''), v.dur === undefined ? NET_DUR[v.size] : v.dur, v.rf || 0];
+      const stoves = {}; for (const [k, v] of this.stoves) stoves[k] = U.r4(v);
       const bags = {}; for (const [k, v] of this.bags) bags[k] = v;
-      const weirs = {}; for (const [k, v] of this.weirs) weirs[k] = Math.round(v);
+      const weirs = {}; for (const [k, v] of this.weirs) weirs[k] = U.r4(v);
       const explored = {}; for (const [k, b] of this.explored) explored[k] = Array.from(b, v => v.toString(16).padStart(2, '0')).join('');
       const seen = this.places.filter(p => p.seen).map(p => p.id);
-      return { seed: this.seed, time: Math.round(this.time * 10) / 10, diff, burn, timers, stoves, shelves, bags, weirs, explored, seen, scarecrows, chests, nets, rainUntil: Math.round(this.rainUntil), nextRainAt: Math.round(this.nextRainAt),
-        fogs: [...this.fogs.values()].map(f => [Math.round(f.until), [...f.cells].join(';'), f.sea ? 1 : 0]), fogPlan: this.fogPlan.map(Math.round), fogDay: this.fogDay,
-        ships: Object.fromEntries([...this.ships].map(([k, v]) => [k, { kind: v.kind, hp: Math.round(v.hp), skulls: (v.skulls || []).map(([n, e]) => [n, Math.round(e)]), repairs: v.repairs || 0, cells: v.cells }])) };
+      const wallHp = {}; for (const [k, v] of this.wallHp) wallHp[k] = v;
+      return { seed: this.seed, dayLen: DAY, time: U.r4(this.time), wallHp, diff, burn, timers, stoves, shelves, bags, weirs, explored, seen, scarecrows, chests, nets, rainUntil: U.r4(this.rainUntil), nextRainAt: U.r4(this.nextRainAt),
+        fogs: [...this.fogs.values()].map(f => [U.r4(f.until), [...f.cells].join(';'), f.sea ? 1 : 0]), fogPlan: this.fogPlan.map(U.r4), fogDay: this.fogDay,
+        ships: Object.fromEntries([...this.ships].map(([k, v]) => [k, { kind: v.kind, hp: U.r4(v.hp), skulls: (v.skulls || []).map(([n, e]) => [n, U.r4(e)]), repairs: v.repairs || 0, cells: v.cells }])) };
     }
-    restore(s) {
-      this.time = s.time || 30;
+    restore(s, briefDay) {
+      const t0 = s.time || DAY * MORNING; this.time = t0; this.timeShift = 0;
+      if (s.dayLen !== DAY) {   // 舊存檔（一日長度不同）：日數不換算，時間設成那天的大清早（v0.29 使用者定）；存著的時刻跟著挪，倒數不變
+        const d = briefDay > 0 ? briefDay - 1 : Math.floor(t0 / DAY);
+        this.time = d * DAY + DAY * MORNING; this.timeShift = U.r4(this.time - t0);
+      }
+      const sh = (v) => typeof v === 'number' && v > 0 ? U.r4(v + this.timeShift) : v;
       this.diff = new Map(Object.entries(s.diff || {}));
+      for (const [k, v] of this.diff) if (v === '牆') this.diff.set(k, '墟');   // v0.29 前的殘牆字
+      this.wallHp = new Map(Object.entries(s.wallHp || {}));
       this.lamps = new Set(); for (const [k, v] of this.diff) if (v === '燈') this.lamps.add(k);
-      this.rainUntil = (s.rainUntil || 0) > this.time ? s.rainUntil : 0;
-      this.nextRainAt = s.nextRainAt || (this.time + DAY + U.trueRand() * DAY * 2);
+      this.rainUntil = sh(s.rainUntil || 0) > this.time ? sh(s.rainUntil) : 0;
+      this.nextRainAt = sh(s.nextRainAt) || (this.time + DAY + U.trueRand() * DAY * 2);
       this.rainAcc = 0;
       this.fogs = new Map(); this.fogCells = new Map(); this.fogSeq = 0;
-      for (const [until, cells, sea] of s.fogs || []) if (until > this.time && cells) this.addFog(cells.split(';'), until, sea);
+      for (const [u, cells, sea] of s.fogs || []) { const until = sh(u); if (until > this.time && cells) this.addFog(cells.split(';'), until, sea); }
       this.ships = new Map(); this.shipCells = new Map();
       for (const [k, v] of Object.entries(s.ships || {})) {
         if (Array.isArray(v)) {        // v0.11 的單格大船：當孤帆，船身找得到第二格水就留，找不到就沒了
@@ -578,22 +601,22 @@
           if (anchor) this.addShip(anchor[0], anchor[1], old); else { const b = this.base(ax, ay); this.set(ax, ay, DB[b].kind === 'water' ? b : '水'); }
           continue;
         }
-        const rec = { kind: SHIPS[v.kind] ? v.kind : '孤帆', hp: v.hp, skulls: (v.skulls || []).filter(x => x[1] > this.time), repairs: v.repairs || 0, cells: v.cells };
+        const rec = { kind: SHIPS[v.kind] ? v.kind : '孤帆', hp: v.hp, skulls: (v.skulls || []).map(([n, e]) => [n, sh(e)]).filter(x => x[1] > this.time), repairs: v.repairs || 0, cells: v.cells };
         this.ships.set(k, rec); for (const [x, y] of rec.cells) this.shipCells.set(U.key(x, y), k);
       }
       for (const [k, v] of this.diff) if (v === '舟' && !this.shipCells.has(k)) { const [x, y] = U.unkey(k), b = this.base(x, y); this.set(x, y, DB[b].kind === 'water' ? b : '水'); }   // 沒有記錄的舟字：還原成水
-      this.fogPlan = (s.fogPlan || []).filter(t => typeof t === 'number');
+      this.fogPlan = (s.fogPlan || []).filter(t => typeof t === 'number').map(sh);
       this.fogDay = typeof s.fogDay === 'number' ? s.fogDay : Math.floor(this.time / DAY);
       this.burn = new Map(Object.entries(s.burn || {}).map(([k, v]) => [k, { t: v[0], lvl: v[1] }]));
-      this.timers = new Map(Object.entries(s.timers || {}).map(([k, v]) => [k, { to: v[0], at: v[1], from: v[2] || '灰' }]));
-      this.scarecrows = new Map(Object.entries(s.scarecrows || {}));
+      this.timers = new Map(Object.entries(s.timers || {}).map(([k, v]) => [k, { to: v[0], at: sh(v[1]), from: v[2] || '灰' }]));
+      this.scarecrows = new Map(Object.entries(s.scarecrows || {}).map(([k, v]) => [k, sh(v)]));
       this.chests = new Map(Object.entries(s.chests || {}));
       this.shelves = new Map(Object.entries(s.shelves || {}).map(([k, v]) => [k, v.map(([n, c]) => ({ n, c }))]));
       this.nets = new Map(); this.netCells = new Map();
-      for (const [k, v] of Object.entries(s.nets || {})) { const rec = { size: v[0], x: v[1], y: v[2], fish: v[3], t: v[4], under: v[5] ? Array.from(v[5]) : [], dur: v[6] === undefined ? NET_DUR[v[0]] : v[6], rf: v[7] || 0 }; rec.tidal = rec.under.indexOf('灘') >= 0; this.nets.set(k, rec); for (let j = 0; j < rec.size; j++) for (let i = 0; i < rec.size; i++) this.netCells.set(U.key(rec.x + i, rec.y + j), k); }
+      for (const [k, v] of Object.entries(s.nets || {})) { const rec = { size: v[0], x: v[1], y: v[2], fish: v[3], t: sh(v[4]), under: v[5] ? Array.from(v[5]) : [], dur: v[6] === undefined ? NET_DUR[v[0]] : v[6], rf: v[7] || 0 }; rec.tidal = rec.under.indexOf('灘') >= 0; this.nets.set(k, rec); for (let j = 0; j < rec.size; j++) for (let i = 0; i < rec.size; i++) this.netCells.set(U.key(rec.x + i, rec.y + j), k); }
       this.stoves = new Map(Object.entries(s.stoves || {}));
       this.bags = new Map(Object.entries(s.bags || {}));
-      this.weirs = new Map(Object.entries(s.weirs || {}));
+      this.weirs = new Map(Object.entries(s.weirs || {}).map(([k, v]) => [k, sh(v)]));
       this.explored = new Map();
       for (const [k, hex] of Object.entries(s.explored || {})) { const b = new Uint8Array(32); for (let i = 0; i < 32; i++) b[i] = parseInt(hex.substr(i * 2, 2), 16) || 0; this.explored.set(k, b); }
       const seen = new Set(s.seen || []);

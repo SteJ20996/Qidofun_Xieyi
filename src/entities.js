@@ -14,9 +14,9 @@
   // v0.28：蜘蛛十隻一隻有毒（見人就撲、毒是蛇的一半），其餘無毒（惹了才咬、不中毒）；野豬五格內見人就衝，速度同豹；
   // 野牛不惹不動，惹了追著頂，腳程是狼的三分之二（狼追人一步 0.32 息），十格外或二十息後消氣；龜挨打就往最近的海逃，比平常快四成
   const VENOM_SPIDER = 0.1, BOAR_RANGE = 5, BOAR_STEP = 0.22, BISON_STEP = 0.32 * 1.5, BISON_CALM = 30, BISON_GIVEUP = 18, TURTLE_STEP = 1.5, TURTLE_FLEE = 1.4,   /* 龜一步一息半（v0.28 使用者裁定：腳程減到三分之二），逃命快四成 */ TURTLE_SEA_R = 40;
-  // 磚擋眼（v0.28）：獸跟人之間隔著磚、門、殘牆就看不見，只能循氣味找，找得到的距離是看得見時的七成；窗不擋。
-  // 惹惱的野牛記仇比別的獸遠（十八格、三十息），擋在路上的人造磚、門、窗撞 BRICK_RAMS 下就碎，一下隔 RAM_GAP 息
-  const SMELL = 0.7, BRICK_RAMS = 3, RAM_GAP = 1.6, RAMMABLE = '磚門窗';
+  // 磚擋眼（v0.28）：獸跟人之間隔著磚、門、墟就看不見，只能循氣味找，找得到的距離是看得見時的七成；窗不擋。
+  // 惹惱的野牛記仇比別的獸遠（十八格、三十息），擋在路上的人造磚、門、窗與墟（村裡的殘垣也算）都撞，一下隔 RAM_GAP 息；耐久在 world.js 的 WALL_HP
+  const SMELL = 0.7, RAM_GAP = 1.6, RAMMABLE = '磚門窗墟';
   // 魄（v0.20 加強）：玩家身上的光（手裡的火把蠟燭、頭上的燈帽）只把魄逼到 GHOST_KEEP 格外，在 GHOST_HOVER 格內徘徊；
   // 地上的光（燈、火、旺灶）GHOST_BURN 格內、龍四格內才煙滅。玩家有光時每 GHOST_DASH_GAP 息，最近那隻撲上來 GHOST_DASH 息；
   // 魄在兩格內（GHOST_SNUFF_R），手裡的光每息有 snuffP 的機會被吹熄（game.ghostTouch）
@@ -31,17 +31,17 @@
       this.seaP = 1 / 160;       // 行船時每一點五息有這麼點機會浮上一頭蜃（平均約二百四十息一頭）
       this.snuffP = 0.1;         // 魄兩格內，手裡的光每息被吹熄的機會
       this.dashT = GHOST_DASH_GAP[0];   // 下一次撲燈還有幾息（玩家身上有光的夜裡才倒數）
-      this.rams = new Map();            // 野牛撞了幾下的磚："x,y" -> 下數（不存檔）
     }
     at(x, y) { for (const e of this.list) if (e.x === x && e.y === y) return e; return null; }
     beastAt(x, y) { for (const e of this.list) if (e.x === x && e.y === y && DB[e.type].kind === 'beast' && e.type !== '魄' && e.type !== '龍' && !(e.type === '鷹' && e.tame)) return e; return null; }   // 龍與馴了的鷹不擋路
     tamed() { return this.list.filter(e => e.type === '鷹' && e.tame); }
     sense(e, p, r) { return this.world.clear(e.x, e.y, p.x, p.y) ? r : r * SMELL; }   // 獸找得到人的距離：看得見照舊，隔著磚只靠氣味打七折
-    ram(e, g, x, y) {      // 野牛撞人造的磚、門、窗：BRICK_RAMS 下就碎
+    ram(e, g, x, y) {      // 野牛撞牆：扣一點看不見的耐久；磚剩一半成墟，塌了就沒了
       if (e.atk > 0) return; e.atk = RAM_GAP;
-      const k = U.key(x, y), n = (this.rams.get(k) || 0) + 1;
-      if (n >= BRICK_RAMS) { this.rams.delete(k); if (g.wallBroken) g.wallBroken(e, x, y); } else { this.rams.set(k, n); if (g.wallRammed) g.wallRammed(e, x, y, n); }
+      const r = this.world.hitWall(x, y); if (!r) return;
+      if (r === 'broken') { if (g.wallBroken) g.wallBroken(e, x, y); } else if (g.wallRammed) g.wallRammed(e, x, y, r);
     }
+    rammable(x, y) { const ch = this.world.get(x, y); return RAMMABLE.indexOf(ch) >= 0 && (ch === '墟' || this.world.base(x, y) !== ch); }   // 人造的磚門窗，與所有的墟
     isHostile(o) {           // 會主動找人的：虎豹狼蛇、野豬、毒蛛；惹了才找人的：無毒蛛、蟾、野牛、沒馴的鷹
       return '虎豹狼蛇豬'.indexOf(o.type) >= 0 || (o.type === '蛛' && o.venom) || (o.angry && (o.type === '蛛' || o.type === '蟾' || o.type === '牛' || (o.type === '鷹' && !o.tame)));
     }
@@ -197,7 +197,7 @@
           if (best) { best.dash = GHOST_DASH; best.moveT = 0; }
         }
       }
-      const dayT = g.dayT(), dusk = dayT > 0.40 && dayT < 0.52;
+      const dusk = g.duskSoon ? g.duskSoon() : false;
       // —— 獸的刷新
       this.spawnAcc += dt;
       if (this.spawnAcc > 1.5) {
@@ -273,7 +273,7 @@
         if (e.foe) {
           if (!this.list.includes(e.foe) || e.foe.hp <= 0 || U.cheb(e.x, e.y, e.foe.x, e.foe.y) > 6) e.foe = null;
           else if (U.cheb(e.x, e.y, e.foe.x, e.foe.y) <= 1 && e.atk <= 0) {
-            const dmg = DB[e.type].atk || Math.round((DB[e.type].bite || 2) * (DB[e.type].venomT || 5));   // 咬鷹：一口的毒全算上（蛇 14、毒蛛 7、蟾 10）
+            const dmg = DB[e.type].atk || U.r4((DB[e.type].bite || 2) * (DB[e.type].venomT || 5));   // 咬鷹：一口的毒全算上（蛇 13.5、毒蛛 6.75、蟾 10）
             e.foe.hp -= dmg; e.atk = HOSTILE.indexOf(e.type) >= 0 ? 1.6 : 1.2; e.moveT = 0.5;
             if (e.foe.hp <= 0) { g.companionDied(e.foe, e); e.foe = null; }
             continue;
@@ -379,11 +379,11 @@
             else {
               e.moveT = BISON_STEP;
               const nx = e.x + Math.sign(p.x - e.x), ny = e.y + Math.sign(p.y - e.y), ch = w.get(nx, ny);
-              const wall = RAMMABLE.indexOf(ch) >= 0 && w.base(nx, ny) !== ch;   // 人造的才撞（村裡的殘牆不算）
+              const wall = this.rammable(nx, ny);
               if (wall) { this.ram(e, g, nx, ny); e.moveT = 0.5; }
               else if (!this.stepTo(e, p.x, p.y, false, night)) {           // 卡住了：找旁邊擋路的人造磚撞
                 let best = null, bd = Infinity;
-                for (const [dx, dy] of N8) { const x = e.x + dx, y = e.y + dy, c = w.get(x, y); if (RAMMABLE.indexOf(c) < 0 || w.base(x, y) === c) continue; const dd = U.dist(x, y, p.x, p.y); if (dd < bd) { bd = dd; best = [x, y]; } }
+                for (const [dx, dy] of N8) { const x = e.x + dx, y = e.y + dy; if (!this.rammable(x, y)) continue; const dd = U.dist(x, y, p.x, p.y); if (dd < bd) { bd = dd; best = [x, y]; } }
                 if (best) { this.ram(e, g, best[0], best[1]); e.moveT = 0.5; }
               }
             }
