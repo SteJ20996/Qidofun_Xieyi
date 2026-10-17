@@ -1505,7 +1505,7 @@ const result = await page.evaluate(async () => {
     w.removeFog(f7.id); room(4); for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) w.set(fx + dx, fy + dy, w.base(fx + dx, fy + dy));
     const fg = w.addFog(null, w.time + DAY, false, window.World.newFogShape(18), [p.x - 6.5, p.y + 0.5]);
     await sleep(100); const seen = g.renderer.fogSeen.has(fg.id) && (fg._cov || []).length > 0;
-    w.removeFog(fg.id); await sleep(80); const fading = g.renderer.fogSeen.has(fg.id) && fg._fade < 1;
+    w.removeFog(fg.id); await until(() => fg._fade < 1 || !g.renderer.fogSeen.has(fg.id), 1500); const fading = g.renderer.fogSeen.has(fg.id) && fg._fade < 1;   // 等到有一幀開始淡（慢的機器一幀可能超過八十毫秒）；淡完要一息
     ok('v0.31: the renderer draws the fog from its coverage, and a fog that is gone fades out instead of vanishing', seen && fading, [seen, fading]); }
   // ============ v0.32：霧障爬山渡海、繞著小屋走；魄煙滅長膽氣、燈帽少兩息；神兵修理是鎢鋼的兩倍 ============
   { const fx = p.x + 20, fy = p.y - 20, clear = (r, ch) => { for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) w.set(fx + dx, fy + dy, ch); };
@@ -1630,6 +1630,39 @@ const result = await page.evaluate(async () => {
     const r0 = U.trueRand, cb = w.onWeather, ra = w.rainUntil, rn = w.nextRainAt; w.onWeather = null; U.trueRand = () => 0; w.rainUntil = 0; w.nextRainAt = w.time; w.step(p.x, p.y); const rainLen = w.rainUntil - w.time;
     U.trueRand = r0; w.onWeather = cb; w.rainUntil = ra; w.nextRainAt = rn;
     ok('v0.37: things counted in days follow the longer day (the shortest rain is a quarter of 360 = 90 s)', Math.abs(rainLen - 90) <= 0.5, rainLen); }
+  // ============ v0.40：野牛一乘二（橫著走拉扁、縱著走拉長）；主動找人的獸字大一號 ============
+  { const X = p.x + 40, Y = p.y - 6, E = g.ents; for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) w.set(X + dx, Y + dy, '草');
+    E.list = E.list.filter(e => e.type === '龍' || e.tame); const p0 = { x: p.x, y: p.y }; p.x = p.rx = X - 5; p.y = p.ry = Y + 5; E.px = p.x; E.py = p.y;
+    const ox = E.add('牛', X, Y, { bx: 1, by: 0, moveT: 99, calm: 99 });
+    ok('v0.40: a bison takes two tiles — head and the tile behind it', E.at(X, Y) === ox && E.at(X - 1, Y) === ox && E.beastAt(X - 1, Y) === ox && !E.at(X + 1, Y) && E.cellsOf(ox).length === 2);
+    p.x = p.rx = X - 2; p.y = p.ry = Y; face(1, 0);
+    ok('v0.40: you cannot walk into its hind tile', !g.tryStep(1, 0) && p.x === X - 2);
+    const hp0 = ox.hp; g.addItem('石劍', 1); hold('石劍'); p.atkT = 0; g.pressGather(); p.x = p.rx = X - 5; p.y = p.ry = Y + 5; E.px = p.x; E.py = p.y;
+    ok('v0.40: …but you can hit it there', ox.hp < hp0, [hp0, ox.hp]);
+    const rr0 = Math.random; Math.random = () => 0; E.stepTo(ox, X + 5, Y, false, false);
+    ok('v0.40: walking east it lies east–west, the hind tile trailing behind', ox.x === X + 1 && ox.y === Y && ox.bx === 1 && ox.by === 0 && E.at(X, Y) === ox, [ox.x - X, ox.y - Y, ox.bx, ox.by]);
+    E.stepTo(ox, ox.x, Y - 6, false, false); Math.random = rr0;
+    ok('v0.40: turning north it lies north–south, the hind tile below its head', ox.x === X + 1 && ox.y === Y - 1 && ox.bx === 0 && ox.by === -1 && E.at(X + 1, Y) === ox, [ox.x - X, ox.y - Y, ox.bx, ox.by]);
+    ox.x = X; ox.y = Y; ox.bx = 1; ox.by = 0; w.set(X - 2, Y + 1, '磚'); w.set(X - 1, Y + 1, '磚'); w.set(X, Y + 1, '草');
+    const okDown = E.bodyFits(X, Y + 1, 0, 1, false, ox), blocked = (() => { w.set(X, Y, '草'); w.set(X - 1, Y + 2, '磚'); return !E.bodyFits(X - 1, Y + 3, 0, 1, false, ox); })();
+    ok('v0.40: a tile is only good for it if the tile behind its head is free too (a brick there blocks it)', okDown && blocked, [okDown, blocked]);
+    // 畫法：攔下 drawGlyph 看大小與拉長
+    const R = g.renderer, calls = []; const dg = R.drawGlyph; R.drawGlyph = function (ch, color, px, py, size, rot, alpha, kx, ky) { calls.push({ ch, size: size / R.tile, kx: kx || 1, ky: ky || 1 }); return dg.apply(this, arguments); };
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) w.set(p.x + dx, p.y + dy, '草');
+    const add = (t, dx, dy, ex) => E.add(t, p.x + dx, p.y + dy, Object.assign({ moveT: 99, calm: 99 }, ex || {}));
+    const show = [add('虎', 2, 0), add('豹', -2, 0), add('狼', 0, 2), add('豬', 0, -2), add('蛇', 2, 2), add('蛛', -2, -2, { venom: true }), add('蛛', 2, -2, { venom: false })];
+    ox.x = ox.rx = p.x - 2; ox.y = ox.ry = p.y + 2; ox.bx = 1; ox.by = 0; ox.rbx = 1; ox.rby = 0;
+    const tDay = w.time; setDay(0.9);   // 狼只在夜裡：白天會散
+    R.camInit = false; await sleep(120); calls.length = 0; await sleep(60);   // 讓相機跟上、再收一兩幀
+    const sz = (t) => calls.filter(c => c.ch === t).map(c => c.size);
+    const one = (t) => (calls.find(c => c.ch === t) || {}).size, cow = calls.find(c => c.ch === '牛');
+    ok('v0.40: leopards, wolves, boars and venomous spiders are drawn a size up (0.85), still a little smaller than the tiger (0.95); snakes and harmless spiders stay as they were', Math.abs(one('虎') - 0.95) < 1e-6 && Math.abs(one('豹') - 0.85) < 1e-6 && Math.abs(one('狼') - 0.85) < 1e-6 && Math.abs(one('豬') - 0.85) < 1e-6 && Math.abs(one('蛇') - 0.55) < 1e-6 && [...new Set(sz('蛛').map(v => v.toFixed(2)))].sort().join() === '0.55,0.85', calls.filter(c => '虎豹狼豬蛇蛛'.indexOf(c.ch) >= 0).map(c => c.ch + c.size.toFixed(2)).join(' '));
+    ok('v0.40: a bison walking east–west is drawn stretched wide and flat', !!cow && cow.kx > 1.8 && cow.ky < 0.9, cow);
+    ox.bx = 0; ox.by = 1; ox.rbx = 0; ox.rby = 1; calls.length = 0; await sleep(60); const cow2 = calls.find(c => c.ch === '牛');
+    ok('v0.40: …and walking north–south, tall and narrow', !!cow2 && cow2.ky > 1.8 && cow2.kx < 0.9, cow2);
+    R.drawGlyph = dg; w.time = tDay; calm(); for (const e of show) E.remove(e); E.remove(ox); g.removeItem('石劍', 9); p.tools = p.tools.filter(t => t.n !== '石劍'); p.tool = -1;
+    for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) w.set(X + dx, Y + dy, w.base(X + dx, Y + dy));
+    p.x = p.rx = p0.x; p.y = p.ry = p0.y; }
   // ============ v0.39：有耐久的東西用過一半才能翻新；已有更好的衣甲，低一等的那列標出來 ============
   { trim(['木', '石', '石子', '草', '土', '磚']); for (const k of ['襯', '甲', '褲', '盔', '靴', '帽']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚']);
     g.addItem('布甲', 1); hold('布甲'); g.pressPlace(); const vest = p.worn['甲'];

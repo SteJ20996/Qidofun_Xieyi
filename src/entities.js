@@ -34,8 +34,15 @@
       this.snuffP = 0.1;         // 魄兩格內，手裡的光每息被吹熄的機會
       this.dashT = GHOST_DASH_GAP[0];   // 下一次撲燈還有幾息（玩家身上有光的夜裡才倒數）
     }
-    at(x, y) { for (const e of this.list) if (e.x === x && e.y === y) return e; return null; }
-    beastAt(x, y) { for (const e of this.list) if (e.x === x && e.y === y && DB[e.type].kind === 'beast' && e.type !== '魄' && e.type !== '龍' && !(e.type === '鷹' && e.tame)) return e; return null; }   // 龍與馴了的鷹不擋路
+    // 野牛一乘二（v0.40 使用者定）：頭在 (x, y)，身子沿著走的方向拖一格，尾在 (x − bx, y − by)；橫著走身子橫、縱著走身子直
+    tail(e) { return e.type === '牛' ? [e.x - (e.bx === undefined ? 1 : e.bx), e.y - (e.by || 0)] : null; }
+    cellsOf(e) { const t = this.tail(e); return t ? [[e.x, e.y], t] : [[e.x, e.y]]; }
+    covers(e, x, y) { if (e.x === x && e.y === y) return true; const t = this.tail(e); return !!t && t[0] === x && t[1] === y; }
+    turn(e, dx, dy) { if (dx && dy) return e.bx ? [Math.sign(dx), 0] : [0, Math.sign(dy)]; return dx ? [Math.sign(dx), 0] : [0, Math.sign(dy)]; }   // 斜著走：身子照舊橫或直，換頭的朝向
+    bodyFits(x, y, bx, by, night, self) { const tx = x - bx, ty = y - by; return this.canStand('牛', tx, ty, night) && !this.beastAt(tx, ty, self) && !(this.px === tx && this.py === ty); }   // 尾那一格站得上去、沒有別的獸、不是人
+    bisonRoom(x, y, night) { for (const [bx, by] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (this.bodyFits(x, y, bx, by, night, null)) return [bx, by]; return null; }
+    at(x, y) { for (const e of this.list) if (this.covers(e, x, y)) return e; return null; }
+    beastAt(x, y, except) { for (const e of this.list) if (e !== except && this.covers(e, x, y) && DB[e.type].kind === 'beast' && e.type !== '魄' && e.type !== '龍' && !(e.type === '鷹' && e.tame)) return e; return null; }   // 龍與馴了的鷹不擋路
     tamed() { return this.list.filter(e => e.type === '鷹' && e.tame); }
     sense(e, p, r) { return this.world.clear(e.x, e.y, p.x, p.y) ? r : r * SMELL; }   // 獸找得到人的距離：看得見照舊，隔著磚只靠氣味打七折
     ram(e, g, x, y) {      // 野牛撞牆：扣一點看不見的耐久；磚剩一半成墟，塌了就沒了
@@ -61,6 +68,7 @@
       if (type === '蟾' && e.venom === undefined) e.venom = Math.random() < 0.5;
       if (type === '蛛' && e.venom === undefined) e.venom = Math.random() < VENOM_SPIDER;   // 十隻一隻是毒蛛
       if (type === '鷹' && e.sta === undefined) e.sta = 100;
+      if (type === '牛' && e.bx === undefined) { const o = this.bisonRoom(x, y, true) || [1, 0]; e.bx = o[0]; e.by = o[1]; }   // 野牛：找一個尾巴放得下的方向
       this.list.push(e);
       return e;
     }
@@ -83,7 +91,7 @@
       if (type === '蛇') return (ch === '草' && this.nearWood(x, y)) || ch === '丘';   // 草木之交；漠島的沙丘裡也藏著（v0.38）
       if (type === '蛛') return ch === '窟';                                   // 洞窟裡的蜘蛛（v0.38；草裡的照舊是除草驚出來的）
       if (type === '豬') return '林竹'.indexOf(ch) >= 0 || (ch === '草' && this.nearWood(x, y));   // 林邊
-      if (type === '牛') return ch === '草' && !this.nearWood(x, y);         // 開闊的草原
+      if (type === '牛') return ch === '草' && !this.nearWood(x, y) && !!this.bisonRoom(x, y, night);   // 開闊的草原，身子（一乘二）放得下
       if (type === '蟾' || type === '龜') return d.walk > 0 && d.kind !== 'object' && this.nearWater(x, y);
       if (type === '鷹') return d.kind !== 'water' && d.kind !== 'fire' && this.world.nearChar(x, y, '山', 2);
       if (type === '魄') return d.kind !== 'water' && d.kind !== 'fire' && !this.world.lightNear(x, y, 6);
@@ -121,11 +129,12 @@
       let best = null, bestD = away ? -1 : Infinity;
       for (const [dx, dy] of N8) {
         const nx = e.x + dx, ny = e.y + dy;
-        if (!this.canStand(e.type, nx, ny, night) || !this.climbOk(e, nx, ny) || this.beastAt(nx, ny) || this.tigerTooClose(e, nx, ny)) continue;
+        if (!this.canStand(e.type, nx, ny, night) || !this.climbOk(e, nx, ny) || this.beastAt(nx, ny, e) || this.tigerTooClose(e, nx, ny)) continue;
+        const o = e.type === '牛' ? this.turn(e, dx, dy) : null; if (o && !this.bodyFits(nx, ny, o[0], o[1], night, e)) continue;   // 野牛：尾巴也要放得下
         const d = U.dist(nx, ny, tx, ty) + Math.random() * 0.3;
-        if (away ? d > bestD : d < bestD) { bestD = d; best = [nx, ny]; }
+        if (away ? d > bestD : d < bestD) { bestD = d; best = [nx, ny, o]; }
       }
-      if (best) { e.x = best[0]; e.y = best[1]; return true; }
+      if (best) { e.x = best[0]; e.y = best[1]; if (best[2]) { e.bx = best[2][0]; e.by = best[2][1]; } return true; }
       return false;
     }
     wander(e, night, prefer) {
@@ -133,11 +142,12 @@
       let fallback = null;
       for (const [dx, dy] of order) {
         const nx = e.x + dx, ny = e.y + dy;
-        if (!this.canStand(e.type, nx, ny, night) || !this.climbOk(e, nx, ny) || this.beastAt(nx, ny) || this.tigerTooClose(e, nx, ny)) continue;
-        if (!prefer || prefer.indexOf(this.world.get(nx, ny)) >= 0) { e.x = nx; e.y = ny; return; }
-        if (!fallback) fallback = [nx, ny];
+        if (!this.canStand(e.type, nx, ny, night) || !this.climbOk(e, nx, ny) || this.beastAt(nx, ny, e) || this.tigerTooClose(e, nx, ny)) continue;
+        const o = e.type === '牛' ? this.turn(e, dx, dy) : null; if (o && !this.bodyFits(nx, ny, o[0], o[1], night, e)) continue;
+        if (!prefer || prefer.indexOf(this.world.get(nx, ny)) >= 0) { e.x = nx; e.y = ny; if (o) { e.bx = o[0]; e.by = o[1]; } return; }
+        if (!fallback) fallback = [nx, ny, o];
       }
-      if (fallback && Math.random() < 0.3) { e.x = fallback[0]; e.y = fallback[1]; }
+      if (fallback && Math.random() < 0.3) { e.x = fallback[0]; e.y = fallback[1]; if (fallback[2]) { e.bx = fallback[2][0]; e.by = fallback[2][1]; } }
     }
     hover(e, p, lo, hi) {   // 在玩家 lo–hi 格之間繞圈（魄在光的邊上徘徊）
       for (const [dx, dy] of N8.slice().sort(() => Math.random() - 0.5)) {
@@ -240,6 +250,7 @@
         if (g.ghostNight() && !p.dead && this.count('魄') < g.ghostCap()) this.spawnNear('魄', p, 12, 20, true);
       }
 
+      this.px = p.x; this.py = p.y;   // 野牛的尾巴不壓在人身上
       for (let i = this.list.length - 1; i >= 0; i--) {
         const e = this.list[i];
         const k = Math.min(1, dt * 11);
