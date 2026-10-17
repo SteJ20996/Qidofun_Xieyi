@@ -61,6 +61,7 @@
   const KILL_ONLY_LEVEL = 22, KILL_DAY = 0.8, KILL_NIGHT = 1.05;   // 廿二重起膽氣只從斃敵對生靈得來（製作採集讀碑都不長）；斃敵的膽氣白日八成、夜裡加半成（四捨五入）
   const WARN_LIGHT = 0.5, WARN_POP = 0.25;    // 五條數值不到五成亮燈、不到四分之一彈窗提醒（回到五成以上才會再提醒）
   const WEAR_CAP = 6, REPAIR_WM = 1.5, HAT_FUEL = 400;
+  const RENEW_AT = 0.5;   // 有耐久的東西（衣甲、工具、漁網、燈帽）要用過一半（剩不到五成）才能翻新、修補、重磨、加固（v0.39 使用者定）
   // 修鐵器與鎢鋼器（v0.30 使用者定）：同一件第 n 次修。鐵器（鐵甲盔靴、鋼具）鐵 1、2、4、8；鎢鋼器（鎢鋼甲盔靴、鎢鋼具）鐵一、鐵二、鐵三鎢鋼一、鐵六鎢鋼二；之後都照最後一檔
   const IRON_FIX = [1, 2, 4, 8], TUNG_FIX = [{ '鐵': 1 }, { '鐵': 2 }, { '鐵': 3, '鎢鋼': 1 }, { '鐵': 6, '鎢鋼': 2 }], GOD_FIX = 2;   // 神兵修理是鎢鋼的兩倍（料、力、飽，v0.32）
   // 魄煙滅（v0.32 使用者定）：夜裡人在屋外，地上的光或龍每煙滅一隻魄，膽氣長「這一重」的 1%（比例，不乘難度）；燈帽每煙滅一隻少兩息
@@ -176,6 +177,20 @@
     wornList() { const w = this.player.worn; return SLOT_ORDER.map(k => w[k]).filter(Boolean); }
     wornFull() { return ARMOR_SLOTS.every(k => this.player.worn[k]); }
     ownedPiece(n) { return this.wornList().find(s => s.n === n) || this.player.bag.find(s => s.n === n) || null; }   // 同一類衣甲只留一件
+    betterPiece(n) {     // 身上或囊裡同一格、更強（減傷更多）的衣甲（v0.39：製作欄標「已有更好的…」）；內襯、布褲這種沒有更高一等的就沒有
+      const it = ITEMS[n]; if (!it || !it.slot || it.light) return null;
+      return this.wornList().concat(this.player.bag).filter(s => { const o = ITEMS[s.n]; return o && o.slot === it.slot && !o.light && (o.red || 0) > (it.red || 0); }).sort((a, b) => ITEMS[b.n].red - ITEMS[a.n].red)[0] || null;
+    }
+    leftFrac(s) {        // 這件還剩幾成：衣甲照壽命、燈帽照蠟燭、漁網照網的耐久、工具照耐久；沒用過的算全新；沒有耐久的回 null
+      const it = ITEMS[s.n] || {};
+      if (it.slot && it.light) return (s.fuel || 0) / HAT_FUEL;
+      if (it.slot) return s.dur === undefined ? 1 : s.dur / this.lifeOf(s);
+      if (it.tile && DB[it.tile] && DB[it.tile].net) return s.dur === undefined ? 1 : s.dur / this.world.netDur(DB[it.tile].net);
+      if (it.dur) return s.dur === undefined ? 1 : s.dur / it.dur;
+      return null;
+    }
+    canRenew(s) { const f = s ? this.leftFrac(s) : null; return f === null || f < RENEW_AT; }   // 用過一半才能翻新（v0.39）
+    tooNew(s, verb) { const f = this.leftFrac(s); this.message('「' + s.n + '」還新（還剩 ' + Math.round(f * 100) + '%），用過一半才能' + verb + '。'); SFX.fail(); }
     ironCount() { return this.wornList().filter(s => ITEMS[s.n].iron).length; }
     ironFull() { return this.ironCount() === 3; }                                                // 鐵甲鐵盔鐵靴齊：毒不侵
     armorRed() { return this.wornList().reduce((a, s) => a + (ITEMS[s.n].red || 0), 0); }      // 減傷：布五件一成，鐵三件加內襯布褲三成
@@ -227,6 +242,7 @@
     repairWorn(slot) {   // 布件用麻布一；鐵件、鎢鋼件照 fixCost 加價（力 4；鎢鋼力 12、飽 15）：壽命回滿，損耗從 1.5 倍重新起算；燈帽則是續蠟燭
       const p = this.player, s = p.worn[slot]; if (!s || !this.canAct()) return false;
       if (slot === '帽') { if (this.count('蠟燭') < 1) { this.message('續燈帽要一根蠟燭。'); SFX.fail(); return false; } this.removeItem('蠟燭', 1); s.fuel = HAT_FUEL; this.barSig = ''; this.buildBag(); this.message('燈帽續上一根蠟燭：四百息。'); SFX.write(); return true; }
+      if (!this.canRenew(s)) { this.tooNew(s, '修補'); return false; }
       const it = ITEMS[s.n], need = this.fixCost(s) || { '麻布': 1 }, sta = it.tung ? 12 : 4, food = it.tung ? 15 : 0;   // 鎢鋼件修補耗力也耗飽
       if (!this.hasAll(need)) { this.message('修補「' + s.n + '」' + (s.rg ? '（修過 ' + s.rg + ' 次）' : '') + '要' + this.matText(need) + (food ? '，力 ' + sta + '、飽 ' + food : '') + '。'); SFX.fail(); return false; }
       if (food && p.food < food) { this.message('太餓了，修不動鎢鋼。'); SFX.fail(); return false; }
@@ -942,14 +958,19 @@
     // ---------- 滑鼠點格子走過去（v0.32；v0.33 使用者改）：不踩上點的那一格，而是走到它周圍八格裡站得上去、走起來離人最近的那一格，面向它，
     // 好接著對它取、放、打；點的是會動的生靈，就一直跟著，跟到牠身旁一格、面向牠為止 ----------
     unsafe(x, y) { return !!(this.world.info(x, y).bog || this.world.fogAt(x, y)); }   // 沼澤與霧障：找路時先避開（v0.34）
-    planPath(tx, ty) {   // 先找安全的路（不踩沼澤、霧障）；找不到才退而求其次，回 { path, safe }
-      const safe = this.findPath(tx, ty); if (safe) return { path: safe, safe: true };
-      const any = this.findPath(tx, ty, true); return any ? { path: any, safe: false } : null;
+    openGround(x, y) {   // 空地（v0.39 使用者定：點了就直接走上去）：地面、白紙、草花，與橋棧台階這些本來就是給人走的；沼澤、有生靈站著、站不上去的不算
+      const ch = this.world.get(x, y), d = DB[ch];
+      if (!d || d.walk <= 0 || d.bog || this.ents.at(x, y)) return false;
+      return d.kind === 'ground' || d.kind === 'blank' || '草花橋棧台階'.indexOf(ch) >= 0;
     }
-    findPath(tx, ty, risky) {   // 從人到 (tx, ty) 周圍八格之一的路（A*、八方向、斜走不貼角、繞開獸站的格；risky 不給就也繞開沼澤與霧障）；人已經在旁邊就回空路；到不了回 null
+    planPath(tx, ty, onto) {   // 先找安全的路（不踩沼澤、霧障）；找不到才退而求其次，回 { path, safe }；onto：走上那一格（點的是空地）
+      const safe = this.findPath(tx, ty, false, onto); if (safe) return { path: safe, safe: true };
+      const any = this.findPath(tx, ty, true, onto); return any ? { path: any, safe: false } : null;
+    }
+    findPath(tx, ty, risky, onto) {   // 從人到 (tx, ty) 周圍八格之一的路（A*、八方向、斜走不貼角、繞開獸站的格；risky 不給就也繞開沼澤與霧障）；人已經在旁邊就回空路；到不了回 null
       const p = this.player, sx = p.x, sy = p.y, K = (x, y) => (x - sx + PATH_R) * (2 * PATH_R + 1) + (y - sy + PATH_R);
-      const done = (x, y) => U.cheb(x, y, tx, ty) === 1;
-      const cost = new Map([[K(sx, sy), 0]]), from = new Map(), heap = [[Math.max(0, U.cheb(sx, sy, tx, ty) - 1), 0, sx, sy]];
+      const near = onto ? 0 : 1, done = (x, y) => U.cheb(x, y, tx, ty) === near;   // 空地走上去；其餘走到旁邊一格
+      const cost = new Map([[K(sx, sy), 0]]), from = new Map(), heap = [[Math.max(0, U.cheb(sx, sy, tx, ty) - near), 0, sx, sy]];
       const beasts = new Set(); for (const e of this.ents.list) if (this.ents.beastAt(e.x, e.y) === e) beasts.add(U.key(e.x, e.y));   // 獸站的格子繞開（找路當下的位置）
       const push = (e) => { heap.push(e); let i = heap.length - 1; while (i > 0) { const j = (i - 1) >> 1; if (heap[j][0] <= heap[i][0]) break; [heap[i], heap[j]] = [heap[j], heap[i]]; i = j; } };
       const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[i], heap[m]] = [heap[m], heap[i]]; i = m; } } return top; };
@@ -961,11 +982,11 @@
           return path;
         }
         for (const [dx, dy] of N8) {
-          const nx = x + dx, ny = y + dy; if (Math.abs(nx - sx) > PATH_R || Math.abs(ny - sy) > PATH_R || (nx === tx && ny === ty)) continue;   // 點的那格不踩上去
+          const nx = x + dx, ny = y + dy; if (Math.abs(nx - sx) > PATH_R || Math.abs(ny - sy) > PATH_R || (!onto && nx === tx && ny === ty)) continue;   // 點的那格不踩上去（空地除外）
           if (!this.pass(nx, ny, x, y) || beasts.has(U.key(nx, ny)) || (!risky && this.unsafe(nx, ny)) || (dx && dy && !(this.pass(x + dx, y, x, y) && this.pass(x, y + dy, x, y)))) continue;   // 斜走不能貼著擋路的角穿過去（跟方向鍵一樣）
           const nc = c + (dx && dy ? 1.3 : 1) / Math.max(0.3, DB[this.world.get(nx, ny)].walk || 1), nk = K(nx, ny);
           if (cost.has(nk) && cost.get(nk) <= nc) continue;
-          cost.set(nk, nc); from.set(nk, [x, y]); push([nc + Math.max(0, Math.max(Math.abs(tx - nx), Math.abs(ty - ny)) - 1), nc, nx, ny]);
+          cost.set(nk, nc); from.set(nk, [x, y]); push([nc + Math.max(0, Math.max(Math.abs(tx - nx), Math.abs(ty - ny)) - near), nc, nx, ny]);
         }
       }
       return null;
@@ -974,10 +995,10 @@
       const p = this.player;
       if (p.knock > 0 || p.dead || !this.canAct()) return false;
       if (Math.max(Math.abs(tx - p.x), Math.abs(ty - p.y)) > PATH_R) { this.message('太遠了，在畫面裡點近一點的格子。'); return false; }
-      const plan = this.planPath(tx, ty);
+      const onto = !ent && this.openGround(tx, ty), plan = this.planPath(tx, ty, onto);   // 點的是空地就走上去（v0.39）
       if (!plan) { this.stopWalk(); this.message(ent ? '到不了牠那裡。' : '走不過去。'); SFX.fail(); return false; }
       const path = plan.path; this.pathSafe = plan.safe;
-      this.path = path; this.pathGoal = { x: tx, y: ty }; this.follow = ent || null; this.pathTries = 0; if (this.action) this.action = null;
+      this.path = path; this.pathGoal = { x: tx, y: ty, onto }; this.follow = ent || null; this.pathTries = 0; if (this.action) this.action = null;
       if (!plan.safe) this.message('沒有不經沼澤、霧障的路，只好穿過去。按方向鍵停下。');
       else if (ent) this.message('跟著「' + this.beastName(ent) + '」走。按方向鍵停下。');
       if (!path.length) { if (ent) this.followPath(); else this.facePathGoal(); }
@@ -997,7 +1018,7 @@
       this.feedEagle(e);
     }
     stopWalk() { this.path = null; this.follow = null; this.pathEnd = false; }
-    facePathGoal() { const p = this.player, gl = this.pathGoal; if (gl && U.cheb(gl.x, gl.y, p.x, p.y) === 1) { p.fx = gl.x - p.x; p.fy = gl.y - p.y; } this.stopWalk(); }
+    facePathGoal() { const p = this.player, gl = this.pathGoal; if (gl && !gl.onto && U.cheb(gl.x, gl.y, p.x, p.y) === 1) { p.fx = gl.x - p.x; p.fy = gl.y - p.y; } this.stopWalk(); }
     followPath() {
       const p = this.player, e = this.follow;
       if (e) {   // 跟著一隻會動的：到了身旁一格就面向牠、停；牠挪了就照牠現在的位置重找路
@@ -1014,13 +1035,13 @@
       if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (!dx && !dy)) { this.path.shift(); return; }
       const gl = this.pathGoal;
       if (this.pathSafe && this.unsafe(nx, ny) && gl) {   // 霧飄到路上了：重找一條安全的；沒有就照舊走（並說一聲）
-        const again = this.planPath(e ? e.x : gl.x, e ? e.y : gl.y);
+        const again = this.planPath(e ? e.x : gl.x, e ? e.y : gl.y, !e && gl.onto);
         if (again && again.safe) { this.path = again.path; return; }
         this.pathSafe = false; this.message('霧飄到路上了，繞不開，只好穿過去。');
       }
       p.fx = dx; p.fy = dy;
       if (this.tryStep(dx, dy)) { this.path.shift(); if (!this.path.length && !e) this.pathEnd = true; return; }
-      if (gl && ++this.pathTries <= 3) { const again = this.planPath(e ? e.x : gl.x, e ? e.y : gl.y); if (again) { this.path = again.path; this.pathSafe = again.safe; return; } }   // 路被擋了（獸、剛放的東西）：重找，三次不成就停
+      if (gl && ++this.pathTries <= 3) { const again = this.planPath(e ? e.x : gl.x, e ? e.y : gl.y, !e && gl.onto); if (again) { this.path = again.path; this.pathSafe = again.safe; return; } }   // 路被擋了（獸、剛放的東西）：重找，三次不成就停
       this.stopWalk(); this.message('路被擋住了。');
     }
     tryStep(dx, dy) {
@@ -1442,6 +1463,7 @@
       if (!rec) return;
       const w = this.world, p = this.player, max = w.netDur(rec.size), k = this.mendCost(rec), name = this.netName(rec.size);
       if (rec.dur >= max) { this.message('這張' + name + '還結實（耐 ' + rec.dur + '／' + max + '），不用加固。'); return; }
+      if (rec.dur / max >= RENEW_AT) { this.message('這張' + name + '還新（耐 ' + rec.dur + '／' + max + '），用過一半才能加固。'); SFX.fail(); return; }
       if (this.count('棉') < k || this.count('麻') < k) { this.message('加固這張' + name + '要棉 ' + k + ' 麻 ' + k + '（第 ' + ((rec.rf || 0) + 1) + ' 次；囊中棉 ' + this.count('棉') + ' 麻 ' + this.count('麻') + '）。'); SFX.fail(); return; }
       if (p.sta < MEND_STA) { this.message('力氣不夠，歇一歇。'); SFX.fail(); return; }
       const torn = rec.dur <= 0; this.removeItem('棉', k); this.removeItem('麻', k); p.sta -= MEND_STA; rec.dur = max; rec.rf = (rec.rf || 0) + 1; if (torn) rec.t = w.time;
@@ -1584,13 +1606,17 @@
         const needs = r.crush ? (crush ? '<span class="ok">' + (crush.from === 'tools' ? '手上' : '囊裡') + '的「' + crush.s.n + '」</span>' : '<span class="lack">要有一把石器</span>')
           : Object.keys(need).map(n => '<span class="' + (this.count(n) >= need[n] ? 'ok' : 'lack') + '">' + n + ' ' + this.count(n) + '/' + need[n] + '</span>').join(' ');
         const owned = r.out && ITEMS[r.out] && ITEMS[r.out].slot && this.ownedPiece(r.out);
+        const better = r.out && !owned ? this.betterPiece(r.out) : null;   // 已經有同一格更強的衣甲（v0.39）
+        const fixing = r.regrind ? this.activeTool() : r.mend ? this.heldNet() : owned || null;   // 這一列要翻新、修、加固的是哪一件
+        const fresh = fixing && (r.regrind || r.mend || owned) && !this.canRenew(fixing) && !(r.mend && fixing.dur === undefined);   // 還新：用過一半才能翻新（v0.39）
+        if (fresh) row.classList.add('cant');
         const spent = r.id === 'pouch' && this.pouchFull(), allUsed = spent && p.pouches >= MAX_POUCHES;   // 錦囊：已用的加囊裡的湊滿八個就不給造（八個都用了標「已用完」，否則標「已夠八個」）
         if (spent) row.classList.add('cant');
-        const title = (r.out ? r.out + (r.n > 1 ? ' ×' + r.n : '') : (r.title || (r.regrind ? '重磨' : r.mend ? '加固' : r.crush ? '研磨石器 → 石子 ×' + CRUSH_PEBBLES : '磨礪'))) + (owned ? ' <i class="dim">已有</i>' : '') + (spent ? ' <i class="dim">' + (allUsed ? '已用完' : '已夠八個') + '</i>' : '');
+        const title = (r.out ? r.out + (r.n > 1 ? ' ×' + r.n : '') : (r.title || (r.regrind ? '重磨' : r.mend ? '加固' : r.crush ? '研磨石器 → 石子 ×' + CRUSH_PEBBLES : '磨礪'))) + (owned ? ' <i class="dim">已有' + (fresh ? '・還新' : '') + '</i>' : '') + (better ? ' <i class="better">已有更好的「' + better.n + '」！</i>' : '') + (spent ? ' <i class="dim">' + (allUsed ? '已用完' : '已夠八個') + '</i>' : '');
         let btns = '';
         if (r.choose) btns = r.choose.map(c => '<button data-r="' + r.id + '" data-c="' + c + '">' + c + '</button>').join('');
-        else btns = '<button data-r="' + r.id + '"' + (spent ? ' disabled' : '') + '>' + (spent ? (allUsed ? '已用完' : '已夠') : r.regrind ? '磨' : r.mend ? '固' : r.crush ? '碎' : owned ? '翻新' : '造') + '</button>';
-        row.innerHTML = '<span class="head"><span class="num">' + (i + 1) + '</span><b>' + title + '</b></span><span class="needs">' + needs + '</span><span class="sta">力 ' + r.sta + (r.food ? '<br>飽 ' + r.food : '') + (locked ? '<br><i>需' + r.level + '重</i>' : '') + '</span><span class="note">' + r.note + (r.regrind && this.activeTool() ? '（這把第 ' + (((this.activeTool().rg) || 0) + 1) + ' 次：石子 ' + this.regrindCost(this.activeTool()) + '）' : '') + (r.mend && this.heldNet() ? '<br><i>這張第 ' + ((this.heldNet().rf || 0) + 1) + ' 次：棉麻各 ' + this.mendCost(this.heldNet()) + (this.heldNet().dur === undefined ? '；還沒用過，不用固' : '，耐 ' + this.heldNet().dur + '／' + this.world.netDur(DB[ITEMS[this.heldNet().n].tile].net)) + '</i>' : '') + '</span><span class="btns">' + btns + '</span>';
+        else btns = '<button data-r="' + r.id + '"' + (spent || fresh ? ' disabled' : '') + (fresh ? ' title="還剩 ' + Math.round(this.leftFrac(fixing) * 100) + '%，用過一半才能' + (r.mend ? '加固' : r.regrind ? '磨' : '翻新') + '"' : '') + '>' + (spent ? (allUsed ? '已用完' : '已夠') : r.regrind ? '磨' : r.mend ? '固' : r.crush ? '碎' : owned ? '翻新' : '造') + '</button>';
+        row.innerHTML = '<span class="head"><span class="num">' + (i + 1) + '</span><b>' + title + '</b></span><span class="needs">' + needs + '</span><span class="sta">力 ' + r.sta + (r.food ? '<br>飽 ' + r.food : '') + (locked ? '<br><i>需' + r.level + '重</i>' : '') + '</span><span class="note">' + r.note + (fresh ? '<br><i class="fresh">還剩 ' + Math.round(this.leftFrac(fixing) * 100) + '%，用過一半才能' + (r.mend ? '加固' : r.regrind ? (this.metalOf(fixing.n) ? '修' : '重磨') : '翻新') + '</i>' : '') + (r.regrind && this.activeTool() ? '（這把第 ' + (((this.activeTool().rg) || 0) + 1) + ' 次：石子 ' + this.regrindCost(this.activeTool()) + '）' : '') + (r.mend && this.heldNet() ? '<br><i>這張第 ' + ((this.heldNet().rf || 0) + 1) + ' 次：棉麻各 ' + this.mendCost(this.heldNet()) + (this.heldNet().dur === undefined ? '；還沒用過，不用固' : '，耐 ' + this.heldNet().dur + '／' + this.world.netDur(DB[ITEMS[this.heldNet().n].tile].net)) + '</i>' : '') + '</span><span class="btns">' + btns + '</span>';
         list.appendChild(row);
       });
       list.querySelectorAll('button').forEach(b => b.addEventListener('click', (ev) => { ev.stopPropagation(); this.craft(b.dataset.r, b.dataset.c); }));
@@ -1615,12 +1641,14 @@
         const s = this.heldNet(); if (!s) { this.message('囊裡要選中一張漁網（放著的網面向按 F 也能固）。'); SFX.fail(); return; }
         const size = DB[ITEMS[s.n].tile].net, max = this.world.netDur(size);
         if (s.dur === undefined || s.dur >= max) { this.message('這張' + s.n + '還結實（耐 ' + max + '／' + max + '），不用加固。'); SFX.fail(); return; }
+        if (!this.canRenew(s)) { this.tooNew(s, '加固'); return; }
         const k = this.mendCost(s); this.removeItem('棉', k); this.removeItem('麻', k); s.dur = max; s.rf = (s.rf || 0) + 1;
         p.sta -= r.sta; this.barSig = ''; this.afterCraft(r); this.message('「' + s.n + '」加固了，用了棉麻各 ' + k + '，耐久回 ' + max + '；下次要各 ' + this.mendCost(s) + '。'); SFX.fuse(); this.buildCraft(); this.buildBag(); return;
       }
       if (r.regrind) {
         const s = this.activeTool(); if (!s) { this.message('具欄裡要選中一把工具（P 換）。'); SFX.fail(); return; }
         if (ITEMS[s.n].brittle) { this.message('「' + s.n + '」是黑曜石磨的，鋒利但脆，磨不回來；鈍了就碎，再做一把。'); SFX.fail(); return; }
+        if (!this.canRenew(s)) { this.tooNew(s, this.metalOf(s.n) ? '修' : '重磨'); return; }
         const tung = !!ITEMS[s.n].tung, god = GODS.indexOf(s.n) >= 0, extraSta = god ? (r.sta + 5) * GOD_FIX - r.sta : tung ? 5 : 0, food = god ? 10 * GOD_FIX : tung ? 10 : 0;   // 鎢鋼具重磨耗力八、飽十；神兵兩倍（力十六、飽二十）
         if (p.sta < r.sta + extraSta) { this.message('力氣不夠，歇一歇（鎢鋼具要力 ' + (r.sta + extraSta) + '）。'); SFX.fail(); return; }
         if (food && p.food < food) { this.message(god ? '太餓了，修不動神兵。' : '太餓了，磨不動鎢鋼。'); SFX.fail(); return; }
@@ -1629,6 +1657,7 @@
       }
       const def = ITEMS[out], owned = def && def.slot ? this.ownedPiece(out) : null;
       if (owned) {       // 同一類衣甲只留一件：再造只是翻新
+        if (!this.canRenew(owned)) { this.tooNew(owned, '翻新'); return; }
         for (const m in r.need) this.removeItem(m, r.need[m]);
         p.sta -= r.sta; const gain = this.afterCraft(r);
         if (def.light) owned.fuel = HAT_FUEL; else { owned.dur = this.lifeOf(owned); owned.wm = 1; }
@@ -1932,7 +1961,8 @@
         for (const e of this.ents.list) { if (e.type === '魄') continue; const dd = Math.hypot(e.rx + 0.5 - fx, e.ry + 0.5 - fy); if (dd < bd) { bd = dd; ent = e; } }
         const wx = ent ? ent.x : Math.floor(fx), wy = ent ? ent.y : Math.floor(fy), d = U.cheb(wx, wy, p.x, p.y);
         if (d === 0) return;
-        if (d > 1) { this.walkTo(wx, wy, ent); return; }   // 點遠處：走到它旁邊、面向它；點生靈就跟著（v0.33）
+        if (d > 1) { this.walkTo(wx, wy, ent); return; }   // 點遠處：空地就走上去（v0.39），其餘走到它旁邊、面向它；點生靈就跟著（v0.33）
+        if (!ent && this.openGround(wx, wy) && !DB[this.world.get(wx, wy)].yield) { this.walkTo(wx, wy); return; }   // 身旁一格、上頭沒東西可取的空地（白紙、路、灰、雪……）：走過去（v0.39）
         this.stopWalk(); p.fx = wx - p.x; p.fy = wy - p.y;
         this.pressGather();   // 點身旁一格：跟按 E 一樣（v0.34 起左右鍵不分，觸控板好用）；放東西用 F
       });

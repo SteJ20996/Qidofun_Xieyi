@@ -321,6 +321,8 @@ const result = await page.evaluate(async () => {
   p.worn['盔'].wm = 5; p.hitWin = { start: w.time, n: 4 }; w.time += 16; await sleep(80);
   ok('the wear multiplier caps at ×6', Math.abs(p.worn['盔'].wm - 6) < 1e-9 && p.hitWin.n === 0, p.worn['盔'].wm);
   g.addItem('麻布', 1); p.sta = 50; g.repairWorn('盔');
+  ok('v0.39: a piece with more than half its life left cannot be patched yet', g.count('麻布') === 1 && p.sta === 50 && g.msgText.indexOf('用過一半才能修補') >= 0, g.msgText);
+  p.worn['盔'].dur = g.lifeOf(p.worn['盔']) * 0.4; g.repairWorn('盔');
   ok('repairing with 麻布 restores 180 days and restarts wear at ×1.5', Math.round(p.worn['盔'].dur / DAY) === 180 && p.worn['盔'].wm === 1.5 && g.count('麻布') === 0 && p.sta === 46, [p.worn['盔'].wm, g.count('麻布')]);
   p.hp = 100; p.hurtT = 0; g.takeOff('盔'); g.takeOff('靴'); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']);
   // 拆回自己放的東西不長膽氣；稻草人拆得回來
@@ -337,10 +339,11 @@ const result = await page.evaluate(async () => {
   ok('full iron (甲盔靴 + cloth lining and trousers): 30% less damage, poison immune, 25% slower, +5% attack, +8% drain', Math.abs(g.armorRed() - 0.30) < 1e-9 && g.ironFull() && Math.abs(g.ironSpeed() - 0.75) < 1e-9 && Math.abs(g.dmgMult() - 1.05) < 1e-9 && Math.abs(g.ironDrain() - 1.08) < 1e-9 && Math.abs(g.takenMult() - 0.7) < 1e-9, [g.armorRed(), g.dmgMult(), g.takenMult()]);
   p.poisonT = 0; p.poisonPer = 0; g.bite({ type: '蛇', x: p.x + 1, y: p.y }, 3);
   ok('iron-clad, a snake bite does not poison', p.poisonT === 0 && p.poisonPer === 0);
-  p.worn['甲'].wm = 3; g.removeItem('鐵', 99); g.addItem('鐵', 1); p.sta = 50; g.repairWorn('甲');
+  const wornDown = (k) => { p.worn[k].dur = g.lifeOf(p.worn[k]) * 0.4; };   // v0.39：用過一半才能修補
+  p.worn['甲'].wm = 3; g.removeItem('鐵', 99); g.addItem('鐵', 1); p.sta = 50; wornDown('甲'); g.repairWorn('甲');
   ok('iron pieces are repaired with 鐵: one the first time', p.worn['甲'].wm === 1.5 && g.count('鐵') === 0 && p.worn['甲'].rg === 1);
-  g.addItem('鐵', 1); p.sta = 50; g.repairWorn('甲'); const ironShort = g.count('鐵') === 1 && p.worn['甲'].rg === 1 && g.msgText.indexOf('鐵 2') >= 0;
-  const ic = []; g.addItem('鐵', 30); for (let i = 0; i < 4; i++) { const c0 = g.count('鐵'); p.sta = 50; g.repairWorn('甲'); ic.push(c0 - g.count('鐵')); }
+  g.addItem('鐵', 1); p.sta = 50; wornDown('甲'); g.repairWorn('甲'); const ironShort = g.count('鐵') === 1 && p.worn['甲'].rg === 1 && g.msgText.indexOf('鐵 2') >= 0;
+  const ic = []; g.addItem('鐵', 30); for (let i = 0; i < 4; i++) { const c0 = g.count('鐵'); p.sta = 50; wornDown('甲'); g.repairWorn('甲'); ic.push(c0 - g.count('鐵')); }
   ok('v0.30: the same iron piece costs 鐵 1, 2, 4, 8, then 8 again; one 鐵 is not enough the second time', ironShort && ic.join(',') === '2,4,8,8' && p.worn['甲'].rg === 5, ic);
   g.removeItem('鐵', 99);
   for (const k of ['襯', '甲', '褲', '盔', '靴']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); p.hitWin = { start: -99, n: 0 };
@@ -1542,12 +1545,15 @@ const result = await page.evaluate(async () => {
     for (let dy = -9; dy <= 9; dy++) for (let dx = -9; dx <= 9; dx++) w.set(X + dx, Y + dy, '草');
     const goTo = async (tx, ty, ms) => { g.walkTo(tx, ty); await until(() => !g.path && p.moveT <= 0, ms || 8000); };
     const faces = (tx, ty) => p.x + p.fx === tx && p.y + p.fy === ty && !(p.x === tx && p.y === ty);
-    await goTo(X + 5, Y);
-    ok('v0.33: clicking a grass tile five east stops on the nearest of its eight neighbours (four east), facing it — not on it', p.x === X + 4 && p.y === Y && faces(X + 5, Y), [p.x - X, p.y - Y, p.fx, p.fy]);
+    w.set(X + 5, Y, '木'); await goTo(X + 5, Y);
+    ok('v0.33: clicking a tree five east stops on the nearest of its eight neighbours (four east), facing it — not on it', p.x === X + 4 && p.y === Y && faces(X + 5, Y), [p.x - X, p.y - Y, p.fx, p.fy]);
+    w.set(X + 5, Y, '草'); p.x = p.rx = X; p.y = p.ry = Y; await goTo(X + 5, Y - 2);
+    ok('v0.39: clicking open ground (a grass tile) walks right onto it', p.x === X + 5 && p.y === Y - 2 && !g.path, [p.x - X, p.y - Y]);
+    ok('v0.39: what counts as open ground: bare ground, paper, grass, bridges and steps — not swamp, trees, rock or a tile with a creature on it', (() => { const t = (ch) => { w.set(X - 8, Y - 8, ch); return g.openGround(X - 8, Y - 8); }; const res = ['白', '土', '沙', '路', '草', '花', '橋', '階', '漠'].every(t) && !['沼', '木', '林', '山', '石', '磚', '門'].some(t); w.set(X - 8, Y - 8, '草'); const cow = g.ents.add('牛', X - 8, Y - 8, { moveT: 99, calm: 99 }); const occ = g.openGround(X - 8, Y - 8); g.ents.remove(cow); return res && !occ; })());
     p.x = p.rx = X; p.y = p.ry = Y; for (let dy = -3; dy <= 3; dy++) w.set(X + 3, Y + dy, '磚');   // 一道南北向的磚，擋在東邊
     const path = g.findPath(X + 6, Y), last = path && path[path.length - 1];
     ok('v0.32: clicking a tile behind a wall finds a way round it (never through the bricks), ending beside the tile', !!path && path.length >= 6 && path.every(([x, y]) => w.get(x, y) !== '磚' && !(x === X + 6 && y === Y)) && U.cheb(last[0], last[1], X + 6, Y) === 1, path && path.length);
-    await goTo(X + 6, Y);
+    w.set(X + 6, Y, '木'); await goTo(X + 6, Y);
     ok('…walks there step by step and faces the clicked tile, ready for E or F', U.cheb(p.x, p.y, X + 6, Y) === 1 && faces(X + 6, Y), [p.x - X, p.y - Y]);
     w.set(X + 1, Y + 5, '山'); await goTo(X + 1, Y + 5);
     ok('v0.32: clicking a tile you cannot stand on (a mountain) walks up beside it and faces it', U.cheb(p.x, p.y, X + 1, Y + 5) === 1 && faces(X + 1, Y + 5), [p.x - X, p.y - Y, p.fx, p.fy]);
@@ -1565,7 +1571,14 @@ const result = await page.evaluate(async () => {
     cvs.dispatchEvent(new MouseEvent('mousemove', { clientX: sxp, clientY: syp, bubbles: true })); await sleep(30);
     ok('…the cell under the mouse and the path are drawn (mouse tracked)', !!g.mouse && g.mouse.x === sxp);
     await until(() => !g.path && p.moveT <= 0, 6000); g.mouse = null;
-    ok('…and it stops beside that tile, facing it', p.x === X - 3 && p.y === Y && faces(X - 4, Y), [p.x - X, p.y - Y]);
+    ok('v0.39: …and since it is open grass, the click walks right onto it', p.x === X - 4 && p.y === Y, [p.x - X, p.y - Y]);
+    p.x = p.rx = X; p.y = p.ry = Y; g.renderer.camInit = false; await sleep(80); w.set(X + 1, Y, '路'); [sxp, syp] = at(X + 1, Y);
+    cvs.dispatchEvent(new MouseEvent('mousedown', { clientX: sxp, clientY: syp, button: 0, bubbles: true })); await until(() => !g.path && p.moveT <= 0, 3000);
+    ok('v0.39: clicking the empty path tile right beside you steps onto it (nothing there to take)', p.x === X + 1 && p.y === Y, [p.x - X, p.y - Y]);
+    p.x = p.rx = X; p.y = p.ry = Y; g.renderer.camInit = false; await sleep(80); w.set(X + 1, Y, '草'); g.action = null; [sxp, syp] = at(X + 1, Y);
+    cvs.dispatchEvent(new MouseEvent('mousedown', { clientX: sxp, clientY: syp, button: 0, bubbles: true })); await sleep(30);
+    ok('v0.39: clicking grass right beside you still gathers it, like E', p.x === X && !!g.action && g.action.ch === '草', [p.x - X, g.action && g.action.ch]);
+    g.action = null; w.set(X + 1, Y, '草');
     p.x = p.rx = X; p.y = p.ry = Y; g.renderer.camInit = false; await sleep(80);
     const ox0 = g.ents.add('牛', X + 7, Y, { moveT: 99, calm: 99 }); await sleep(40); [sxp, syp] = at(ox0.rx, ox0.ry);
     cvs.dispatchEvent(new MouseEvent('mousedown', { clientX: sxp + 3, clientY: syp - 2, button: 2, bubbles: true })); await sleep(30);
@@ -1585,7 +1598,7 @@ const result = await page.evaluate(async () => {
     ok('v0.34: …and round a fog bank too', !!pf && pf.every(([x, y]) => !w.fogAt(x, y)), pf && pf.length);
     w.removeFog(fgw.id);
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (Math.max(Math.abs(dx), Math.abs(dy)) === 2) w.set(X + 6 + dx, Y + dy, '沼');
-    const plan = g.planPath(X + 6, Y); await goTo(X + 6, Y);
+    w.set(X + 6, Y, '木'); const plan = g.planPath(X + 6, Y); await goTo(X + 6, Y);
     ok('v0.34: when every way crosses a swamp it still goes, and says so', !!plan && !plan.safe && U.cheb(p.x, p.y, X + 6, Y) === 1 && g.msgText.indexOf('只好穿過去') >= 0, [plan && plan.safe, p.x - X, p.y - Y]);
     for (let dy = -9; dy <= 9; dy++) for (let dx = -9; dx <= 9; dx++) w.set(X + dx, Y + dy, w.base(X + dx, Y + dy)); p.x = p.rx = X; p.y = p.ry = Y; }
   // —— v0.34：= 捉、Q 餵、Shift+= 放大；Q 不再是囊往前一格；滑鼠左右鍵不分，點身旁一格跟 E 一樣
@@ -1617,6 +1630,32 @@ const result = await page.evaluate(async () => {
     const r0 = U.trueRand, cb = w.onWeather, ra = w.rainUntil, rn = w.nextRainAt; w.onWeather = null; U.trueRand = () => 0; w.rainUntil = 0; w.nextRainAt = w.time; w.step(p.x, p.y); const rainLen = w.rainUntil - w.time;
     U.trueRand = r0; w.onWeather = cb; w.rainUntil = ra; w.nextRainAt = rn;
     ok('v0.37: things counted in days follow the longer day (the shortest rain is a quarter of 360 = 90 s)', Math.abs(rainLen - 90) <= 0.5, rainLen); }
+  // ============ v0.39：有耐久的東西用過一半才能翻新；已有更好的衣甲，低一等的那列標出來 ============
+  { trim(['木', '石', '石子', '草', '土', '磚']); for (const k of ['襯', '甲', '褲', '盔', '靴', '帽']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚']);
+    g.addItem('布甲', 1); hold('布甲'); g.pressPlace(); const vest = p.worn['甲'];
+    g.addItem('麻布', 9); g.addItem('棉', 9); p.sta = 100; const mb0 = g.count('麻布'); g.craft('vest');
+    ok('v0.39: re-making a 布甲 you wear with more than half its life left is refused (還新)', vest.dur > g.lifeOf(vest) * 0.5 && g.count('麻布') === mb0 && g.msgText.indexOf('用過一半才能翻新') >= 0, g.msgText);
+    g.toggleCraft(); g.craftCat = '全部'; g.buildCraft(); await sleep(30);
+    const row = (n) => [...document.querySelectorAll('#craft-list .recipe')].find(r => r.querySelector('b').textContent.indexOf(n) === 0);
+    const r1 = row('布甲'); ok('v0.39: its craft row says 還新 and the 翻新 button is greyed out', !!r1 && r1.textContent.indexOf('還新') >= 0 && r1.textContent.indexOf('用過一半才能翻新') >= 0 && r1.querySelector('button').disabled, r1 && r1.textContent.slice(0, 60));
+    vest.dur = g.lifeOf(vest) * 0.45; g.buildCraft(); const r2 = row('布甲');
+    ok('v0.39: once more than half is worn the row offers 翻新 again', !!r2 && !r2.querySelector('button').disabled && r2.textContent.indexOf('還新') < 0);
+    p.sta = 100; g.craft('vest');
+    ok('v0.39: and re-making it renews it to full life', Math.abs(vest.dur - g.lifeOf(vest)) < 1e-6 && g.count('麻布') < mb0, vest.dur / DAY);
+    g.addItem('鐵盔', 1); g.buildCraft(); const r3 = row('布帽'), r4 = row('內襯'), r5 = row('鐵盔'), r6 = row('鎢鋼盔');
+    ok('v0.39: with a 鐵盔 in the bag the 布帽 row says 已有更好的「鐵盔」！; 鐵盔 itself and the stronger 鎢鋼盔 do not', !!r3 && r3.textContent.indexOf('已有更好的「鐵盔」！') >= 0 && (!r5 || r5.textContent.indexOf('已有更好的') < 0) && (!r6 || r6.textContent.indexOf('已有更好的') < 0), r3 && r3.textContent.slice(0, 40));
+    ok('v0.39: 內襯 has nothing stronger, so it never gets that label', !!r4 && r4.textContent.indexOf('已有更好的') < 0 && g.betterPiece('內襯') === null && g.betterPiece('布褲') === null);
+    g.toggleCraft();
+    // 工具與漁網
+    g.addItem('石刀', 1); const knife = p.tools.find(t => t.n === '石刀'); p.tool = p.tools.indexOf(knife); knife.dur = 30; g.addItem('石子', 9); const sz0 = g.count('石子'); p.sta = 100; g.craft('regrind');
+    ok('v0.39: a 石刀 with 30 of 40 left cannot be reground yet', knife.dur === 30 && g.count('石子') === sz0 && g.msgText.indexOf('用過一半才能重磨') >= 0, g.msgText);
+    knife.dur = 19; g.craft('regrind'); ok('v0.39: with 19 of 40 left it can', knife.dur === 40 && g.count('石子') < sz0);
+    p.tools.splice(p.tools.indexOf(knife), 1); p.tool = -1;
+    g.addItem('漁網', 1); g.addItem('棉', 9); g.addItem('麻', 9); const net = p.bag.find(x => x.n === '漁網'); net.dur = 20; hold('漁網'); const cm0 = g.count('棉'); p.sta = 100; g.craft('mendnet');
+    ok('v0.39: a net with 20 of 30 left cannot be reinforced yet', net.dur === 20 && g.count('棉') === cm0 && g.msgText.indexOf('用過一半才能加固') >= 0, g.msgText);
+    net.dur = 14; g.craft('mendnet'); ok('v0.39: with 14 of 30 left it can', net.dur === 30 && g.count('棉') < cm0);
+    ok('v0.39: never-used things count as new; 竹筏 and other things without durability are not affected', g.leftFrac({ n: '漁網' }) === 1 && g.leftFrac({ n: '竹筏', c: 1 }) === null && g.canRenew({ n: '竹筏', c: 1 }));
+    for (const k of ['甲']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚']); }
   // ============ v0.38：本島往外擴四成五（原本的地一格不動）、2500×2500 的紙與外島、新地形 ============
   { const sd = w.seed, home0 = { x: p.x, y: p.y }, il = G.islet(sd);
     let same = true, oldLand = 0, newLand = 0, inner = true, isletSame = true;
