@@ -268,18 +268,22 @@
     fogAt(x, y) { const id = this.fogCells.get(U.key(x, y)); return id ? this.fogs.get(id) : null; }
     fogLand(x, y) { const d = this.info(x, y); return d.walk > 0 && d.kind !== 'water' && DB[this.raw(x, y)].kind !== 'water'; }
     fogSea(x, y) { return DB[this.get(x, y)].kind === 'water' && DB[this.raw(x, y)].kind === 'water'; }
-    // 這格在不在「圍起來、裡面能走的格子不超過 FOG_ROOM 格」的屋子裡（門算磚）；同一次漫延碰到的格子一起記下
+    // 這格在不在「圍起來、裡面能走的格子不超過 FOG_ROOM 格」的屋子裡（門算磚；四面要有人造的磚門窗墟，v0.34）；同一次漫延碰到的格子一起記下
     fogRoom(x, y) {
       const k0 = U.key(x, y), hit = this.fogRoomCache.get(k0); if (hit !== undefined) return hit;
       if (!this.passable(x, y)) { this.fogRoomCache.set(k0, false); return false; }
-      const seen = new Set([k0]), q = [[x, y]]; let open = false;
+      const seen = new Set([k0]), q = [[x, y]]; let open = false, built = false;
       while (q.length) {
         if (seen.size > FOG_ROOM) { open = true; break; }
         const [cx, cy] = q.shift();
-        for (const [dx, dy] of N4) { const nx = cx + dx, ny = cy + dy, k = U.key(nx, ny); if (!seen.has(k) && this.passable(nx, ny)) { seen.add(k); q.push([nx, ny]); } }
+        for (const [dx, dy] of N4) {
+          const nx = cx + dx, ny = cy + dy, k = U.key(nx, ny); if (seen.has(k)) continue;
+          if (this.passable(nx, ny)) { seen.add(k); q.push([nx, ny]); } else if (DB[this.get(nx, ny)].kind === 'object') built = true;   // 四面有人造的磚、門、窗、墟才算屋子
+        }
       }
-      for (const k of seen) this.fogRoomCache.set(k, !open);
-      return !open;
+      const room = !open && built;   // 山、水自己圍起來的小角落不算屋子，霧照樣飄進去（v0.34）
+      for (const k of seen) this.fogRoomCache.set(k, room);
+      return room;
     }
     static newFogShape(area) {   // 隨機一個霧的形：面積 area 格
       const R = U.trueRand, h = [];
