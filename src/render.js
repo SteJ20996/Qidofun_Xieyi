@@ -14,6 +14,11 @@
     '塔': '#2a2724', '寺': '#5a3e2b', '船': '#5a3e2b', '泉': '#4a6f8f', '墓': '#6e6c75', '洞': '#2a2724', '燈': '#e0a020'
   };
 
+  // 光照（v0.31）：夜色與暖光先畫在一張低解析度的「光照圖」上（每格 LM_S×LM_S 個取樣點），再平滑放大蓋上去；
+  // 光被磚、門、墟擋，視線按地上的字的版本（world.ver）快取，不用每幀重算。各種光的顏色：
+  const LM_S = 2, LAMP = [255, 192, 96], BEACON = [255, 214, 130], FIRE = [255, 138, 58], STOVE = [255, 158, 70], TORCH = [255, 172, 82], DRAGON = [236, 214, 160];
+  const smooth = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+
   class Renderer {
     constructor(canvas, mini) {
       this.cv = canvas; this.ctx = canvas.getContext('2d');
@@ -22,7 +27,11 @@
       this.atlas = new Map();
       this.paper = this.makePaper();
       this.pattern = null;
-      this.night = document.createElement('canvas');
+      this.lmDark = document.createElement('canvas'); this.lmGlow = document.createElement('canvas');   // 光照圖：夜色、暖光
+      this.lmDarkCtx = this.lmDark.getContext('2d'); this.lmGlowCtx = this.lmGlow.getContext('2d');
+      this.sightCache = new Map(); this.fogSeen = new Map();
+      this.puff = this.makeSprite(64, [[0, 'rgba(248,247,242,1)'], [0.6, 'rgba(240,238,232,0.56)'], [1, 'rgba(240,238,232,0)']]);   // 一團霧
+      this.bloom = this.makeSprite(64, [[0, 'rgba(255,236,190,0.9)'], [0.35, 'rgba(255,200,120,0.45)'], [1, 'rgba(255,180,90,0)']]);  // 光源的芯
       this.camX = 0; this.camY = 0; this.camInit = false;
       this.shake = 0; this.miniAcc = 1;
       this.resize();
@@ -36,7 +45,7 @@
     resize() {
       this.dpr = Math.min(window.devicePixelRatio || 1, 2);
       this.w = window.innerWidth; this.h = window.innerHeight;
-      for (const c of [this.cv, this.night]) { c.width = Math.floor(this.w * this.dpr); c.height = Math.floor(this.h * this.dpr); }
+      this.cv.width = Math.floor(this.w * this.dpr); this.cv.height = Math.floor(this.h * this.dpr);
       this.cv.style.width = this.w + 'px'; this.cv.style.height = this.h + 'px';
     }
 
@@ -57,6 +66,105 @@
       return c;
     }
 
+    makeSprite(S, stops) {   // 一張放射漸層的小圖，之後只做 drawImage（比每幀造漸層省）
+      const c = document.createElement('canvas'); c.width = c.height = S; const x = c.getContext('2d'), gr = x.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+      for (const [o, col] of stops) gr.addColorStop(o, col);
+      x.fillStyle = gr; x.fillRect(0, 0, S, S); return c;
+    }
+    // 光源 (lx, ly) 半徑 R 內哪些格子看得見：附近沒有擋光的字回 null（全看得見），否則回一張 (2R+1)² 的表；地上的字沒變就用快取
+    sight(world, lx, ly, R) {
+      const key = lx + ',' + ly + ',' + R, ver = world.ver || 0, c = this.sightCache.get(key);
+      if (c && c.ver === ver) return c.vis;
+      let any = false;
+      for (let dy = -R; dy <= R && !any; dy++) for (let dx = -R; dx <= R; dx++) { const d = DB[world.get(lx + dx, ly + dy)]; if (d && d.opaque) { any = true; break; } }
+      let vis = null;
+      if (any) {
+        const W = 2 * R + 1, R2 = (R + 0.5) * (R + 0.5); vis = new Uint8Array(W * W);
+        for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) if (dx * dx + dy * dy <= R2 && world.clear(lx, ly, lx + dx, ly + dy)) vis[(dy + R) * W + dx + R] = 1;
+      }
+      if (this.sightCache.size > 600) this.sightCache.clear();
+      this.sightCache.set(key, { ver, vis }); return vis;
+    }
+    // 光照圖：每個取樣點算出還剩幾成夜色（多盞光相乘，跟以前一層層挖洞一樣）與染上的暖光，寫進兩張小圖
+    lightMap(g, ox, oy, x0, x1, y0, y1, lights, dark, glowK, now) {
+      const T = this.tile, S = LM_S, world = g.world, p = g.player;
+      const cols = (x1 - x0 + 1) * S, rows = (y1 - y0 + 1) * S, N = cols * rows;
+      if (!this.lmBuf || this.lmBuf.n !== N) this.lmBuf = { n: N, rem: new Float32Array(N), gre: new Float32Array(N), cr: new Float32Array(N), cg: new Float32Array(N), cb: new Float32Array(N), wt: new Float32Array(N) };
+      if (this.lmDark.width !== cols || this.lmDark.height !== rows) {
+        for (const c of [this.lmDark, this.lmGlow]) { c.width = cols; c.height = rows; }
+        this.lmImgD = this.lmDarkCtx.createImageData(cols, rows); this.lmImgG = this.lmGlowCtx.createImageData(cols, rows);
+        const D = this.lmImgD.data; for (let q = 0; q < D.length; q += 4) { D[q] = 12; D[q + 1] = 16; D[q + 2] = 36; }
+      }
+      const B = this.lmBuf; B.rem.fill(1); B.gre.fill(1); B.cr.fill(0); B.cg.fill(0); B.cb.fill(0); B.wt.fill(0);
+      const add = (lx, ly, cx, cy, r, glow, col) => {
+        if (r <= 0) return;
+        const R = Math.ceil(r) + 1, W = 2 * R + 1, vis = this.sight(world, lx, ly, R);
+        const i0 = Math.max(0, Math.floor((cx - r - x0) * S)), i1 = Math.min(cols - 1, Math.ceil((cx + r - x0) * S));
+        const j0 = Math.max(0, Math.floor((cy - r - y0) * S)), j1 = Math.min(rows - 1, Math.ceil((cy + r - y0) * S));
+        for (let j = j0; j <= j1; j++) {
+          const sy = y0 + (j + 0.5) / S, dy = sy - cy, ty = Math.floor(sy) - ly + R;
+          for (let i = i0; i <= i1; i++) {
+            const sx = x0 + (i + 0.5) / S, dx = sx - cx, d = Math.sqrt(dx * dx + dy * dy) / r;
+            if (d >= 1) continue;
+            if (vis) { const tx = Math.floor(sx) - lx + R; if (tx < 0 || ty < 0 || tx >= W || ty >= W || !vis[ty * W + tx]) continue; }
+            const k = j * cols + i;
+            B.rem[k] *= 1 - (d < 0.55 ? 1 - 0.545 * d : 0.7 * smooth((1 - d) / 0.45));
+            if (glow) { const a = glow * (1 - d) * (1 - d * 0.35); B.gre[k] *= 1 - a; B.cr[k] += col[0] * a; B.cg[k] += col[1] * a; B.cb[k] += col[2] * a; B.wt[k] += a; }
+          }
+        }
+      };
+      add(p.x, p.y, p.rx + 0.5, p.ry + 0.5, g.playerLight(), 0, null);   // 身邊看得見的一圈（不帶暖光）
+      for (const l of lights) add(l.x, l.y, l.cx === undefined ? l.x + 0.5 : l.cx, l.cy === undefined ? l.y + 0.5 : l.cy, l.r + 0.25 * Math.sin(now * 6 + l.x * 3 + l.y), 0.24, l.c || LAMP);
+      const D = this.lmImgD.data, Gd = this.lmImgG.data, dA = 0.8 * dark * 255, gA = glowK * 255;
+      let gi0 = cols, gi1 = -1, gj0 = rows, gj1 = -1;   // 有暖光的範圍：只畫這一塊
+      for (let j = 0, k = 0, q = 3; j < rows; j++) for (let i = 0; i < cols; i++, k++, q += 4) {
+        D[q] = dA * B.rem[k];
+        const ga = 1 - B.gre[k];
+        if (ga > 0.004) {
+          const wt = B.wt[k]; Gd[q - 3] = B.cr[k] / wt; Gd[q - 2] = B.cg[k] / wt; Gd[q - 1] = B.cb[k] / wt; Gd[q] = ga * gA;
+          if (i < gi0) gi0 = i; if (i > gi1) gi1 = i; if (j < gj0) gj0 = j; if (j > gj1) gj1 = j;
+        } else Gd[q] = 0;
+      }
+      if (dark > 0.02) this.lmDarkCtx.putImageData(this.lmImgD, 0, 0);
+      const glow = gi1 >= 0, c = T / S, X = ox + x0 * T, Y = oy + y0 * T;
+      let gb = null;
+      if (glow) {
+        gi0 = Math.max(0, gi0 - 1); gj0 = Math.max(0, gj0 - 1); gi1 = Math.min(cols - 1, gi1 + 1); gj1 = Math.min(rows - 1, gj1 + 1);
+        const gw = gi1 - gi0 + 1, gh = gj1 - gj0 + 1;
+        this.lmGlowCtx.putImageData(this.lmImgG, 0, 0, gi0, gj0, gw, gh);
+        gb = [gi0, gj0, gw, gh, X + gi0 * c, Y + gj0 * c, gw * c, gh * c];
+      }
+      return { cols, rows, x: X, y: Y, w: cols * c, h: rows * c, glow, gb, cell: c, gre: B.gre };
+    }
+    // 霧障（v0.31）：霧是一塊連續的形，每幀照它此刻的位置與形狀算出每格蓋了幾成，蓋得多的格子濃、邊上蓋一點的淡，
+    // 那一團霧畫在蓋到的部分的中心，所以看起來是整片順著風飄過去、邊緣一直在變；新起的霧淡入，散掉或吹散的霧淡出
+    drawFog(g, ox, oy, x0, x1, y0, y1, dt, now) {
+      const ctx = this.ctx, T = this.tile, world = g.world, seen = this.fogSeen;
+      for (const [id, f] of world.fogs) seen.set(id, f);
+      for (const [id, f] of seen) {
+        const alive = world.fogs.get(id) === f;
+        f._fade = alive ? Math.min(1, (f._fade === undefined ? 0 : f._fade) + dt / 1.2) : (f._fade === undefined ? 1 : f._fade) - dt / 1.2;
+        if (!alive && f._fade <= 0) { seen.delete(id); continue; }
+        if (f.x + 8 < x0 || f.x - 8 > x1 + 1 || f.y + 8 < y0 || f.y - 8 > y1 + 1) continue;
+        const cov = alive ? (f._cov = world.fogCoverage(f)) : (f._cov || []);
+        const left = Math.min(1, Math.max(0, (f.until - world.time) / 20)) * f._fade;     // 快散時淡下去
+        let mx = 0, my = 0, mw = 0;
+        for (const e of cov) {
+          mx += e.mx * e.c; my += e.my * e.c; mw += e.c;
+          const a = 0.62 * left * Math.min(1, e.c * 1.6); if (a <= 0.01) continue;
+          for (let i = 0; i < 3; i++) {
+            const r = U.hash2(e.x, e.y, 300 + i), ph = (r & 1023) / 1023 * 6.28, pull = 0.35 + 0.65 * e.c;   // 蓋得少的格子，那團霧靠向蓋到的角落
+            const fx = e.x + 0.5 + (e.mx - e.x - 0.5) * (1 - pull), fy = e.y + 0.5 + (e.my - e.y - 0.5) * (1 - pull);
+            const px = ox + fx * T + Math.sin(now * 0.35 + ph) * T * 0.22, py = oy + fy * T + Math.cos(now * 0.27 + ph * 1.3) * T * 0.18;
+            const rad = T * (0.55 + 0.45 * Math.sqrt(e.c)) * (0.85 + ((r >>> 10) & 255) / 255 * 0.4);
+            ctx.globalAlpha = a; ctx.drawImage(this.puff, px - rad, py - rad, rad * 2, rad * 2);
+          }
+        }
+        ctx.globalAlpha = 1;
+        if (mw > 0) { const cx = ox + (mx / mw) * T, cy = oy + (my / mw) * T; if (cx > -T && cy > -T && cx < this.w + T && cy < this.h + T) this.drawGlyph('霧', G.INK.ash, cx, cy, T * 0.9, 0, 0.35 * left); }
+      }
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    }
     // 字形緩存：每個字按顏色渲染一次（帶一層模糊的"滲墨"），之後只做 drawImage
     glyph(ch, color) {
       ch = L(ch);   // 選了簡體：畫簡體字（字形各自快取）
@@ -121,7 +229,7 @@
         const d = DB[ch];
         const lit = ch === '灶' && world.stoveLit(x, y);
         const lr = ch === '燈' && world.isBig(x, y) ? 9 : d.light;   // 島外那盞燈塔照得最遠
-        if (lr > 0 || burning || lit) lights.push({ x, y, r: Math.max(lr, burning ? 2.5 : 0, lit ? 3 : 0) });
+        if (lr > 0 || burning || lit) lights.push({ x, y, r: Math.max(lr, burning ? 2.5 : 0, lit ? 3 : 0), c: burning || d.kind === 'fire' ? FIRE : lit ? STOVE : lr >= 9 ? BEACON : LAMP });
         if (ch === '白' || world.isBig(x, y) || (ch === '舟' && world.shipCells.has(U.key(x, y)))) continue;      // 大字地標、停著的船整體另畫
         const r = U.hash2(x, y, 99);
         let rot = ((r & 255) / 255 - 0.5) * 0.16, scale = (0.84 + ((r >>> 8) & 255) / 255 * 0.16) * d.vis[0];
@@ -173,7 +281,7 @@
         }
         const size = e.type === '虎' ? 0.95 : e.type === '龍' ? 1.1 : e.type === '鹿' ? 0.8 : e.type === '魚' ? 0.6 : 0.55;
         const bobY = e.type === '鳥' ? Math.sin(now * 5 + e.bob) * 3 : e.type === '龍' ? Math.sin(now * 3 + e.bob) * 4 : e.type === '魚' ? Math.sin(now * 2 + e.bob) * 1.5 : 0;
-        if (e.type === '龍') lights.push({ x: e.x, y: e.y, r: 3 });
+        if (e.type === '龍') lights.push({ x: e.x, y: e.y, cx: e.rx + 0.5, cy: e.ry + 0.5, r: 3, c: DRAGON });
         const rot = e.type === '魚' ? Math.sin(now * 2 + e.bob) * 0.2 : 0;
         if (e.type === '虎' && e.calm <= 0 && U.cheb(e.x, e.y, p.x, p.y) <= 8) {
           ctx.save(); ctx.fillStyle = 'rgba(180,57,42,0.12)'; ctx.beginPath(); ctx.arc(px, py, T * 0.6, 0, 7); ctx.fill(); ctx.restore();
@@ -252,68 +360,37 @@
         }
       }
 
-      // —— 霧障：每格幾團慢慢飄的白霧，正中寫一個淡淡的「霧」字
-      if (world.fogs.size) {
-        for (const f of world.fogs.values()) {
-          let cx = 0, cy = 0, n = 0;
-          for (const k of f.cells) {
-            const [x, y] = U.unkey(k); cx += x; cy += y; n++;
-            if (x < x0 - 1 || x > x1 + 1 || y < y0 - 1 || y > y1 + 1) continue;
-            const left = Math.min(1, (f.until - world.time) / 20);       // 快散時淡下去
-            for (let i = 0; i < 3; i++) {
-              const r = U.hash2(x, y, 300 + i), ph = (r & 1023) / 1023 * 6.28;
-              const px = ox + x * T + T / 2 + Math.sin(now * 0.35 + ph) * T * 0.28, py = oy + y * T + T / 2 + Math.cos(now * 0.27 + ph * 1.3) * T * 0.22;
-              const rad = T * (0.75 + ((r >>> 10) & 255) / 255 * 0.45);
-              const gr = ctx.createRadialGradient(px, py, 0, px, py, rad);
-              gr.addColorStop(0, 'rgba(248,247,242,' + (0.62 * left) + ')'); gr.addColorStop(0.6, 'rgba(240,238,232,' + (0.35 * left) + ')'); gr.addColorStop(1, 'rgba(240,238,232,0)');
-              ctx.fillStyle = gr; ctx.fillRect(px - rad, py - rad, rad * 2, rad * 2);
-            }
-          }
-          if (n) { const mx = ox + (cx / n) * T + T / 2, my = oy + (cy / n) * T + T / 2; if (mx > -T && my > -T && mx < w + T && my < h + T) this.drawGlyph('霧', G.INK.ash, mx, my, T * 0.9, 0, 0.35); }
-        }
-        ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-      }
-      // —— 夜色：一層藍墨，在玩家與光源處挖出洞
+      // —— 霧障：一片片白霧順著風飄
+      if (world.fogs.size || this.fogSeen.size) this.drawFog(g, ox, oy, x0, x1, y0, y1, dt, now);
+      // —— 夜色與光：光照圖平滑放大蓋上去；光源再點一個亮芯
       const dark = g.darkness();
-      if (dark > 0.02) {
-        const n = this.night, nc = n.getContext('2d');
-        nc.setTransform(this.dpr, 0, 0, this.dpr, 0, 0); nc.globalCompositeOperation = 'source-over'; nc.clearRect(0, 0, w, h);
-        nc.fillStyle = 'rgba(12, 16, 36,' + (0.8 * dark) + ')'; nc.fillRect(0, 0, w, h);
-        nc.globalCompositeOperation = 'destination-out';
-        const cut = (px, py, r, a) => { const gr = nc.createRadialGradient(px, py, 0, px, py, r); gr.addColorStop(0, 'rgba(0,0,0,' + a + ')'); gr.addColorStop(0.55, 'rgba(0,0,0,' + (a * 0.7) + ')'); gr.addColorStop(1, 'rgba(0,0,0,0)'); nc.fillStyle = gr; nc.fillRect(px - r, py - r, r * 2, r * 2); };
-        // 磚擋光（v0.28）：光源附近有磚、門、墟時，只照得到看得見的格子（屋裡的燈照不出去）；附近沒擋就照常畫圓
-        const litCells = (lx, ly, r) => {
-          const R = Math.ceil(r) + 1; let any = false;
-          for (let dy = -R; dy <= R && !any; dy++) for (let dx = -R; dx <= R; dx++) { const d = DB[world.get(lx + dx, ly + dy)]; if (d && d.opaque) { any = true; break; } }
-          if (!any) return null;
-          const cells = []; for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) if (dx * dx + dy * dy <= R * R && world.clear(lx, ly, lx + dx, ly + dy)) cells.push([lx + dx, ly + dy]);
-          return cells;
-        };
-        const clipTo = (c, cells) => { c.beginPath(); for (const [x, y] of cells) c.rect(ox + x * T - 0.5, oy + y * T - 0.5, T + 1, T + 1); c.clip(); };
-        const cutLit = (lx, ly, px, py, r, a) => { const cells = litCells(lx, ly, r / T); if (!cells) { cut(px, py, r, a); return; } nc.save(); clipTo(nc, cells); cut(px, py, r, a); nc.restore(); };
-        cutLit(p.x, p.y, ox + p.rx * T + T / 2, oy + p.ry * T + T / 2, T * g.playerLight(), 1);
-        if (g.torchLit()) lights.push({ x: p.x, y: p.y, r: 3 });
-        for (const l of lights) cutLit(l.x, l.y, ox + l.x * T + T / 2, oy + l.y * T + T / 2, T * (l.r + 0.25 * Math.sin(now * 6 + l.x * 3 + l.y)), 1);
-        ctx.drawImage(n, 0, 0, n.width, n.height, 0, 0, w, h);
-        // 光源的暖暈
-        ctx.save(); ctx.globalCompositeOperation = 'source-over';
-        for (const l of lights) {
-          const px = ox + l.x * T + T / 2, py = oy + l.y * T + T / 2, r = T * l.r, cells = litCells(l.x, l.y, l.r);
-          if (cells) { ctx.save(); clipTo(ctx, cells); }
-          const gr = ctx.createRadialGradient(px, py, 0, px, py, r); gr.addColorStop(0, 'rgba(255,190,90,' + (0.22 * dark) + ')'); gr.addColorStop(1, 'rgba(255,190,90,0)');
-          ctx.fillStyle = gr; ctx.fillRect(px - r, py - r, r * 2, r * 2);
-          if (cells) ctx.restore();
+      this.rainA = (this.rainA || 0) + ((world.raining() ? 1 : 0) - (this.rainA || 0)) * Math.min(1, dt / 1.5);   // 起雨收雨各淡入淡出一息半
+      const glowK = Math.max(dark, 0.55 * this.rainA);   // 下雨的白天，燈也透出一點微光（v0.31）
+      if (g.torchLit()) lights.push({ x: p.x, y: p.y, cx: p.rx + 0.5, cy: p.ry + 0.5, r: 3, c: TORCH });
+      const lm = dark > 0.02 || (glowK > 0.02 && lights.length) ? this.lightMap(g, ox, oy, x0, x1, y0, y1, lights, dark, glowK, now) : null;
+      this.lastLm = lm;   // 測試看得到這一幀有沒有夜色、暖光
+      if (lm) {
+        ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'low';   // 雙線性就夠平滑；'high' 在軟體繪圖下很慢
+        if (dark > 0.02) ctx.drawImage(this.lmDark, 0, 0, lm.cols, lm.rows, lm.x, lm.y, lm.w, lm.h);
+        if (lm.glow) {
+          const b = lm.gb; if (dark > 0.02) ctx.drawImage(this.lmGlow, b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]);   // 白天下雨只在雨幕上透一層（見下）
+          ctx.globalCompositeOperation = 'lighter';
+          for (const l of lights) {
+            const px = ox + (l.cx === undefined ? l.x + 0.5 : l.cx) * T, py = oy + (l.cy === undefined ? l.y + 0.5 : l.cy) * T;
+            if (px < -T || py < -T || px > w + T || py > h + T) continue;
+            const rad = T * (0.85 + 0.06 * Math.sin(now * 7 + l.x * 5 + l.y * 3)) * (l.r >= 9 ? 1.6 : 1);
+            ctx.globalAlpha = Math.min(1, 0.3 * glowK); ctx.drawImage(this.bloom, px - rad, py - rad, rad * 2, rad * 2);
+          }
         }
         ctx.restore();
       }
-      // —— 雨：一層淡墨與斜斜的雨絲，跟著世界滾動；起雨收雨各淡入淡出一息半
-      const wantRain = world.raining() ? 1 : 0;
-      this.rainA = (this.rainA || 0) + (wantRain - (this.rainA || 0)) * Math.min(1, dt / 1.5);
+      // —— 雨：一層淡墨與斜斜的雨絲，跟著世界滾動；燈火照得到的雨絲染上暖色，燈光微微透過雨幕
       if (this.rainA > 0.02) {
         const pm = (a, m) => ((a % m) + m) % m;
         ctx.save(); ctx.globalAlpha = this.rainA;
         ctx.fillStyle = 'rgba(70,80,100,' + (0.12 + 0.06 * dark) + ')'; ctx.fillRect(0, 0, w, h);
         ctx.strokeStyle = dark > 0.5 ? 'rgba(210,220,240,0.6)' : 'rgba(40,50,75,0.6)'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+        const warm = [], lit = lm && lm.glow ? lm : null, lcols = lit ? lit.cols : 0, lrows = lit ? lit.rows : 0;
         ctx.beginPath();
         const n = Math.min(380, Math.floor(w * h / 3000)), span = h + 60, wide = w + 80, drift = now * 520;
         for (let i = 0; i < n; i++) {
@@ -321,9 +398,17 @@
           const by = ((r >>> 16) & 4095) / 4096 * span, bx = ((r >>> 4) & 4095) / 4096 * wide;
           const yy = pm(by + drift * (0.85 + (r & 7) / 24) + oy * 0.5, span) - 30;
           const px = pm(bx - yy * 0.22 + ox * 0.5, wide) - 40;
+          if (lit) { const li = Math.floor((px - lit.x) / lit.cell), lj = Math.floor((yy - lit.y) / lit.cell); if (li >= 0 && lj >= 0 && li < lcols && lj < lrows && lit.gre[lj * lcols + li] < 0.93) { warm.push(px, yy, len); continue; } }
           ctx.moveTo(px, yy); ctx.lineTo(px - len * 0.22, yy + len);
         }
-        ctx.stroke(); ctx.restore();
+        ctx.stroke();
+        if (warm.length) {
+          ctx.strokeStyle = 'rgba(255,206,128,' + (0.45 + 0.35 * glowK) + ')'; ctx.beginPath();
+          for (let i = 0; i < warm.length; i += 3) { ctx.moveTo(warm[i], warm[i + 1]); ctx.lineTo(warm[i] - warm[i + 2] * 0.22, warm[i + 1] + warm[i + 2]); }
+          ctx.stroke();
+        }
+        if (lit) { const b = lit.gb; ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = (dark > 0.02 ? 0.5 : 0.9) * this.rainA; ctx.imageSmoothingEnabled = true; ctx.drawImage(this.lmGlow, b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]); }
+        ctx.restore();
       }
       // —— 紙邊的舊色，以及身體的訊號：掉血泛紅、中毒泛綠、神志不清泛藍
       const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.45, w / 2, h / 2, Math.max(w, h) * 0.75);

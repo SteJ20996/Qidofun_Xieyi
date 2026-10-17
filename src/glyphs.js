@@ -198,7 +198,7 @@
   const CRAFT_CATS = ['全部', '居所', '工具', '神兵', '衣甲', '燈火', '漁船', '食藥', '材料'];
   const CAT_OF = {
     '居所': ['brick', 'door', 'window', 'bed', 'chest', 'stove', 'cauldron', 'scarecrow', 'bridge', 'platform', 'steps'],
-    '工具': ['grind', 'regrind', 'forge', 'forgew', 'fan', 'sling'],
+    '工具': ['grind', 'regrind', 'crush', 'forge', 'forgew', 'fan', 'sling'],
     '神兵': ['hammer', 'seagod'],
     '衣甲': ['lining', 'pants', 'vest', 'cap', 'shoes', 'ironvest', 'helm', 'ironboots', 'wvest', 'whelm', 'wboots'],
     '燈火': ['torch', 'candle', 'candle2', 'lamp', 'hat'],
@@ -227,6 +227,7 @@
     { id: 'seagod', out: '燭龍焚溟', n: 1, need: { '鎢鋼': 4, '精煤': 6, '火把': 4, '海水瓶': 3 }, sta: 60, level: 31, note: '三格內諸獸同受灼燒：海中之物一百二十，陸上天上減半' },
     { id: 'grind', out: null, need: { '石': 1, '石子': 1, '木': 1 }, sta: 8, note: '磨礪：選刀、鎬、鋤、劍、斧', choose: ['石刀', '石鎬', '石鋤', '石劍', '石斧'] },
     { id: 'regrind', out: null, need: { '石子': 1 }, sta: 3, note: '重磨手中的工具，耐久復滿。同一把第 n 次：石具石子 1、2、4、8；鋼具鐵 1、2、4、8；鎢鋼具鐵一、鐵二、鐵三鎢鋼一、鐵六鎢鋼二；之後照最後一檔', regrind: true },
+    { id: 'crush', out: null, need: {}, sta: 2, note: '舊石器（手上那把石刀、石鎬、石鋤、石劍、石斧；手上不是石器就拿囊裡的）磨回石子二', crush: true },
     { id: 'forge', out: null, need: { '鐵': 2, '木': 1, '煤': 1 }, sta: 10, note: '鍛鋼具：耐久與戰力是石具的 140%', choose: ['鋼刀', '鋼鎬', '鋼鋤', '鋼劍', '鋼斧'] },
     { id: 'coke', out: '精煤', n: 1, need: { '煤': 8 }, sta: 4, note: '八煤成一精煤，煉鎢鋼用' },
     { id: 'forgew', out: null, need: { '鎢鋼': 2, '木': 1, '精煤': 1 }, sta: 16, note: '鍛鎢鋼具：強度是鋼的 150%、耐久 200%', choose: ['鎢鋼刀', '鎢鋼鎬', '鎢鋼鋤', '鎢鋼劍', '鎢鋼斧'] },

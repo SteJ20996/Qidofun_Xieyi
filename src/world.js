@@ -18,14 +18,22 @@
   // 下雨時屋外的燈每盞每息有 rainLampP 的真隨機機會被澆壞（預設 RAIN_LAMP_P；開局由 game.js 照難度改成 DIFF.*.lampP：簡單 1/4500、一般 1/2500、困難 1/800）；ROOM_LIMIT 格內被磚圍得住才算屋裡
   // 霧障：每日擲 FOG_ROLLS 次、每次 FOG_P 的真隨機機會起一片霧（每日最多兩片，第二日起）；一片 FOG_MIN–FOG_MAX 格、形狀隨機長；
   // 起在玩家 FOG_NEAR 格外的陸地上；放著不管 FOG_LIFE 後自己散
-  const FOG_ROLLS = 2, FOG_P = 0.25, FOG_MIN = 8, FOG_MAX = 12, FOG_NEAR = [8, 28], FOG_LIFE = DAY;
-  const SEA_FOG_MIN = 6, SEA_FOG_MAX = 10, SEA_FOG_LIFE = 90;   // 蜃吐的海霧：六到十格，九十息就散
+  const FOG_ROLLS = 2, FOG_P = 0.25, FOG_NEAR = [8, 28], FOG_LIFE = DAY;
+  const SEA_FOG_LIFE = 90;   // 蜃吐的海霧：九十息就散
+  // 霧的形（v0.31 使用者定）：一片霧是一塊連續的形，面積十八格上下（FOG_AREA），可圓可方（超橢圓的次方 2–6）、扁圓不一、斜著放，
+  // 邊上再疊兩三道慢慢轉的起伏，次方、扁圓、角度也慢慢變，所以形狀一直在變。蓋到一格超過 FOG_COVER（5%）就算霧，最多算 FOG_CAP（30）格（蓋得最多的那些）。
+  // 霧不進圍起來、裡面能走的格子不超過 FOG_ROOM（45）格的屋子。海霧的面積是 SEA_FOG_AREA。
+  const FOG_AREA = [16, 20], SEA_FOG_AREA = [6, 10], FOG_COVER = 0.05, FOG_CAP = 30, FOG_ROOM = 45, FOG_SAMPLE = 5;
+  const SUPER_K = (() => {   // 超橢圓 |x|^n + |y|^n = 1 的面積，n = 2.0、2.1 … 6.0（n=2 是 π，越方越近 4）
+    const t = []; for (let i = 0; i <= 40; i++) { const n = 2 + i / 10; let a = 0; const M = 720; for (let j = 0; j < M; j++) { const ph = (j + 0.5) / M * Math.PI * 2, r = Math.pow(Math.pow(Math.abs(Math.cos(ph)), n) + Math.pow(Math.abs(Math.sin(ph)), n), -1 / n); a += r * r; } t.push(a * Math.PI / M); }
+    return (n) => { const f = (U.clamp(n, 2, 6) - 2) * 10, i = Math.min(39, Math.floor(f)); return t[i] + (t[i + 1] - t[i]) * (f - i); };
+  })();
   const SHIPS = G.SHIPS;                                        // 船的兩種（孤帆、方舟）：大小、命、船頭首骨格數
   const RAIN_MIN = DAY * 0.25, RAIN_MAX = DAY * 1.0, RAIN_GAP_MIN = DAY * 1.0, RAIN_GAP_MAX = DAY * 4.0, RAIN_LAMP_P = 1 / 2500, ROOM_LIMIT = 121;
   // 小屋：磚與門圍起的小空間，裡面不生生靈、生靈也進不去。多小才算看難度，由 game 透過 roomLimitFor(type) 告訴世界：獸一個門檻、魄一個門檻
   // （簡單 28／18、一般 18／8、困難 10／0，0 ＝ 磚擋不住魄）；MAX_ROOM 是各門檻的最大值，漫延數到這裡就停
   const MAX_ROOM = 28;
-  // 霧障會動：每 FOG_STEP 息上下挪一格（v0.19 起間隔六到十四成之間抖動），速度慢；FOG_LIGHT_R 格內有光（燈、火、旺灶、玩家手裡的光）就往反方向躲，沒光就順著自己的風向慢慢飄，風向有慣性、偶爾轉；挪完偶爾換形（尾巴掉一格、前頭長一格）
+  // 霧障會動（v0.31 起是連續地飄：每息 1/FOG_STEP 格，方向每 FOG_STEP 息上下重新定一次）。以下是 v0.19 的舊說明：每 FOG_STEP 息上下挪一格（v0.19 起間隔六到十四成之間抖動），速度慢；FOG_LIGHT_R 格內有光（燈、火、旺灶、玩家手裡的光）就往反方向躲，沒光就順著自己的風向慢慢飄，風向有慣性、偶爾轉；挪完偶爾換形（尾巴掉一格、前頭長一格）
   const FOG_STEP = 6, FOG_LIGHT_R = 10;
 
   class World {
@@ -77,6 +85,7 @@
       this.fogSeq = 0; this.fogP = FOG_P; this.fogStep = FOG_STEP;
       this.playerLit = () => false;   // 回調：玩家手裡（或帽上）有沒有光，霧障躲光用
       this.wallHp = new Map();        // 撞過的牆還剩多少耐久："x,y" -> 數（沒撞過的不記，照 WALL_HP）
+      this.fogRoomCache = new Map();  // 霧進不進得去："x,y" -> 在不在四十五格以內的屋子裡（每步與地上的字一變就清）
       this.roomCache = new Map();     // "x,y" -> 圍起來的格數（超過 MAX_ROOM 記 MAX_ROOM+1，磚上門上水裡記 Infinity）；每步與每次改格清掉
       this.roomLimitFor = () => 0;    // 回調：某種生靈被多小的屋子擋住（0 ＝ 擋不住），game 依難度給
       this.onFog = null;         // 回調：起了一片霧
@@ -117,6 +126,8 @@
     set(x, y, ch) {
       const k = U.key(x, y), old = this.get(x, y);
       if (this.roomCache.size) this.roomCache.clear();
+      if (this.fogRoomCache.size) this.fogRoomCache.clear();
+      this.ver = (this.ver || 0) + 1;   // 地上的字變了：畫面那邊的視線快取看這個數失效（v0.31）
       if (old !== ch) this.wallHp.delete(k);   // 換了字，舊的耐久就不算了
       if (ch === this.base(x, y)) this.diff.delete(k); else this.diff.set(k, ch);
       if (DB[ch].flam <= 0) this.burn.delete(k);
@@ -255,60 +266,114 @@
     // ---------- 霧障 ----------
     fogAt(x, y) { const id = this.fogCells.get(U.key(x, y)); return id ? this.fogs.get(id) : null; }
     fogLand(x, y) { const d = this.info(x, y); return d.walk > 0 && d.kind !== 'water' && DB[this.raw(x, y)].kind !== 'water'; }
-    addFog(cells, until, sea) {
-      const id = ++this.fogSeq, f = { id, cells: new Set(cells), until, sea: !!sea, moveAt: this.time + this.fogStep, dir: null };
-      this.fogs.set(id, f); for (const k of f.cells) this.fogCells.set(k, id);
+    fogSea(x, y) { return DB[this.get(x, y)].kind === 'water' && DB[this.raw(x, y)].kind === 'water'; }
+    // 這格在不在「圍起來、裡面能走的格子不超過 FOG_ROOM 格」的屋子裡（門算磚）；同一次漫延碰到的格子一起記下
+    fogRoom(x, y) {
+      const k0 = U.key(x, y), hit = this.fogRoomCache.get(k0); if (hit !== undefined) return hit;
+      if (!this.passable(x, y)) { this.fogRoomCache.set(k0, false); return false; }
+      const seen = new Set([k0]), q = [[x, y]]; let open = false;
+      while (q.length) {
+        if (seen.size > FOG_ROOM) { open = true; break; }
+        const [cx, cy] = q.shift();
+        for (const [dx, dy] of N4) { const nx = cx + dx, ny = cy + dy, k = U.key(nx, ny); if (!seen.has(k) && this.passable(nx, ny)) { seen.add(k); q.push([nx, ny]); } }
+      }
+      for (const k of seen) this.fogRoomCache.set(k, !open);
+      return !open;
+    }
+    static newFogShape(area) {   // 隨機一個霧的形：面積 area 格
+      const R = U.trueRand, h = [];
+      for (let i = 0, m = 2 + Math.floor(R() * 2); i < m; i++) h.push([2 + Math.floor(R() * 4), 0.04 + R() * 0.1, R() * 6.28, (R() - 0.5) * 0.08]);
+      return { area, n: 2 + R() * 4, nA: 0.4 + R() * 0.8, nW: 0.004 + R() * 0.01, nP: R() * 6.28, q: 0.7 + R() * 0.6, qA: 0.1 + R() * 0.15, qW: 0.003 + R() * 0.008, qP: R() * 6.28, rot: R() * 6.28, rotW: (R() - 0.5) * 0.01, h };
+    }
+    // 霧在 (cx, cy)、霧齡 t 時的樣子：回傳「點 (dx, dy) 在不在霧裡」的判斷，與外框半徑
+    fogForm(f, t) {
+      const sh = f.shape, n = U.clamp(sh.n + sh.nA * Math.sin(t * sh.nW + sh.nP), 2, 6), q = sh.q * (1 + sh.qA * Math.sin(t * sh.qW + sh.qP)), rot = sh.rot + t * sh.rotW;
+      const sc = Math.sqrt(sh.area / SUPER_K(n)), a = sc * Math.sqrt(q), b = sc / Math.sqrt(q), c = Math.cos(rot), sn = Math.sin(rot);
+      const hs = sh.h.map(([k, amp, ph, w]) => [k, amp, ph + w * t]);
+      const edge = (cu, sv, ph) => {   // 方向 (cu, sv)（在形自己的座標裡）上的外框半徑
+        let R = Math.pow(Math.pow(Math.abs(cu) / a, n) + Math.pow(Math.abs(sv) / b, n), -1 / n);
+        if (hs.length) { let m = 1; for (const [k, amp, p0] of hs) m += amp * Math.sin(k * ph + p0); R *= m; }
+        return R;
+      };
+      const inside = (dx, dy) => {
+        const u = dx * c + dy * sn, v = -dx * sn + dy * c, r = Math.sqrt(u * u + v * v); if (r < 1e-6) return true;
+        return r <= edge(u / r, v / r, hs.length ? Math.atan2(v, u) : 0);
+      };
+      let rmin = Infinity, rmax = 0;   // 外框最近、最遠的半徑（取 72 個方向，留一點餘裕）
+      for (let i = 0; i < 72; i++) { const ph = i / 72 * Math.PI * 2, R = edge(Math.cos(ph), Math.sin(ph), ph); if (R < rmin) rmin = R; if (R > rmax) rmax = R; }
+      return { inside, reach: rmax * 1.04, rmin: rmin * 0.96 };
+    }
+    // 霧蓋到哪些格、各蓋幾成（每格 5×5 個點），也記蓋到的那部分的中心（畫霧用）；只算這片霧能待的格子
+    fogCoverage(f, cx, cy, t) {
+      cx = cx === undefined ? f.x : cx; cy = cy === undefined ? f.y : cy; t = t === undefined ? f.age : t;
+      const { inside, reach, rmin } = this.fogForm(f, t), S = FOG_SAMPLE, out = [], R = Math.ceil(reach) + 1, reach2 = reach * reach, rmin2 = rmin * rmin;
+      const ok = f.sea ? (x, y) => this.fogSea(x, y) : (x, y) => this.fogLand(x, y) && !this.fogRoom(x, y);
+      for (let y = Math.floor(cy) - R; y <= Math.floor(cy) + R; y++) for (let x = Math.floor(cx) - R; x <= Math.floor(cx) + R; x++) {
+        const nx = U.clamp(cx, x, x + 1) - cx, ny = U.clamp(cy, y, y + 1) - cy;          // 格子離中心最近的一點
+        if (nx * nx + ny * ny > reach2) continue;                                         // 整格在外框外
+        const fx = Math.max(Math.abs(x - cx), Math.abs(x + 1 - cx)), fy = Math.max(Math.abs(y - cy), Math.abs(y + 1 - cy));
+        let n = 0, mx = 0, my = 0;
+        if (fx * fx + fy * fy < rmin2) { n = S * S; mx = (x + 0.5) * n; my = (y + 0.5) * n; }   // 整格在裡面
+        else for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) { const sx = x + (i + 0.5) / S, sy = y + (j + 0.5) / S; if (inside(sx - cx, sy - cy)) { n++; mx += sx; my += sy; } }
+        if (!n) continue;
+        const k = U.key(x, y), other = this.fogCells.get(k);
+        if ((other && other !== f.id) || !ok(x, y)) continue;
+        out.push({ x, y, k, c: n / (S * S), mx: mx / n, my: my / n });
+      }
+      return out;
+    }
+    fogCount(cov) { return cov.filter(e => e.c > FOG_COVER).sort((a, b) => b.c - a.c).slice(0, FOG_CAP); }   // 算作霧的格子：蓋過 5%、最多三十格
+    setFogCells(f, cells) {
+      for (const k of f.cells) if (this.fogCells.get(k) === f.id) this.fogCells.delete(k);
+      f.cells = new Set(cells); for (const k of f.cells) this.fogCells.set(k, f.id);
+    }
+    // 起一片霧：給了形（shape）就照形算格子；只給格子（舊存檔、測試）就照那些格子，另配一個面積相當、中心在那裡的形，等它動了才照形重算
+    addFog(cells, until, sea, shape, at) {
+      const id = ++this.fogSeq, f = { id, cells: new Set(), until, sea: !!sea, moveAt: this.time + this.fogStep, dir: null, age: 0, ang: U.trueRand() * Math.PI * 2 };
+      const list = [...(cells || [])];
+      if (at) { f.x = at[0]; f.y = at[1]; } else if (list.length) { let sx = 0, sy = 0; for (const k of list) { const [x, y] = U.unkey(k); sx += x; sy += y; } f.x = sx / list.length + 0.5; f.y = sy / list.length + 0.5; } else { f.x = 0.5; f.y = 0.5; }
+      f.shape = shape || World.newFogShape(Math.max(1, list.length));
+      if (at && at[2] !== undefined) { f.age = at[2]; if (at[3] !== undefined) f.ang = at[3]; }
+      this.fogs.set(id, f);
+      if (list.length) this.setFogCells(f, list); else this.setFogCells(f, this.fogCount(this.fogCoverage(f)).map(e => e.k));
+      f.base = f.cells.size; f.gx = f.x; f.gy = f.y;
       return f;
     }
     removeFog(id) { const f = this.fogs.get(id); if (!f) return; for (const k of f.cells) if (this.fogCells.get(k) === id) this.fogCells.delete(k); this.fogs.delete(id); }
-    // 在玩家附近的陸地上長一片霧：從一格起，隨機往四鄰長，有時團成一塊、有時拖成一條、有時分岔
-    spawnFog(px, py) {          // 起頭的那格若在小島或橋上長不到五格，換個地方再試（最多六次）
-      for (let attempt = 0; attempt < 6; attempt++) { const f = this.growFog(px, py); if (f) return f; }
-      this.fogMiss = (this.fogMiss || 0) + 1;   // 六次都起不來：記一筆，測試與除錯用
+    // 在玩家附近的陸地上起一片霧：找一處陸地當中心，配一個隨機的形；蓋得到的地太少（小島、橋上、屋邊）或壓到玩家身邊就換個地方（最多八次）
+    spawnFog(px, py) {
+      for (let attempt = 0; attempt < 8; attempt++) { const f = this.growFog(px, py); if (f) return f; }
+      this.fogMiss = (this.fogMiss || 0) + 1;   // 都起不來：記一筆，測試與除錯用
       return null;
     }
     growFog(px, py) {
       const R = U.trueRand;
-      let seed = null;
-      for (let i = 0; i < 80 && !seed; i++) {
+      let at = null;
+      for (let i = 0; i < 80 && !at; i++) {
         const a = R() * Math.PI * 2, r = FOG_NEAR[0] + R() * (FOG_NEAR[1] - FOG_NEAR[0]);
         const x = px + Math.round(Math.cos(a) * r), y = py + Math.round(Math.sin(a) * r);
-        if (this.fogLand(x, y) && !this.fogCells.has(U.key(x, y))) seed = [x, y];
+        if (this.fogLand(x, y) && !this.fogCells.has(U.key(x, y))) at = [x + 0.5, y + 0.5];
       }
-      if (!seed) { this.fogNoSeed = (this.fogNoSeed || 0) + 1; return null; }
-      const want = FOG_MIN + Math.floor(R() * (FOG_MAX - FOG_MIN + 1));
-      const mode = R(), dir = N4[Math.floor(R() * 4)];   // mode < 0.4 團；< 0.75 拖成一條；其餘分岔
-      const cells = [seed], have = new Set([U.key(seed[0], seed[1])]);
-      for (let tries = 0; tries < 400 && cells.length < want; tries++) {
-        const from = mode < 0.4 ? cells[Math.floor(R() * cells.length)] : mode < 0.75 ? cells[cells.length - 1 - Math.floor(R() * Math.min(3, cells.length))] : cells[Math.floor(R() * R() * cells.length)];
-        const d = mode >= 0.4 && mode < 0.75 && R() < 0.6 ? dir : N4[Math.floor(R() * 4)];
-        const nx = from[0] + d[0], ny = from[1] + d[1], k = U.key(nx, ny);
-        if (have.has(k) || this.fogCells.has(k) || !this.fogLand(nx, ny) || (Math.abs(nx - px) <= 1 && Math.abs(ny - py) <= 1)) continue;
-        have.add(k); cells.push([nx, ny]);
-      }
-      if (cells.length < 5) return null;
-      const f = this.addFog(have, this.time + FOG_LIFE);
+      if (!at) { this.fogNoSeed = (this.fogNoSeed || 0) + 1; return null; }
+      const shape = World.newFogShape(FOG_AREA[0] + R() * (FOG_AREA[1] - FOG_AREA[0]));
+      const probe = { id: -1, shape, sea: false, age: 0 }, cells = this.fogCount(this.fogCoverage(probe, at[0], at[1], 0));
+      if (cells.length < 10 || cells.some(e => Math.abs(e.x - px) <= 1 && Math.abs(e.y - py) <= 1)) return null;
+      const f = this.addFog(null, this.time + FOG_LIFE, false, shape, at);
       if (this.onFog) this.onFog(f);
       return f;
     }
-    // 蜃吐霧：在蜃與玩家之間的海面上長一片海霧（只蓋水，不蓋船、網、陸地）
-    fogSea(x, y) { return DB[this.get(x, y)].kind === 'water' && DB[this.raw(x, y)].kind === 'water'; }
+    // 蜃吐霧：在蜃與玩家之間的海面上起一片海霧（只蓋水，不蓋船、網、陸地）
     spawnSeaFog(mx, my, px, py) {
       const R = U.trueRand, dx = Math.sign(px - mx), dy = Math.sign(py - my);
-      let seed = null;
-      for (let i = 0; i < 30 && !seed; i++) {
+      for (let i = 0; i < 30; i++) {
         const t = 2 + Math.floor(R() * 4), x = mx + dx * t + Math.round((R() - 0.5) * 4), y = my + dy * t + Math.round((R() - 0.5) * 4);
-        if (this.fogSea(x, y) && !this.fogCells.has(U.key(x, y)) && !(x === px && y === py)) seed = [x, y];
+        if (!this.fogSea(x, y) || this.fogCells.has(U.key(x, y))) continue;
+        const shape = World.newFogShape(SEA_FOG_AREA[0] + R() * (SEA_FOG_AREA[1] - SEA_FOG_AREA[0]));
+        const probe = { id: -1, shape, sea: true, age: 0 }, cells = this.fogCount(this.fogCoverage(probe, x + 0.5, y + 0.5, 0));
+        if (cells.length < 3 || cells.some(e => e.x === px && e.y === py)) continue;
+        return this.addFog(null, this.time + SEA_FOG_LIFE, true, shape, [x + 0.5, y + 0.5]);
       }
-      if (!seed) return null;
-      const want = SEA_FOG_MIN + Math.floor(R() * (SEA_FOG_MAX - SEA_FOG_MIN + 1)), cells = [seed], have = new Set([U.key(seed[0], seed[1])]);
-      for (let tries = 0; tries < 200 && cells.length < want; tries++) {
-        const from = cells[Math.floor(R() * cells.length)], d = N4[Math.floor(R() * 4)], nx = from[0] + d[0], ny = from[1] + d[1], k = U.key(nx, ny);
-        if (have.has(k) || this.fogCells.has(k) || !this.fogSea(nx, ny) || (nx === px && ny === py)) continue;
-        have.add(k); cells.push([nx, ny]);
-      }
-      if (cells.length < 3) return null;
-      return this.addFog(have, this.time + SEA_FOG_LIFE, true);
+      return null;
     }
     // ---------- 船 ----------
     shipAt(x, y) { const ak = this.shipCells.get(U.key(x, y)); return ak ? this.ships.get(ak) || null : null; }
@@ -339,58 +404,29 @@
       return best;
     }
     // 霧障挪一格：FOG_LIGHT_R 格內有光就往反方向躲（燈火、旺灶、手裡有光的玩家，取最近的）；沒光就順著自己的風向飄。
-    // v0.19 改得自然些：八個方向（含斜角）、風向 f.ang 有慣性（每步微轉、偶爾大轉、卡住就掉頭）、走過的方向會拉動風向；挪完有一半機會換形（morphFog）。
-    moveFog(f, px, py) {
-      const c = this.fogCenter(f), R = U.trueRand;
+    // 定方向（v0.19 起的規則照舊）：FOG_LIGHT_R 格內有光就背著光走（略帶偏）；沒光就順著自己的風向，風向慢慢轉、偶爾大轉
+    steerFog(f, px, py) {
+      const R = U.trueRand, c = { x: f.x - 0.5, y: f.y - 0.5 };
       let src = this.nearestLight(Math.round(c.x), Math.round(c.y), FOG_LIGHT_R);
       if (this.playerLit()) { const d = Math.hypot(px - c.x, py - c.y); if (d <= FOG_LIGHT_R && (!src || d < src.d)) src = { x: px, y: py, d }; }
-      if (src) f.ang = Math.atan2(c.y - src.y, c.x - src.x) + (R() - 0.5) * 0.5;      // 背光，略帶偏
+      if (src) f.ang = Math.atan2(c.y - src.y, c.x - src.x) + (R() - 0.5) * 0.5;
       else if (typeof f.ang !== 'number') f.ang = R() * Math.PI * 2;
-      else f.ang += (R() - 0.5) * (R() < 0.15 ? 2.4 : 0.7);                             // 風向慢慢轉，偶爾大轉
-      const ux = Math.cos(f.ang), uy = Math.sin(f.ang), dot = (d) => (d[0] * ux + d[1] * uy) / Math.hypot(d[0], d[1]);
-      const order = N8.slice().sort((a, b) => dot(b) - dot(a));
-      const ok = f.sea ? (x, y) => this.fogSea(x, y) : (x, y) => this.fogLand(x, y);
-      let moved = false;
-      for (const [dx, dy] of order) {
-        const next = [];
-        let fits = true;
-        for (const k of f.cells) {
-          const [x, y] = U.unkey(k), nx = x + dx, ny = y + dy, nk = U.key(nx, ny), other = this.fogCells.get(nk);
-          if (!ok(nx, ny) || (other && other !== f.id)) { fits = false; break; }
-          next.push(nk);
-        }
-        if (!fits) continue;
-        for (const k of f.cells) if (this.fogCells.get(k) === f.id) this.fogCells.delete(k);
-        f.cells = new Set(next); for (const k of f.cells) this.fogCells.set(k, f.id);
-        f.dir = [dx, dy]; const l = Math.hypot(dx, dy); f.ang = Math.atan2(uy + dy / l, ux + dx / l);   // 實際走的方向把風向拉一拉
-        moved = true; break;
-      }
-      if (!moved) f.ang += Math.PI * (0.5 + R() * 0.5);      // 哪邊都挪不動：掉頭
-      if (R() < 0.5) this.morphFog(f, ok);
-      return moved;
+      else f.ang += (R() - 0.5) * (R() < 0.15 ? 2.4 : 0.7);
+      return !!src;
     }
-    // 換形：最背著風向、只連著一格的尾巴掉一格，順著風向的邊上長一格；格數不變、仍連著、不踩別的霧
-    morphFog(f, ok) {
-      if (f.cells.size < 4) return false;
-      const R = U.trueRand, c = this.fogCenter(f), ux = Math.cos(f.ang), uy = Math.sin(f.ang), cells = [...f.cells].map(k => U.unkey(k));
-      const has = (x, y) => f.cells.has(U.key(x, y)), along = (x, y) => (x - c.x) * ux + (y - c.y) * uy;
-      const deg = (x, y) => N4.reduce((n, [dx, dy]) => n + (has(x + dx, y + dy) ? 1 : 0), 0);
-      const tails = cells.filter(([x, y]) => deg(x, y) === 1).sort((a, b) => along(a[0], a[1]) - along(b[0], b[1]));
-      if (!tails.length) return false;
-      const tail = tails[0], front = [];
-      for (const [x, y] of cells) for (const [dx, dy] of N4) {
-        const nx = x + dx, ny = y + dy;
-        if (has(nx, ny) || !ok(nx, ny) || this.fogCells.has(U.key(nx, ny)) || along(nx, ny) <= 0.05) continue;
-        if (Math.abs(nx - tail[0]) + Math.abs(ny - tail[1]) === 1 && deg(nx, ny) === 1) continue;   // 只靠尾巴連著的不長
-        front.push([nx, ny]);
-      }
-      if (!front.length) return false;
-      const [gx, gy] = front[Math.floor(R() * front.length)], tk = U.key(tail[0], tail[1]), gk = U.key(gx, gy);
-      f.cells.delete(tk); if (this.fogCells.get(tk) === f.id) this.fogCells.delete(tk);
-      f.cells.add(gk); this.fogCells.set(gk, f.id);
+    // 把霧挪到 (x, y)、霧齡 t，重算算作霧的格子；蓋得到的地不到原本的一半（撞上海、山、屋）就不挪、掉頭，回 false
+    placeFog(f, x, y, t) {
+      const cells = this.fogCount(this.fogCoverage(f, x, y, t));
+      if (cells.length < Math.max(f.sea ? 2 : 5, Math.floor((f.base || 0) * 0.5))) { f.x = f.gx; f.y = f.gy; f.ang += Math.PI * (0.6 + U.trueRand() * 0.4); return false; }
+      const dx = x - f.gx, dy = y - f.gy; if (Math.abs(dx) + Math.abs(dy) > 1e-6) f.dir = [Math.sign(Math.round(dx * 10)), Math.sign(Math.round(dy * 10))];
+      f.x = x; f.y = y; f.age = t; f.gx = x; f.gy = y; this.setFogCells(f, cells.map(e => e.k));
       return true;
     }
-
+    // 測試與舊介面：定方向後一口氣挪一格的距離
+    moveFog(f, px, py) {
+      this.steerFog(f, px, py);
+      return this.placeFog(f, f.gx + Math.cos(f.ang), f.gy + Math.sin(f.ang), f.age);
+    }
     // ---------- 天氣：雨 ----------
     raining() { return this.time < this.rainUntil; }
     passable(x, y) { const d = this.info(x, y); return d.walk > 0 && !d.gate; }   // 門雖能走，算磚
@@ -464,6 +500,10 @@
 
     tick(dt, px, py) {
       this.time += dt;
+      if (this.fogs.size && this.fogStep < 1e6) {   // 霧障連續地飄：每息 1/fogStep 格；形狀照霧齡慢慢變（測試把 fogStep 設很大就停住）
+        const v = 1 / this.fogStep, k = FOG_STEP / this.fogStep;
+        for (const f of this.fogs.values()) { f.x += Math.cos(f.ang) * v * dt; f.y += Math.sin(f.ang) * v * dt; f.age += dt * k; }
+      }
       this.acc += dt; this.seenAcc += dt;
       if (this.seenAcc >= 0.5) { this.seenAcc = 0; this.markSeen(px, py, 9); }
       while (this.acc >= STEP) { this.acc -= STEP; this.step(px, py); }
@@ -483,7 +523,11 @@
         for (let i = 0; i < FOG_ROLLS; i++) if (U.trueRand() < this.fogP) this.fogPlan.push(today * DAY + U.trueRand() * DAY);
       }
       for (const [id, f] of this.fogs) if (this.time >= f.until) this.removeFog(id);
-      for (const f of this.fogs.values()) if (this.time >= f.moveAt) { f.moveAt = this.time + this.fogStep * (0.6 + U.trueRand() * 0.8); this.moveFog(f, px, py); }   // 霧障慢慢挪（間隔有快有慢），躲著光
+      this.fogRoomCache.clear();
+      for (const f of this.fogs.values()) {   // 霧障：每 fogStep 息上下重新定方向（躲光、隨風），每一步照現在的位置與形狀重算格子
+        if (this.time >= f.moveAt) { f.moveAt = this.time + this.fogStep * (0.6 + U.trueRand() * 0.8); this.steerFog(f, px, py); }
+        if (this.fogStep < 1e6) this.placeFog(f, f.x, f.y, f.age);
+      }
       this.roomCache.clear();
       // —— 灶裡的柴
       for (const [k, f] of this.stoves) { if (f > 0) this.stoves.set(k, Math.max(0, f - STEP)); }
@@ -573,7 +617,7 @@
       const seen = this.places.filter(p => p.seen).map(p => p.id);
       const wallHp = {}; for (const [k, v] of this.wallHp) wallHp[k] = v;
       return { seed: this.seed, dayLen: DAY, time: U.r4(this.time), wallHp, diff, burn, timers, stoves, shelves, bags, weirs, explored, seen, scarecrows, chests, nets, rainUntil: U.r4(this.rainUntil), nextRainAt: U.r4(this.nextRainAt),
-        fogs: [...this.fogs.values()].map(f => [U.r4(f.until), [...f.cells].join(';'), f.sea ? 1 : 0]), fogPlan: this.fogPlan.map(U.r4), fogDay: this.fogDay,
+        fogs: [...this.fogs.values()].map(f => [U.r4(f.until), [...f.cells].join(';'), f.sea ? 1 : 0, f.shape, [U.r4(f.x), U.r4(f.y), U.r4(f.age || 0), U.r4(f.ang || 0)]]), fogPlan: this.fogPlan.map(U.r4), fogDay: this.fogDay,
         ships: Object.fromEntries([...this.ships].map(([k, v]) => [k, { kind: v.kind, hp: U.r4(v.hp), skulls: (v.skulls || []).map(([n, e]) => [n, U.r4(e)]), repairs: v.repairs || 0, cells: v.cells }])) };
     }
     restore(s, briefDay) {
@@ -583,7 +627,7 @@
         this.time = d * DAY + DAY * MORNING; this.timeShift = U.r4(this.time - t0);
       }
       const sh = (v) => typeof v === 'number' && v > 0 ? U.r4(v + this.timeShift) : v;
-      this.diff = new Map(Object.entries(s.diff || {}));
+      this.diff = new Map(Object.entries(s.diff || {})); this.ver = (this.ver || 0) + 1;
       for (const [k, v] of this.diff) if (v === '牆') this.diff.set(k, '墟');   // v0.29 前的殘牆字
       this.wallHp = new Map(Object.entries(s.wallHp || {}));
       this.lamps = new Set(); for (const [k, v] of this.diff) if (v === '燈') this.lamps.add(k);
@@ -591,7 +635,7 @@
       this.nextRainAt = sh(s.nextRainAt) || (this.time + DAY + U.trueRand() * DAY * 2);
       this.rainAcc = 0;
       this.fogs = new Map(); this.fogCells = new Map(); this.fogSeq = 0;
-      for (const [u, cells, sea] of s.fogs || []) { const until = sh(u); if (until > this.time && cells) this.addFog(cells.split(';'), until, sea); }
+      for (const [u, cells, sea, shape, at] of s.fogs || []) { const until = sh(u); if (until > this.time && cells) this.addFog(cells.split(';'), until, sea, shape && shape.h ? shape : null, at); }   // v0.31 前的霧只有格子：照格子配一個形
       this.ships = new Map(); this.shipCells = new Map();
       for (const [k, v] of Object.entries(s.ships || {})) {
         if (Array.isArray(v)) {        // v0.11 的單格大船：當孤帆，船身找得到第二格水就留，找不到就沒了
