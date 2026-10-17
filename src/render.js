@@ -315,19 +315,21 @@
         if (e.type === '牛') {       // 野牛一乘二（v0.40）：字跟著身子拉——橫著走拉扁、縱著走拉長；轉身時在兩樣之間漸變
           const kk = Math.min(1, dt * 10); e.rbx = e.rbx === undefined ? e.bx : e.rbx + (e.bx - e.rbx) * kk; e.rby = e.rby === undefined ? e.by : e.rby + (e.by - e.rby) * kk;
           const hw = Math.abs(e.rbx) / Math.max(1e-6, Math.abs(e.rbx) + Math.abs(e.rby)), cx = px - e.rbx * T / 2, cy = py - e.rby * T / 2;
-          this.drawGlyph('牛', d.ink, cx, cy, T * 0.95, 0, 1, 0.8 + 1.15 * hw, 0.8 + 1.15 * (1 - hw));
+          const rl = g.ents.riled(e), big = rl ? 1.12 : 1;   // 惹了：發紅、大一圈（v0.41）
+          this.drawGlyph('牛', rl ? G.INK.red : d.ink, cx, cy, T * 0.95 * big, 0, 1, 0.8 + 1.15 * hw, 0.8 + 1.15 * (1 - hw));
           if (e.provoked > 0 && U.cheb(e.x, e.y, p.x, p.y) <= 7) { ctx.save(); ctx.fillStyle = G.INK.red; ctx.font = 'bold ' + Math.round(T * 0.42) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('怒', px + T * 0.4, py - T * 0.42); ctx.restore(); }
           continue;
         }
-        // 主動找人的獸（v0.40）：豹、狼、野豬、毒蛛畫大一號，比虎小一點；蛇照舊
-        const size = e.type === '虎' ? 0.95 : e.type === '龍' ? 1.1 : (e.type === '豹' || e.type === '狼' || e.type === '豬' || (e.type === '蛛' && e.venom)) ? 0.85 : e.type === '鹿' ? 0.8 : e.type === '魚' ? 0.6 : 0.55;
+        // 主動找人的獸（v0.40）：豹、狼、野豬、毒蛛畫大一號，比虎小一點；蛇照舊。半友好的（無毒蛛、蟾、沒馴的鷹）被惹了也發紅、大一號（v0.41）
+        const riled = g.ents.riled(e);
+        const size = e.type === '虎' ? 0.95 : e.type === '龍' ? 1.1 : (e.type === '豹' || e.type === '狼' || e.type === '豬' || (e.type === '蛛' && e.venom) || riled) ? 0.85 : e.type === '鹿' ? 0.8 : e.type === '魚' ? 0.6 : 0.55;
         const bobY = e.type === '鳥' ? Math.sin(now * 5 + e.bob) * 3 : e.type === '龍' ? Math.sin(now * 3 + e.bob) * 4 : e.type === '魚' ? Math.sin(now * 2 + e.bob) * 1.5 : 0;
         if (e.type === '龍') lights.push({ x: e.x, y: e.y, cx: e.rx + 0.5, cy: e.ry + 0.5, r: 3, c: DRAGON });
         const rot = e.type === '魚' ? Math.sin(now * 2 + e.bob) * 0.2 : 0;
         if (e.type === '虎' && e.calm <= 0 && U.cheb(e.x, e.y, p.x, p.y) <= 8) {
           ctx.save(); ctx.fillStyle = 'rgba(180,57,42,0.12)'; ctx.beginPath(); ctx.arc(px, py, T * 0.6, 0, 7); ctx.fill(); ctx.restore();
         }
-        this.drawGlyph(e.type, (e.type === '蟾' || e.type === '蛛') && e.venom ? G.INK.red : d.ink, px, py + bobY, T * size, rot, 1);
+        this.drawGlyph(e.type, ((e.type === '蟾' || e.type === '蛛') && e.venom) || riled ? G.INK.red : d.ink, px, py + bobY, T * size, rot, 1);
         if (e.provoked > 0 && U.cheb(e.x, e.y, p.x, p.y) <= 7) { ctx.save(); ctx.fillStyle = G.INK.red; ctx.font = 'bold ' + Math.round(T * 0.42) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('怒', px + T * 0.4, py - T * 0.42); ctx.restore(); }   // 被彈弓惹惱、七格內要撲過來的
       }
       // —— 彈弓的準星：手持彈弓時，面前九格內會被打到的那隻

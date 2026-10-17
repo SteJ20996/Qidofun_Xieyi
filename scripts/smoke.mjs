@@ -1630,6 +1630,28 @@ const result = await page.evaluate(async () => {
     const r0 = U.trueRand, cb = w.onWeather, ra = w.rainUntil, rn = w.nextRainAt; w.onWeather = null; U.trueRand = () => 0; w.rainUntil = 0; w.nextRainAt = w.time; w.step(p.x, p.y); const rainLen = w.rainUntil - w.time;
     U.trueRand = r0; w.onWeather = cb; w.rainUntil = ra; w.nextRainAt = rn;
     ok('v0.37: things counted in days follow the longer day (the shortest rain is a quarter of 360 = 90 s)', Math.abs(rainLen - 90) <= 0.5, rainLen); }
+  // ============ v0.41：半友好的（無毒蛛、蟾、沒馴的鷹、野牛）被惹了發紅、變大、衝過來；不惹不打 ============
+  { const E = g.ents, X = p.x + 46, Y = p.y + 8, p0 = { x: p.x, y: p.y }; for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) w.set(X + dx, Y + dy, '草');
+    E.list = E.list.filter(e => e.type === '龍' || e.tame); p.x = p.rx = X; p.y = p.ry = Y; E.px = p.x; E.py = p.y; calm();
+    const ad = (t, dx, dy, ex) => E.add(t, X + dx, Y + dy, Object.assign({ moveT: 99, calm: 99 }, ex || {}));
+    const sp = ad('蛛', -3, 0, { venom: false }), td = ad('蟾', 3, 0, { venom: false }), eg = ad('鷹', 0, -3), cow = ad('牛', 0, 4, { bx: 1, by: 0 }), tm = ad('鷹', -3, -3, { tame: true, angry: true }), dr = ad('鹿', 3, 3);
+    ok('v0.41: unprovoked, none of them counts as riled', ![sp, td, eg, cow].some(e => E.riled(e)));
+    for (const e of [sp, td, eg, cow, dr]) { e.angry = true; e.angryAt = w.time; } eg.angryT = 12;
+    ok('v0.41: provoked, the harmless spider, the toad, the wild eagle and the bison are riled; a tame eagle or a deer never is', [sp, td, eg, cow].every(e => E.riled(e)) && !E.riled(tm) && !E.riled(dr));
+    const R = g.renderer, calls = [], dg = R.drawGlyph; R.drawGlyph = function (ch, color, px, py, size, rot, alpha, kx, ky) { calls.push({ ch, color, size: size / R.tile, kx: kx || 1 }); return dg.apply(this, arguments); };
+    R.camInit = false; await sleep(120); calls.length = 0; await sleep(60); R.drawGlyph = dg;
+    const look = (ch) => calls.filter(c => c.ch === ch);
+    const allRed = (ch, size) => look(ch).length > 0 && look(ch).every(c => c.color === G.INK.red && Math.abs(c.size - size) < 1e-6);
+    ok('v0.41: riled, the spider, toad and eagle are drawn red and a size up (0.85)', allRed('蛛', 0.85) && allRed('蟾', 0.85) && look('鷹').some(c => c.color === G.INK.red && Math.abs(c.size - 0.85) < 1e-6), calls.filter(c => '蛛蟾鷹'.indexOf(c.ch) >= 0).slice(0, 6).map(c => c.ch + c.size.toFixed(2) + c.color));
+    ok('v0.41: …and the bison red and an eighth bigger', look('牛').some(c => c.color === G.INK.red && Math.abs(c.size - 0.95 * 1.12) < 1e-6), look('牛').slice(0, 2));
+    // 無毒蟾惹了衝過來咬：傷二、不中毒
+    for (const e of [sp, eg, cow, tm, dr]) E.remove(e); td.x = td.rx = X + 4; td.y = td.ry = Y; td.moveT = 0; td.calm = 0; td.atk = 0; const tx0 = td.x;
+    const hp0 = p.hp; p.poisonT = 0; p.poisonPer = 0; await until(() => U.cheb(td.x, td.y, p.x, p.y) <= 1, 4000); await until(() => p.hp < hp0, 3000);
+    ok('v0.41: a provoked harmless toad charges and bites (2, no poison)', td.x < tx0 && Math.abs((hp0 - p.hp) - 2 * g.takenMult()) < 0.6 && p.poisonT === 0, [tx0 - td.x, hp0 - p.hp, p.poisonT]);
+    td.angryAt = w.time - 21; td.moveT = 0; E.update(0.01, g);
+    ok('v0.41: twenty breaths later it calms down — no longer red, back to its own size', !td.angry && !E.riled(td));
+    E.remove(td); p.hp = Math.max(p.hp, 80);
+    for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) w.set(X + dx, Y + dy, w.base(X + dx, Y + dy)); p.x = p.rx = p0.x; p.y = p.ry = p0.y; }
   // ============ v0.40：野牛一乘二（橫著走拉扁、縱著走拉長）；主動找人的獸字大一號 ============
   { const X = p.x + 40, Y = p.y - 6, E = g.ents; for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) w.set(X + dx, Y + dy, '草');
     E.list = E.list.filter(e => e.type === '龍' || e.tame); const p0 = { x: p.x, y: p.y }; p.x = p.rx = X - 5; p.y = p.ry = Y + 5; E.px = p.x; E.py = p.y;
