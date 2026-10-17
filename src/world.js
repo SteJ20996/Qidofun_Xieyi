@@ -5,7 +5,7 @@
   const U = root.U, G = root.G, DB = G.DB;
   const CH = 16;                 // 區塊邊長（格）
   const STEP = 0.5;              // 模擬步長（秒）
-  const DAY = 300;               // 一晝夜（秒），潮汐隨之起落；v0.29 回到三百秒、一日從午夜算起（天亮 0.25、天黑 0.75），要跟 game.js 的 DAY 一致
+  let DAY = 300;                 // 一晝夜（秒），潮汐隨之起落；一日從午夜算起（天亮 0.25、天黑 0.75）。v0.37 起看難度（簡單 420、一般 360、困難 300），game.js 開島或讀檔時用 World.setDay() 定
   const MORNING = 0.26;
   // 牆的耐久（v0.29，不顯示，只計算）：野牛撞一下扣 1。磚 4，撞到剩一半就成了「墟」；墟（村裡的殘垣也是）2；窗、門 2，剩一半時字變色
   const WALL_HP = { '磚': 4, '墟': 2, '窗': 2, '門': 2 };          // 開局、讀舊存檔時的時刻：大清早（天亮之後一點點）
@@ -18,8 +18,11 @@
   // 下雨時屋外的燈每盞每息有 rainLampP 的真隨機機會被澆壞（預設 RAIN_LAMP_P；開局由 game.js 照難度改成 DIFF.*.lampP：簡單 1/4500、一般 1/2500、困難 1/800）；ROOM_LIMIT 格內被磚圍得住才算屋裡
   // 霧障：每日擲 FOG_ROLLS 次、每次 FOG_P 的真隨機機會起一片霧（每日最多兩片，第二日起）；一片 FOG_MIN–FOG_MAX 格、形狀隨機長；
   // 起在玩家 FOG_NEAR 格外的陸地上；放著不管 FOG_LIFE 後自己散
-  const FOG_ROLLS = 2, FOG_P = 0.25, FOG_NEAR = [8, 28], FOG_LIFE = DAY;
+  const FOG_ROLLS = 2, FOG_P = 0.25, FOG_NEAR = [8, 28];
+  let FOG_LIFE = DAY;
   const SEA_FOG_LIFE = 90;   // 蜃吐的海霧：九十息就散
+  const ORE_DAYS = [7, 10], ORE_BACK = '石草白';   // 鑿掉的鐵礦七到十日（真隨機）後在原地長回來，那時那格是石、草或白紙才長得回，不然就沒了（v0.37 使用者定）
+  const SCARE_DAYS = 45, SCARE_CAP = 60;   // 稻草人守幾天、續上最多幾天（v0.37 使用者定四十五天；續的上限照舊多三分之一：三十／四十 → 四十五／六十）
   // 霧的形（v0.31 使用者定）：一片霧是一塊連續的形，面積十八格上下（FOG_AREA），可圓可方（超橢圓的次方 2–6）、扁圓不一、斜著放，
   // 邊上再疊兩三道慢慢轉的起伏，次方、扁圓、角度也慢慢變，所以形狀一直在變。蓋到一格超過 FOG_COVER（5%）就算霧，最多算 FOG_CAP（30）格（蓋得最多的那些）。
   // 霧不進圍起來、裡面能走的格子不超過 FOG_ROOM（45）格的屋子；其餘山、海、林都飄得過去，不回頭（v0.32 使用者定）。
@@ -30,7 +33,10 @@
     return (n) => { const f = (U.clamp(n, 2, 6) - 2) * 10, i = Math.min(39, Math.floor(f)); return t[i] + (t[i + 1] - t[i]) * (f - i); };
   })();
   const SHIPS = G.SHIPS;                                        // 船的兩種（孤帆、方舟）：大小、命、船頭首骨格數
-  const RAIN_MIN = DAY * 0.25, RAIN_MAX = DAY * 1.0, RAIN_GAP_MIN = DAY * 1.0, RAIN_GAP_MAX = DAY * 4.0, RAIN_LAMP_P = 1 / 2500, ROOM_LIMIT = 121;
+  let RAIN_MIN = DAY * 0.25, RAIN_MAX = DAY * 1.0, RAIN_GAP_MIN = DAY * 1.0, RAIN_GAP_MAX = DAY * 4.0;
+  const RAIN_LAMP_P = 1 / 2500, ROOM_LIMIT = 121;
+  // 一日多長（v0.37 看難度）：以日計的長度（霧障一日、雨四分之一到一日、雨停一到四日）跟著換
+  const setDay = (sec) => { DAY = sec; FOG_LIFE = DAY; RAIN_MIN = DAY * 0.25; RAIN_MAX = DAY * 1.0; RAIN_GAP_MIN = DAY * 1.0; RAIN_GAP_MAX = DAY * 4.0; };
   // 小屋：磚與門圍起的小空間，裡面不生生靈、生靈也進不去。多小才算看難度，由 game 透過 roomLimitFor(type) 告訴世界：獸一個門檻、魄一個門檻
   // （簡單 28／18、一般 18／8、困難 10／0，0 ＝ 磚擋不住魄）；MAX_ROOM 是各門檻的最大值，漫延數到這裡就停
   const MAX_ROOM = 28;
@@ -45,6 +51,8 @@
       this.burn = new Map();     // "x,y" -> { t: 剩餘燃燒秒數, lvl: 火勢 }
       this.timers = new Map();   // "x,y" -> { from: 現在的字, to: 目標字, at: 世界時間 }（灰化土、草木長回來）
       this.scarecrows = new Map(); // "x,y" -> 稻草人失效的世界時間
+      this.ores = new Map();       // "x,y" -> 鑿掉的鐵礦幾時長回來（世界時間）
+      this.oreBlocked = () => false;   // 回調：那格上有人或生靈站著，等走開再長（免得把誰封在礦裡）
       this.chests = new Map();   // "x,y" -> 櫃裡的東西
       this.nets = new Map();     // 錨點 "x,y" -> { size, x, y, fish, t }：漁網（一乘一、二乘二、三乘三）
       this.netCells = new Map(); // 每一格 -> 錨點
@@ -155,17 +163,28 @@
     }
     // 幾秒後若格子還是 from，就變成 to（灰化土、草木長回來）
     schedule(x, y, from, to, sec) { this.timers.set(U.key(x, y), { from, to, at: this.time + sec }); }
-    // 稻草人：前半三十天十格、後半七格；再放一個續三十天，最多四十天
+    // 稻草人：守 SCARE_DAYS 天（v0.37 從三十天改四十五天），前半十格、後半七格；再放一個續 SCARE_DAYS 天，從現在起最多 SCARE_CAP 天
     addScarecrow(x, y) {
       const k = U.key(x, y), now = this.time, cur = Math.max(now, this.scarecrows.get(k) || 0);
-      this.scarecrows.set(k, Math.min(now + 40 * DAY, cur + 30 * DAY));
+      this.scarecrows.set(k, Math.min(now + SCARE_CAP * DAY, cur + SCARE_DAYS * DAY));
+    }
+    // 鐵礦長回來（v0.37）：鑿掉時記下，七到十日後那格若是石、草或白紙就變回鐵礦；是別的（蓋了東西、成了土或田……）就長不回來，記錄也丟掉
+    addOre(x, y) { this.ores.set(U.key(x, y), U.r4(this.time + (ORE_DAYS[0] + U.trueRand() * (ORE_DAYS[1] - ORE_DAYS[0])) * DAY)); }
+    regrowOres() {
+      for (const [k, at] of this.ores) {
+        if (this.time < at) continue;
+        const [x, y] = U.unkey(k), ch = this.get(x, y);
+        if (ORE_BACK.indexOf(ch) < 0) { this.ores.delete(k); continue; }
+        if (this.oreBlocked(x, y)) continue;
+        this.set(x, y, '鐵'); this.ores.delete(k);
+      }
     }
     scareDays(x, y) { const e = this.scarecrows.get(U.key(x, y)); return e ? Math.max(0, (e - this.time) / DAY) : 0; }
     scared(x, y) {
       for (const [k, e] of this.scarecrows) {
         const days = (e - this.time) / DAY; if (days <= 0) continue;
         const [sx, sy] = U.unkey(k);
-        if (U.cheb(x, y, sx, sy) <= (days > 15 ? 10 : 7)) return true;
+        if (U.cheb(x, y, sx, sy) <= (days > SCARE_DAYS / 2 ? 10 : 7)) return true;
       }
       return false;
     }
@@ -539,6 +558,7 @@
       if (this.rainUntil > 0 && this.time >= this.rainUntil) { this.rainUntil = 0; this.nextRainAt = this.time + RAIN_GAP_MIN + U.trueRand() * (RAIN_GAP_MAX - RAIN_GAP_MIN); if (this.onWeather) this.onWeather(false); }
       else if (this.rainUntil <= 0 && this.time >= this.nextRainAt) { this.rainUntil = this.time + RAIN_MIN + U.trueRand() * (RAIN_MAX - RAIN_MIN); if (this.onWeather) this.onWeather(true); }
       if (this.raining()) { this.rainAcc += STEP; while (this.rainAcc >= 1) { this.rainAcc -= 1; this.rainLamps(); } } else this.rainAcc = 0;
+      if (this.ores.size) this.regrowOres();
       // —— 霧障：到時的先起；換日擲兩次；放了一日的自己散
       for (let i = this.fogPlan.length - 1; i >= 0; i--) if (this.time >= this.fogPlan[i]) { this.fogPlan.splice(i, 1); this.spawnFog(px, py); }
       const today = Math.floor(this.time / DAY);
@@ -641,7 +661,7 @@
       const explored = {}; for (const [k, b] of this.explored) explored[k] = Array.from(b, v => v.toString(16).padStart(2, '0')).join('');
       const seen = this.places.filter(p => p.seen).map(p => p.id);
       const wallHp = {}; for (const [k, v] of this.wallHp) wallHp[k] = v;
-      return { seed: this.seed, dayLen: DAY, time: U.r4(this.time), wallHp, diff, burn, timers, stoves, shelves, bags, weirs, explored, seen, scarecrows, chests, nets, rainUntil: U.r4(this.rainUntil), nextRainAt: U.r4(this.nextRainAt),
+      return { seed: this.seed, dayLen: DAY, time: U.r4(this.time), wallHp, diff, burn, timers, stoves, shelves, bags, weirs, explored, seen, scarecrows, ores: Object.fromEntries([...this.ores].map(([k, v]) => [k, U.r4(v)])), chests, nets, rainUntil: U.r4(this.rainUntil), nextRainAt: U.r4(this.nextRainAt),
         fogs: [...this.fogs.values()].map(f => [U.r4(f.until), [...f.cells].join(';'), f.sea ? 1 : 0, f.shape, [U.r4(f.x), U.r4(f.y), U.r4(f.age || 0), U.r4(f.ang || 0)]]), fogPlan: this.fogPlan.map(U.r4), fogDay: this.fogDay,
         ships: Object.fromEntries([...this.ships].map(([k, v]) => [k, { kind: v.kind, hp: U.r4(v.hp), skulls: (v.skulls || []).map(([n, e]) => [n, U.r4(e)]), repairs: v.repairs || 0, cells: v.cells }])) };
     }
@@ -679,6 +699,7 @@
       this.burn = new Map(Object.entries(s.burn || {}).map(([k, v]) => [k, { t: v[0], lvl: v[1] }]));
       this.timers = new Map(Object.entries(s.timers || {}).map(([k, v]) => [k, { to: v[0], at: sh(v[1]), from: v[2] || '灰' }]));
       this.scarecrows = new Map(Object.entries(s.scarecrows || {}).map(([k, v]) => [k, sh(v)]));
+      this.ores = new Map(Object.entries(s.ores || {}).map(([k, v]) => [k, sh(v)]));
       this.chests = new Map(Object.entries(s.chests || {}));
       this.shelves = new Map(Object.entries(s.shelves || {}).map(([k, v]) => [k, v.map(([n, c]) => ({ n, c }))]));
       this.nets = new Map(); this.netCells = new Map();
@@ -697,5 +718,7 @@
   World.newShip = (kind) => ({ kind: SHIPS[kind] ? kind : '孤帆', hp: (SHIPS[kind] || SHIPS['孤帆']).hp, skulls: [], repairs: 0 });
   root.World = World;
   root.World.CH = CH;
-  root.World.DAY = DAY;
+  Object.defineProperty(root.World, 'DAY', { get: () => DAY, configurable: true });
+  root.World.setDay = setDay;
+  root.World.SCARE_DAYS = SCARE_DAYS; root.World.SCARE_CAP = SCARE_CAP;
 })();

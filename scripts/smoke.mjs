@@ -245,11 +245,14 @@ const result = await page.evaluate(async () => {
   // 稻草人：十格內獸不能站
   w.set(T().x, T().y, '土'); g.addItem('偶', 2); hold('偶'); g.pressPlace();
   const sc = T();
-  ok('scarecrow placed with 30 days', w.get(sc.x, sc.y) === '偶' && Math.round(w.scareDays(sc.x, sc.y)) === 30, w.scareDays(sc.x, sc.y));
+  ok('scarecrow placed with 45 days (v0.37; was 30)', w.get(sc.x, sc.y) === '偶' && Math.round(w.scareDays(sc.x, sc.y)) === 45, w.scareDays(sc.x, sc.y));
   for (const dx of [7, 8, 9, 10]) w.set(sc.x + dx, sc.y, '草');
   ok('beasts cannot come within ten tiles of a fresh scarecrow', !g.ents.canStand('虎', sc.x + 9, sc.y, true) && !g.ents.canStand('蛇', sc.x + 10, sc.y, true) && g.ents.canStand('鹿', sc.x + 9, sc.y, true) && g.ents.canStand('魄', sc.x + 9, sc.y, true));
   g.pressPlace();
-  ok('a second scarecrow extends to forty days at most', Math.round(w.scareDays(sc.x, sc.y)) === 40, w.scareDays(sc.x, sc.y));
+  ok('a second scarecrow extends to sixty days at most (v0.37; was 40)', Math.round(w.scareDays(sc.x, sc.y)) === 60, w.scareDays(sc.x, sc.y));
+  w.scarecrows.set(sc.x + ',' + sc.y, w.time + 23 * DAY); const front = !g.ents.canStand('虎', sc.x + 10, sc.y, true);
+  w.scarecrows.set(sc.x + ',' + sc.y, w.time + 22 * DAY);
+  ok('v0.37: ten tiles while more than 22.5 days are left, seven after', front && !g.ents.canStand('虎', sc.x + 7, sc.y, true) && g.ents.canStand('虎', sc.x + 8, sc.y, true));
   w.scarecrows.set(sc.x + ',' + sc.y, w.time + 10 * DAY);
   ok('in the last fifteen days the radius is seven', !g.ents.canStand('虎', sc.x + 7, sc.y, true) && g.ents.canStand('虎', sc.x + 8, sc.y, true));
   w.scarecrows.delete(sc.x + ',' + sc.y);
@@ -348,11 +351,11 @@ const result = await page.evaluate(async () => {
   g.diff = XIEYI.DIFF.easy; w.time = DAY * 12 + DAY * 0.93; const e13 = g.ghostNight(); w.time = DAY * 20 + DAY * 0.93;
   ok('easy: no ghosts on night 13, ghosts from night 21, taken ×0.9, attack ×1.1', !e13 && g.ghostNight() && Math.abs(g.takenMult() - 0.9) < 1e-9 && Math.abs(g.dmgMult() - 1.1) < 1e-9 && g.beastMult() === 1);
   g.diff = XIEYI.DIFF.normal; w.time = tSave;
-  // 錦囊：囊多兩格、具欄多一格，最多四個
+  // 錦囊：囊多兩格、具欄多一格，最多八個（v0.37；v0.19–v0.36 六個、更早四個）
   g.addItem('錦囊', 1); hold('錦囊'); g.useItem(); await sleep(60);
   ok('a pouch adds two bag slots and one tool slot', p.pouches === 1 && g.slots() === 18 && g.toolSlots() === 7 && document.querySelectorAll('#bagbar .slot').length === 18 && document.querySelectorAll('#toolbar .slot').length === 7);
-  p.pouches = 6; g.addItem('錦囊', 1); hold('錦囊'); g.useItem();
-  ok('no more than six pouches: 28 bag slots and 12 tool slots', p.pouches === 6 && g.count('錦囊') === 1 && g.slots() === 28 && g.toolSlots() === 12);
+  p.pouches = 8; g.addItem('錦囊', 1); hold('錦囊'); g.useItem();
+  ok('no more than eight pouches: 32 bag slots and 14 tool slots', p.pouches === 8 && g.count('錦囊') === 1 && g.slots() === 32 && g.toolSlots() === 14);
   g.removeItem('錦囊', 1); p.pouches = 0; g.barSig = '';
   // 同一類衣甲只留一件：再造只翻新
   g.addItem('內襯', 1); const lin = p.bag.find(s => s.n === '內襯'); lin.dur = 1000; lin.wm = 3; g.addItem('棉', 4); g.addItem('麻', 2); p.sta = 50; g.buildCraft();
@@ -552,8 +555,8 @@ const result = await page.evaluate(async () => {
     ok('on normal it does not', Math.abs(p.sta - (50 + 0.5 * m0)) < 1e-6, p.sta);
     g.removeItem('燭龍焚溟', 9); g.removeItem('九閽鳴雷', 9); p.tools = p.tools.filter(s => s.n !== '燭龍焚溟' && s.n !== '九閽鳴雷'); if (p.tool >= p.tools.length) p.tool = p.tools.length - 1; g.barSig = '';
     ok('without them the plain rule is back: three days, floor 31', !g.hasGod() && g.decayDays() === 3 && g.decayFloor() === 31);
-    const pch = p.pouches; p.pouches = 6; g.addItem('錦囊', 1); hold('錦囊'); g.msgText = ''; g.useItem();
-    ok('six pouches is the cap: 28 bag slots, 12 tool slots, a seventh is refused', p.pouches === 6 && g.slots() === 28 && g.toolSlots() === 12 && g.count('錦囊') === 1 && g.msgText.indexOf('六個') >= 0, [g.slots(), g.toolSlots(), g.msgText]);
+    const pch = p.pouches; p.pouches = 8; g.addItem('錦囊', 1); hold('錦囊'); g.msgText = ''; g.useItem();
+    ok('eight pouches is the cap (v0.37): 32 bag slots, 14 tool slots, a ninth is refused', p.pouches === 8 && g.slots() === 32 && g.toolSlots() === 14 && g.count('錦囊') === 1 && g.msgText.indexOf('八個') >= 0, [g.slots(), g.toolSlots(), g.msgText]);
     g.removeItem('錦囊', 9); p.pouches = pch; g.barSig = '';
     face(1, 0); const lx = T().x, ly = T().y, keepL = w.raw(lx, ly); w.set(lx, ly, '燈');
     ok('a lamp blocks beasts but not you', g.pass(lx, ly) && !g.ents.canStand('狼', lx, ly, true) && !g.ents.canStand('虎', lx, ly, true), [g.pass(lx, ly)]);
@@ -1122,16 +1125,24 @@ const result = await page.evaluate(async () => {
     ok('烤蛇 heals 8', Math.round(p.hp) === hp0 + 8, p.hp);
     p.hp = p.hpMax - 3; g.addItem('烤肉', 1); hold('烤肉'); g.useItem();
     ok('healing never passes the max', Math.round(p.hp) === p.hpMax); p.hp = p.hpMax;
-    // 錦囊用滿四個：製作欄標「已用完」、鈕灰掉、再造被拒
-    const pch0 = p.pouches; p.pouches = 6; g.craftCat = '全部'; g.buildCraft();
+    // 錦囊用滿八個：製作欄標「已用完」、鈕灰掉、再造被拒
+    const pch0 = p.pouches; p.pouches = 8; g.craftCat = '全部'; g.buildCraft();
     const prow = [...document.querySelectorAll('#craft-list .recipe')].find(r => r.textContent.indexOf('錦囊') >= 0);
-    ok('with four pouches used the craft row says 已用完 and its button is disabled', !!prow && prow.textContent.indexOf('已用完') >= 0 && prow.classList.contains('cant') && prow.querySelector('button').disabled, prow && prow.textContent.slice(0, 40));
+    ok('with eight pouches used the craft row says 已用完 and its button is disabled', !!prow && prow.textContent.indexOf('已用完') >= 0 && prow.classList.contains('cant') && prow.querySelector('button').disabled, prow && prow.textContent.slice(0, 40));
     g.addItem('麻布', 3); g.addItem('棉', 2); p.sta = 100; const pc0 = g.count('錦囊'); g.craft('pouch');
-    ok('crafting a fifth pouch is refused', g.count('錦囊') === pc0 && g.count('麻布') >= 3 && g.msgText.indexOf('都用了') >= 0);
+    ok('crafting a ninth pouch is refused', g.count('錦囊') === pc0 && g.count('麻布') >= 3 && g.msgText.indexOf('都用了') >= 0);
     g.addItem('錦囊', 1); hold('錦囊'); g.msgText = ''; g.msgUntil = 0; g.hudSig = ''; g.updateHUD();   // 清掉剛才的回饋訊息，提示列才會寫面前與手上的東西
-    ok('the hint for a pouch in hand says they are all used', document.getElementById('msg').textContent.indexOf('已用完六個') >= 0, document.getElementById('msg').textContent.slice(0, 80));
+    ok('the hint for a pouch in hand says they are all used', document.getElementById('msg').textContent.indexOf('已用完八個') >= 0, document.getElementById('msg').textContent.slice(0, 80));
     p.pouches = 1; g.buildCraft(); const prow2 = [...document.querySelectorAll('#craft-list .recipe')].find(r => r.textContent.indexOf('錦囊') >= 0);
     ok('with fewer used the row is craftable again', !!prow2 && prow2.textContent.indexOf('已用完') < 0 && !prow2.querySelector('button').disabled);
+    // v0.37：已用的加囊裡的湊滿八個就不給織；囊裡那幾個照樣用得掉
+    g.removeItem('錦囊', 9); p.pouches = 5; g.addItem('錦囊', 3); g.addItem('麻布', 3); g.addItem('棉', 2); p.sta = 100; g.buildCraft();
+    const prow3 = [...document.querySelectorAll('#craft-list .recipe')].find(r => r.textContent.indexOf('錦囊') >= 0); g.msgText = ''; g.craft('pouch');
+    ok('v0.37: five used + three carried = eight: no more weaving (row says 已夠八個), the cloth stays', g.count('錦囊') === 3 && g.count('麻布') >= 3 && g.msgText.indexOf('湊滿八個') >= 0 && !!prow3 && prow3.textContent.indexOf('已夠八個') >= 0 && prow3.querySelector('button').disabled, [g.count('錦囊'), g.msgText]);
+    hold('錦囊'); g.useItem(); hold('錦囊'); g.useItem(); hold('錦囊'); g.useItem();
+    ok('v0.37: …and the three carried ones can all still be used, up to eight', p.pouches === 8 && g.count('錦囊') === 0 && g.slots() === 32 && g.toolSlots() === 14, p.pouches);
+    g.removeItem('錦囊', 9); p.pouches = 6; g.buildCraft(); g.msgText = ''; g.craft('pouch');
+    ok('v0.37: six used and none carried: a seventh can be woven now', g.count('錦囊') === 1, g.msgText);
     p.pouches = pch0; g.removeItem('錦囊', 9); g.removeItem('麻布', 9); g.removeItem('棉', 9); g.barSig = ''; g.buildBag();
     // 重磨遞增：同一把 1、2、4、8、8；換一把從 1 起
     g.addItem('石劍', 1); const rsw = tool('石劍'); rsw.rg = 0; hold('石劍'); g.removeItem('石子', 99); g.addItem('石子', 30); p.sta = 100; p.food = 100;
@@ -1309,7 +1320,7 @@ const result = await page.evaluate(async () => {
     const cx = 76, cy = 0, put = (x, y, c) => { area.push([x, y, w.get(x, y)]); w.set(x, y, c); };
     for (let dy = -9; dy <= 9; dy++) for (let dx = -13; dx <= 13; dx++) put(cx + dx, cy + dy, '草');
     E.list = []; p.x = cx; p.y = cy; p.rx = cx; p.ry = cy; p.bag = []; p.tools = []; p.tool = -1; p.sel = 0; g.barSig = ''; p.hp = 100;
-    ok('a day is 300 s (v0.29)', DAY === 300);
+    ok('v0.37: a day lasts 420 / 360 / 300 s for easy / normal / hard; this normal island runs 360 in both game and world', DAY === 360 && XIEYI.DIFF.easy.day === 420 && XIEYI.DIFF.normal.day === 360 && XIEYI.DIFF.hard.day === 300 && window.World.DAY === 360 && w.serialize().dayLen === 360, [DAY, window.World.DAY]);
     const night = (f) => { setDay(f); return g.isNight(); };
     ok('the day starts at midnight: night until 0.25, day 0.25–0.75, night again from 0.75', night(0.01) && night(0.24) && !night(0.25) && !night(0.74) && night(0.75) && night(0.99));
     setDay(0.25); const hDawn = g.shichen(); setDay(0.75); const hDusk = g.shichen(); setDay(0.01); const hMid = g.shichen();
@@ -1383,13 +1394,12 @@ const result = await page.evaluate(async () => {
     ok('a slain boar gives 3 meat and (a quarter of the time) fat; a bison gives 4 meat', g.count('肉') === 7 && g.count('油脂') === 1, bag());
     g.addItem('棉', 1); p.sta = p.staMax; g.craft('candle2');
     ok('棉一油脂一 makes three candles', g.count('蠟燭') === 3 && g.count('油脂') === 0, bag());
-    // 製作欄：衍生的畫在底下
-    g.craftCat = '燈火'; const vr = g.visibleRecipes().map(r => r.id), tl = g.craftTree();
-    ok('craft panel 燈火: 燈 hangs under 火把, 燈帽 under 蠟燭', vr.indexOf('lamp') === vr.indexOf('torch') + 1 && tl.find(n => n.r.id === 'lamp').depth === 1 && tl.find(n => n.r.id === 'hat').depth === 1 && vr.indexOf('hat') === vr.indexOf('candle') + 1, vr);
-    g.craftCat = '全部'; const ta = g.craftTree(), dep = (id) => ta.find(n => n.r.id === id).depth;
-    ok('craft panel 全部: 漁網 → 中漁網 → 大漁網 runs a level deeper each step, every recipe listed once', dep('midnet') === dep('net') + 1 && dep('bignet') === dep('net') + 2 && ta.length === G.RECIPES.length, [dep('net'), dep('midnet'), dep('bignet')]);
+    // 製作欄：v0.37 起照配方表一條一條列，不畫衍生樹
+    g.craftCat = '燈火'; const vr = g.visibleRecipes().map(r => r.id), want = G.RECIPES.filter(r => r.cat === '燈火').map(r => r.id);
+    ok('v0.37: craft panel 燈火 lists its recipes in table order, no parent/child levels', vr.join() === want.join() && typeof g.craftTree !== 'function' && typeof g.craftParents !== 'function', vr);
+    g.craftCat = '全部'; ok('v0.37: 全部 lists every recipe once, in table order', g.visibleRecipes().map(r => r.id).join() === G.RECIPES.map(r => r.id).join());
     g.craftCat = '燈火'; g.toggleCraft(); await sleep(30);
-    ok('the craft panel draws the branches', document.querySelectorAll('#craft-list .recipe.child .tree .elbow').length >= 2 && document.querySelectorAll('#craft-list .recipe.parent .tree .down').length >= 2);
+    ok('v0.37: the craft panel draws no tree lines or indented rows', document.querySelectorAll('#craft-list .recipe').length === want.length && !document.querySelector('#craft-list .tree, #craft-list .recipe.child, #craft-list .recipe.parent, #craft-list .from'));
     g.toggleCraft(); g.craftCat = '全部';
     ok('each of 虎豹狼蛇蛛 (and 野豬、野牛) has its own call', typeof SFX.beast === 'function' && ['虎', '豹', '狼', '蛇', '蛛', '豬', '牛'].every(t => SFX.beastTypes.indexOf(t) >= 0));
     ok('the help says 磚, not 牆, for walls', document.getElementById('help').textContent.indexOf('穿牆') < 0 && document.getElementById('help').textContent.indexOf('砌牆') < 0);
@@ -1594,12 +1604,47 @@ const result = await page.evaluate(async () => {
     ok('v0.34: either mouse button on the tile beside you acts like E (gathers), never places', w.get(X + 1, Y) === '草' && !!g.action && g.action.type === 'gather', [w.get(X + 1, Y), g.action && g.action.type]);
     g.action = null; g.removeItem('磚', 9);
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) w.set(X + dx, Y + dy, w.base(X + dx, Y + dy)); }
-  // ============ v0.36：製作樹——同一層的品名在同一欄，子層稍微往後縮；後面各欄每列對齊 ============
+  // ============ v0.37：一日多長看難度（簡單 420、一般 360、困難 300） ============
+  { const W = window.World, sv = JSON.parse(JSON.stringify(w.serialize())); sv.dayLen = 300; sv.time = 300 * 5 + 300 * 0.6; sv.scarecrows = { '0,0': sv.time + 100 };
+    W.setDay(420); const we = new W(w.seed), fresh = we.time; we.restore(sv, 6); const keep = we.serialize().dayLen;
+    W.setDay(360); const wn = new W(w.seed); wn.restore(w.serialize(), g.day());
+    ok('v0.37: an easy island starts at 420 × 0.26; a 300-s save read into it keeps day 6 and wakes at that early morning, countdowns kept', fresh === U.r4(420 * 0.26) && we.time === U.r4(420 * 5 + 420 * 0.26) && Math.abs(we.scarecrows.get('0,0') - (we.time + 100)) < 1e-6 && keep === 420, [fresh, we.time]);
+    ok('v0.37: a save made now at 360 reads back with its exact time', wn.time === U.r4(w.time) && wn.timeShift === 0 && W.DAY === DAY);
+    const t0 = w.time; w.time = DAY * 3 + DAY * 0.5; const mid = g.dayT(), d4 = g.day(); w.time = DAY * 3 + 300; const notYet = g.day(); w.time = t0;
+    ok('v0.37: the clock runs on 360-s days (300 s past day four\'s midnight is still day four)', mid === 0.5 && d4 === 4 && notYet === 4, [mid, d4, notYet]);
+    const r0 = U.trueRand, cb = w.onWeather, ra = w.rainUntil, rn = w.nextRainAt; w.onWeather = null; U.trueRand = () => 0; w.rainUntil = 0; w.nextRainAt = w.time; w.step(p.x, p.y); const rainLen = w.rainUntil - w.time;
+    U.trueRand = r0; w.onWeather = cb; w.rainUntil = ra; w.nextRainAt = rn;
+    ok('v0.37: things counted in days follow the longer day (the shortest rain is a quarter of 360 = 90 s)', Math.abs(rainLen - 90) <= 0.5, rainLen); }
+  // ============ v0.37：鑿掉的鐵礦七到十日後在原地長回來（那時是石、草、白紙才行） ============
+  { const X = p.x + 22, Y = p.y + 22, K = (x, y) => x + ',' + y, c0 = p.cour, r0 = U.trueRand;
+    for (let i = 0; i < 4; i++) w.set(X + i, Y, '鐵');
+    U.trueRand = () => 0; g.finishGather({ x: X, y: Y, ch: '鐵', t: 0, dur: 0 }); const lo = (w.ores.get(K(X, Y)) - w.time) / DAY;
+    U.trueRand = () => 0.9999; g.finishGather({ x: X + 1, y: Y, ch: '鐵', t: 0, dur: 0 }); const hi = (w.ores.get(K(X + 1, Y)) - w.time) / DAY;
+    U.trueRand = r0; g.finishGather({ x: X + 2, y: Y, ch: '鐵', t: 0, dur: 0 }); g.finishGather({ x: X + 3, y: Y, ch: '鐵', t: 0, dur: 0 });
+    ok('v0.37: a mined iron vein turns to 石 and is booked to grow back in 7–10 days (true random)', w.get(X, Y) === '石' && w.ores.size >= 4 && Math.abs(lo - 7) < 1e-3 && Math.abs(hi - 10) < 1e-2, [lo, hi]);
+    w.set(X + 1, Y, '草'); w.set(X + 2, Y, '白'); w.set(X + 3, Y, '磚');
+    const sv = w.serialize(), w5 = new window.World(w.seed); w5.restore(JSON.parse(JSON.stringify(sv)), g.day());
+    ok('v0.37: the regrowth times are saved and read back', w5.ores.size === w.ores.size && Math.abs(w5.ores.get(K(X, Y)) - w.ores.get(K(X, Y))) < 1e-3);
+    w.set(X + 5, Y, '石'); w.ores.set(K(X + 5, Y), w.time + DAY); w.regrowOres();
+    ok('v0.37: nothing grows back before its time', w.get(X + 5, Y) === '石' && w.ores.has(K(X + 5, Y)));
+    for (const k of [K(X, Y), K(X + 1, Y), K(X + 2, Y), K(X + 3, Y)]) w.ores.set(k, w.time - 1);
+    const ob = w.oreBlocked; w.oreBlocked = (x, y) => x === X && y === Y; w.regrowOres();
+    ok('v0.37: on time, 草 and 白紙 turn back into iron; a 磚 built there stops it for good', w.get(X + 1, Y) === '鐵' && w.get(X + 2, Y) === '鐵' && w.get(X + 3, Y) === '磚' && !w.ores.has(K(X + 1, Y)) && !w.ores.has(K(X + 3, Y)), [w.get(X + 1, Y), w.get(X + 2, Y), w.get(X + 3, Y)]);
+    ok('v0.37: someone standing on the 石 makes it wait instead of walling them in', w.get(X, Y) === '石' && w.ores.has(K(X, Y)));
+    w.oreBlocked = ob; w.regrowOres();
+    ok('v0.37: once they step off, the 石 turns back into iron', w.get(X, Y) === '鐵' && !w.ores.has(K(X, Y)));
+    w.ores.clear(); for (let i = 0; i < 6; i++) w.set(X + i, Y, '草'); g.removeItem('鐵礦', 99); g.removeItem('鎢礦', 99); p.cour = c0; }
+  // ============ v0.37：簡單餓得慢兩成 ============
+  { const d0 = g.diff, f0 = p.food; p.food = 50; g.diff = XIEYI.DIFF.normal; g.updateStats(1); const dn = 50 - p.food; p.food = 50; g.diff = XIEYI.DIFF.easy; g.updateStats(1); const de = 50 - p.food; p.food = 50; g.diff = XIEYI.DIFF.hard; g.updateStats(1); const dh = 50 - p.food; g.diff = d0; p.food = f0;
+    ok('v0.37: on easy hunger falls 20% slower than normal (hard as normal)', Math.abs(de - dn * 0.8) < 1e-3 && Math.abs(dh - dn) < 1e-3 && Math.abs(dn - 0.14 * g.ironDrain()) < 1e-3 && XIEYI.DIFF.easy.hunger === 0.8, [dn, de, dh]); }
+  // ============ v0.37：魚多八成、鷹多兩成五 ============
+  { const r0 = Math.random; Math.random = () => 0.99; const lo = g.ents.spawnCaps(false, 1); Math.random = () => 0.01; const hi = g.ents.spawnCaps(false, 1); Math.random = r0;
+    let fs = 0, es = 0; for (let i = 0; i < 4000; i++) { const c = g.ents.spawnCaps(false, 1); fs += c['魚']; es += c['鷹']; }
+    ok('v0.37: nearby fish cap 8 → 14.4 on average (14 or 15), eagles 2 → 2.5 (2 or 3)', lo['魚'] === 14 && hi['魚'] === 15 && lo['鷹'] === 2 && hi['鷹'] === 3 && Math.abs(fs / 4000 - 14.4) < 0.06 && Math.abs(es / 4000 - 2.5) < 0.06, [fs / 4000, es / 4000]); }
+  // ============ v0.36／v0.37：製作欄各欄每列對齊（v0.37 拿掉衍生樹，品名全在同一欄） ============
   { g.addItem('燈帽', 1); g.toggleCraft(); g.craftCat = '全部'; g.buildCraft(); await sleep(60);
-    const rows = [...document.querySelectorAll('#craft-list .recipe')], info = rows.map(r => ({ depth: r.querySelectorAll('.tree i').length - 1, x: Math.round(r.querySelector('b').getBoundingClientRect().left), sta: Math.round(r.querySelector('.sta').getBoundingClientRect().left), choose: r.classList.contains('choose'), btn: Math.round(r.querySelector('.btns').getBoundingClientRect().left) }));
-    const xs = {}; for (const r of info) (xs[r.depth] = xs[r.depth] || new Set()).add(r.x);
-    const steps = Object.keys(xs).map(Number).sort((a, b) => a - b), cols = steps.map(d => [...xs[d]]);
-    ok('v0.36: every item of the same depth starts in the same column (1 and 10 alike), each deeper level a small step further in', cols.every(c => c.length === 1) && steps.length >= 2 && steps.every((d, i) => i === 0 || (cols[i][0] - cols[i - 1][0] > 8 && cols[i][0] - cols[i - 1][0] < 30)), cols);
+    const rows = [...document.querySelectorAll('#craft-list .recipe')], info = rows.map(r => ({ x: Math.round(r.querySelector('b').getBoundingClientRect().left), sta: Math.round(r.querySelector('.sta').getBoundingClientRect().left), choose: r.classList.contains('choose'), btn: Math.round(r.querySelector('.btns').getBoundingClientRect().left) }));
+    ok('v0.37: every item name starts in the same column (1 and 10 alike), no level indents', rows.length === G.RECIPES.length && new Set(info.map(r => r.x)).size === 1, [...new Set(info.map(r => r.x))]);
     ok('v0.36: the stamina and button columns line up on every row (a wider 翻新 button no longer pushes them)', new Set(info.map(r => r.sta)).size === 1 && new Set(info.filter(r => !r.choose).map(r => r.btn)).size === 1, [[...new Set(info.map(r => r.sta))], [...new Set(info.filter(r => !r.choose).map(r => r.btn))]]);
     ok('v0.36: the forge rows are named for what they make', G.RECIPES.find(r => r.id === 'forge').title === '鍛鋼具' && G.RECIPES.find(r => r.id === 'forgew').title === '鍛鎢鋼具');
     g.toggleCraft(); g.removeItem('燈帽', 9); }
@@ -1652,10 +1697,10 @@ const result = await page.evaluate(async () => {
   ok('three save slots: slot 1 keeps the old key, slots 2 and 3 get suffixes, autostart plays slot 1', XIEYI.Game.slotKey(1) === 'xieyi.save.v5' && XIEYI.Game.slotKey(2) === 'xieyi.save.v5.2' && XIEYI.Game.slotKey(3) === 'xieyi.save.v5.3' && g.slot === 1);
   ok('the save carries a brief: day, night, level, deaths, slept nights', !!sv.brief && sv.brief.day === g.day() && sv.brief.night === g.nightNo() && sv.brief.level === g.level() && typeof sv.brief.deaths === 'number' && typeof sv.brief.nights === 'number', sv.brief);
   { const m = XIEYI.Game.summary(sv);
-    ok('summary of a save names island, difficulty, day, night, level and time', m.seed === g.seed && m.diff === g.diff.name && m.day === g.day() && m.level === g.level() && /^第 \d+ 日 · /.test(m.dayText) && /\d\d\/\d\d \d\d:\d\d/.test(m.whenText), m);
+    ok('summary of a save names island, difficulty, day, night, level and time', m.seed === g.seed && m.diff === g.diff.name && m.day === g.day() && m.level === g.level() && /^第 \d+ 日$/.test(m.dayText) && /\d\d\/\d\d \d\d:\d\d/.test(m.whenText), m);
     const old = JSON.parse(JSON.stringify(sv)); delete old.brief; const mo = XIEYI.Game.summary(old);
     ok('an old save without a brief still gets day, night and level from time and courage', mo.day === m.day && mo.night === m.night && mo.level === m.level && mo.deaths === p.deaths);
-    const t0 = w.time; w.time = 0; ok('day 1 before dusk reads 未入夜, dusk reads 第 1 夜, next morning reads 過了 1 夜', (() => { const at = (tt) => { w.time = tt; return XIEYI.Game.summary({ world: { time: tt }, player: {}, savedAt: 1 }).dayText; }; return at(0) === '第 1 日 · 未入夜' && at(DAY * 0.83) === '第 1 日 · 第 1 夜' && at(DAY * 1.4) === '第 2 日 · 過了 1 夜' && at(DAY * 1.1) === '第 2 日 · 第 1 夜'; })()); w.time = t0;
+    const t0 = w.time; w.time = 0; ok('v0.37: a save card names only the day — 第 N 日, no night', (() => { const at = (tt) => { w.time = tt; return XIEYI.Game.summary({ world: { time: tt }, player: {}, savedAt: 1 }).dayText; }; return at(0) === '第 1 日' && at(DAY * 0.83) === '第 1 日' && at(DAY * 1.4) === '第 2 日' && at(DAY * 1.1) === '第 2 日'; })()); w.time = t0;
     g.slot = 2; g.save(); const s2 = XIEYI.Game.readSave(2); g.slot = 1;
     ok('saving while in slot 2 writes slot 2 only and leaves slot 1 as it was', !!s2 && s2.seed === g.seed && XIEYI.Game.readSave(1).savedAt === sv.savedAt && XIEYI.Game.readSave(3) === null);
     XIEYI.Game.clearSave(2); ok('clearing slot 2 empties only slot 2', XIEYI.Game.readSave(2) === null && !!XIEYI.Game.readSave(1));
@@ -1680,19 +1725,23 @@ try {
   const cards = await page.$$eval('.save-card', (cs) => cs.map(c => ({ slot: c.dataset.slot, on: c.classList.contains('on'), empty: c.classList.contains('empty'), text: c.textContent })));
   ok2('start page shows three save cards', cards.length === 3 && cards.map(c => c.slot).join('') === '123');
   ok2('the newest save (slot 1) is selected by default', cards[0].on && !cards[1].on && !cards[2].on);
-  ok2('an occupied card tells island, difficulty, day, night, courage and time (no slept-nights count any more)', /島 #7/.test(cards[0].text) && /一般/.test(cards[0].text) && /第 \d+ 日/.test(cards[0].text) && /夜/.test(cards[0].text) && /膽氣第 \d+ 重/.test(cards[0].text) && !/睡過/.test(cards[0].text) && /存於 \d\d\/\d\d/.test(cards[0].text), cards[0].text);
+  ok2('an occupied card tells island, difficulty, day, courage and time (no night, no slept-nights — v0.37)', /島 #7/.test(cards[0].text) && /一般/.test(cards[0].text) && /第 \d+ 日/.test(cards[0].text) && !/夜/.test(cards[0].text) && /膽氣第 \d+ 重/.test(cards[0].text) && !/睡過/.test(cards[0].text) && /存於 \d\d\/\d\d/.test(cards[0].text), cards[0].text);
   ok2('slot 3 shows its own island, difficulty and courage', /島 #99/.test(cards[2].text) && /困難/.test(cards[2].text) && /膽氣第 5 重/.test(cards[2].text), cards[2].text);
   ok2('slot 2 is empty and says so', cards[1].empty && /空格/.test(cards[1].text) && !/繼續/.test(cards[1].text));
   await page.click('.save-card[data-slot="3"] .save-no');
   ok2('clicking a card selects it and the hint warns that 落筆 would overwrite', await page.$eval('.save-card.on', c => c.dataset.slot) === '3' && /覆蓋/.test(await page.$eval('#new-hint', e => e.textContent)));
   await page.keyboard.press('Enter'); await started();
-  const r1 = await page.evaluate(() => ({ slot: XIEYI.game.slot, seed: XIEYI.game.seed, diff: XIEYI.game.diff.key, last: localStorage.getItem('xieyi.slot') }));
+  const r1 = await page.evaluate(() => ({ slot: XIEYI.game.slot, seed: XIEYI.game.seed, diff: XIEYI.game.diff.key, last: localStorage.getItem('xieyi.slot'), day: XIEYI.DAY, wday: window.World.DAY, d: XIEYI.game.day(), bday: JSON.parse(localStorage.getItem('xieyi.save.v5.3')).brief.day }));
   ok2('Enter continues the selected slot: slot 3, island 99, hard', r1.slot === 3 && r1.seed === 99 && r1.diff === 'hard' && r1.last === '3', r1);
+  ok2('v0.37: the hard island runs 300-s days; the save made on 360-s days keeps its day number', r1.day === 300 && r1.wday === 300 && r1.d === r1.bday, r1);
   await page.goto(base, { waitUntil: 'load' });
   ok2('the last played slot is selected after reload', await page.$eval('.save-card.on', c => c.dataset.slot) === '3');
+  { await page.click('.diffrow button[data-diff="easy"]'); const de = await page.$eval('#diff-desc', e => e.textContent); await page.click('.diffrow button[data-diff="hard"]'); const dh = await page.$eval('#diff-desc', e => e.textContent); await page.click('.diffrow button[data-diff="normal"]'); const dn = await page.$eval('#diff-desc', e => e.textContent);
+    ok2('v0.37: the difficulty note tells how long a day is (四百二十／三百六十／三百息)', /一日四百二十息/.test(de) && /一日三百六十息/.test(dn) && /一日三百息/.test(dh), [de, dn, dh]); }
   await page.click('.save-card[data-slot="2"] .save-no'); await page.fill('#seed', '123'); await page.click('#btn-new'); await started();
-  const r2 = await page.evaluate(() => { XIEYI.game.save(); return { slot: XIEYI.game.slot, seed: XIEYI.game.seed, s2: JSON.parse(localStorage.getItem('xieyi.save.v5.2')).seed, s1: JSON.parse(localStorage.getItem('xieyi.save.v5')).seed, s3: JSON.parse(localStorage.getItem('xieyi.save.v5.3')).seed }; });
+  const r2 = await page.evaluate(() => { XIEYI.game.save(); return { slot: XIEYI.game.slot, seed: XIEYI.game.seed, s2: JSON.parse(localStorage.getItem('xieyi.save.v5.2')).seed, s1: JSON.parse(localStorage.getItem('xieyi.save.v5')).seed, s3: JSON.parse(localStorage.getItem('xieyi.save.v5.3')).seed, dl: JSON.parse(localStorage.getItem('xieyi.save.v5.2')).world.dayLen }; });
   ok2('落筆 on an empty slot starts island 123 in slot 2 and leaves slots 1 and 3 alone', r2.slot === 2 && r2.seed === 123 && r2.s2 === 123 && r2.s1 === 7 && r2.s3 === 99, r2);
+  ok2('v0.37: a new normal island saves 360-s days', r2.dl === 360, r2);
   await page.goto(base, { waitUntil: 'load' });
   await page.click('.save-card[data-slot="1"] .save-no'); await page.click('#btn-new'); await page.waitForTimeout(150);
   const armed = await page.evaluate(() => ({ started: !!window.XIEYI, text: document.getElementById('btn-new').textContent }));
