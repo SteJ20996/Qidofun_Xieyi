@@ -46,7 +46,7 @@
     '磊': { s: 15, walk: 0, kind: 'rock', ink: INK.rock, yield: { '石': 3 }, time: 3.0, need: '鎬', flavor: '三石為磊。要用鎬。' },
     '山': { s: 3, walk: 0, kind: 'rock', ink: INK.rock, yield: { '石': 2 }, time: 2.0, need: '鎬', to: '石', flavor: '山不可越，鎬可鑿之。' },
     '煤': { s: 13, walk: 0, kind: 'rock', ink: INK.black, yield: { '煤': 2 }, time: 3.0, need: '鎬', to: '石', flavor: '煤層。要用鎬。入灶火旺而久；礦二煤一入旺灶，煉成鐵。' },
-    '鐵': { s: 21, walk: 0, kind: 'rock', ink: INK.brick, yield: { '鐵礦': 2 }, bonus: { '鎢礦': 1 / 30 }, time: 3.5, need: '鎬', to: '石', flavor: '鐵礦脈。要用鎬。礦二煤一入旺灶，煉成鐵；鐵可打甲、盔、靴，鍛鋼具。鑿時三十分之一得鎢礦。' },
+    '鐵': { s: 21, walk: 0, kind: 'rock', ink: INK.brick, yield: { '鐵礦': 2 }, bonus: { '鎢礦': 1 / 18 }, trueBonus: true, time: 3.5, need: '鎬', to: '石', flavor: '鐵礦脈。要用鎬。礦二煤一入旺灶，煉成鐵；鐵可打甲、盔、靴，鍛鋼具。鑿時十八分之一得鎢礦（真隨機）。' },
     // —— 火
     '火': { s: 4, walk: 0, kind: 'fire', light: 2.5, ink: INK.red, flavor: '火。虎豹畏之。' },
     '炎': { s: 8, walk: 0, kind: 'fire', light: 3.5, ink: INK.red, flavor: '二火為炎。' },
@@ -142,9 +142,9 @@
     '布甲': { s: 10, kind: 'wear', slot: '甲', red: 0.03, flavor: '麻布甲。受傷減三分。' },
     '布帽': { s: 12, kind: 'wear', slot: '盔', red: 0.02, flavor: '麻布帽。受傷減二分。' },
     '布靴': { s: 13, kind: 'wear', slot: '靴', red: 0.01, flavor: '麻布靴。受傷減一分。' },
-    '鐵甲': { s: 21, kind: 'wear', slot: '甲', red: 0.14, iron: true, flavor: '鐵甲。受傷減一成四；鐵甲鐵盔鐵靴三件齊，毒不侵，但慢四分之一。' },
-    '鐵盔': { s: 21, kind: 'wear', slot: '盔', red: 0.07, iron: true, flavor: '鐵盔。受傷減七分。' },
-    '鐵靴': { s: 21, kind: 'wear', slot: '靴', red: 0.05, iron: true, flavor: '鐵靴。受傷減五分。' },
+    '鐵甲': { s: 21, kind: 'wear', slot: '甲', red: 0.14, iron: true, flavor: '鐵甲。受傷減一成四；鐵甲鐵盔鐵靴三件齊，毒不侵，但慢四分之一。修補用鐵 1、2、4、8（同一件第幾次）。' },
+    '鐵盔': { s: 21, kind: 'wear', slot: '盔', red: 0.07, iron: true, flavor: '鐵盔。受傷減七分。修補用鐵 1、2、4、8（同一件第幾次）。' },
+    '鐵靴': { s: 21, kind: 'wear', slot: '靴', red: 0.05, iron: true, flavor: '鐵靴。受傷減五分。修補用鐵 1、2、4、8（同一件第幾次）。' },
     '漁網': { s: 14, kind: 'build', tile: '網', flavor: '棉二麻二草三織成的小撒網，一乘一。拿著走到水邊，水上浮出淺色的網影；按 F 撒出，網影裡的魚一網打盡。耐久三十：網到 0、1、2、3 條以上各耗 1、2、4、7。四張可編成中網。' },
     '中漁網': { s: 14, kind: 'build', tile: '罟', flavor: '四張小網編成的撒網，二乘二。拿著走到水邊按 F 撒，網影裡的魚一網打盡。耐久九十。四張可編成大網。' },
     '大漁網': { s: 17, kind: 'build', tile: '罾', flavor: '三乘三的大撒網。拿著走到水邊按 F 撒，網影裡的魚一網打盡。耐久二百四十。' },
@@ -154,12 +154,12 @@
     '燭龍焚溟': { s: 58, kind: 'tool', tool: '焚', dmg: 120, dur: 199, flavor: '燭龍銜火，焚盡溟海。火屬而克海水，故為神兵。膽氣卅一重方可造、可揮：面向獸按 E，三格內諸獸同受灼燒，海中之物（蜃、龜）一百二十，陸上與天上之物減半。隨身的膽氣減益與九閽鳴雷相同，兩件同帶只算一重。按 L 拿出（手上已是神兵就換另一件）、P 收回。' },
     '九閽鳴雷': { s: 26, kind: 'tool', tool: '鎚', dmg: 120, dur: 199, flavor: '撼地之鎚。膽氣卅一重方可造、可掄：面向獸按 E，三格內諸獸同受一百二十傷。隨身則膽氣減得快（簡單四日、一般三日、困難二日一減，下限廿八／廿七／廿六重；困難另慢慢掉力），兩件神兵同帶也只算一重；低於卅一重掄不動。按 L 拿出、P 收回。' },
     '鐵礦': { s: 21, flavor: '鐵礦石。礦二煤一入旺灶，煉成鐵。' },
-    '鎢礦': { s: 21, flavor: '鎢礦石，鑿鐵礦脈時三十分之一的機會挖到。鎢礦一、鐵礦二、精煤一入旺灶，煉成鎢鋼。' },
+    '鎢礦': { s: 21, flavor: '鎢礦石，鑿鐵礦脈時十八分之一的機會挖到（真隨機）。鎢礦一、鐵礦二、精煤一入旺灶，煉成鎢鋼。' },
     '精煤': { s: 14, flavor: '八塊煤煉成的精煤。煉鎢鋼、鍛鎢鋼具要它；入灶可燒九百息。' },
     '鎢鋼': { s: 21, flavor: '鎢鋼。可鍛刀鎬鋤劍斧，可打甲盔靴，強過鋼。' },
-    '鎢鋼甲': { s: 21, kind: 'wear', slot: '甲', red: 0.22, iron: true, tung: true, life: 360, flavor: '鎢鋼甲。受傷減二成二，壽命三百六十日。修補要鎢鋼一、力十二、飽十五。' },
-    '鎢鋼盔': { s: 21, kind: 'wear', slot: '盔', red: 0.11, iron: true, tung: true, life: 360, flavor: '鎢鋼盔。受傷減一成一，壽命三百六十日。' },
-    '鎢鋼靴': { s: 21, kind: 'wear', slot: '靴', red: 0.08, iron: true, tung: true, life: 360, flavor: '鎢鋼靴。受傷減八分，壽命三百六十日。' },
+    '鎢鋼甲': { s: 21, kind: 'wear', slot: '甲', red: 0.22, iron: true, tung: true, life: 360, flavor: '鎢鋼甲。受傷減二成二，壽命三百六十日。修補第一次鐵一、再來鐵二、鐵三鎢鋼一、鐵六鎢鋼二，力十二、飽十五。' },
+    '鎢鋼盔': { s: 21, kind: 'wear', slot: '盔', red: 0.11, iron: true, tung: true, life: 360, flavor: '鎢鋼盔。受傷減一成一，壽命三百六十日。修補第一次鐵一、再來鐵二、鐵三鎢鋼一、鐵六鎢鋼二，力十二、飽十五。' },
+    '鎢鋼靴': { s: 21, kind: 'wear', slot: '靴', red: 0.08, iron: true, tung: true, life: 360, flavor: '鎢鋼靴。受傷減八分，壽命三百六十日。修補第一次鐵一、再來鐵二、鐵三鎢鋼一、鐵六鎢鋼二，力十二、飽十五。' },
     '鐵': { s: 21, flavor: '煉好的鐵。可打甲、盔、靴，鍛鋼具，鑄鼎。' },
     '燈帽': { s: 33, kind: 'wear', slot: '帽', light: 2, single: true, fuel: 400, flavor: '麻布燈帽。戴在頭上就有光，兩格，與盔不衝突；裝一根蠟燭燒四百息，燒完選中蠟燭按 V 續上。' },
     '竹筏': { s: 18, kind: 'tool', flavor: '囊中有筏，可行於淺水，捉魚更易。' },
@@ -176,17 +176,17 @@
     '石劍': { s: 20, kind: 'tool', tool: '劍', dmg: 40, dur: 40, flavor: '一下四十。鹿一劍，蛇蛛蟾三劍，豹狼四劍，虎八劍。' },
     '石斧': { s: 13, kind: 'tool', tool: '斧', dmg: 15, dur: 40, flavor: '伐木伐竹快一倍。' },
     // 鋼具：鐵二木一煤一鍛成，耐久與戰力是石具的 140%
-    '鋼刀': { s: 16, kind: 'tool', tool: '刀', dmg: 42, dur: 56, flavor: '鋼刀。一下四十二，耐久五十六。' },
-    '鋼鎬': { s: 16, kind: 'tool', tool: '鎬', dmg: 21, dur: 56, flavor: '鋼鎬。鑿山採礦，耐久五十六。' },
-    '鋼鋤': { s: 16, kind: 'tool', tool: '鋤', dmg: 21, dur: 56, flavor: '鋼鋤。鋤地成田，耐久五十六。' },
-    '鋼劍': { s: 16, kind: 'tool', tool: '劍', dmg: 56, dur: 56, flavor: '鋼劍。一下五十六，耐久五十六。' },
-    '鋼斧': { s: 16, kind: 'tool', tool: '斧', dmg: 21, dur: 56, flavor: '鋼斧。伐木伐竹，耐久五十六。' },
+    '鋼刀': { s: 16, kind: 'tool', tool: '刀', dmg: 42, dur: 56, flavor: '鋼刀。一下四十二，耐久五十六。重磨用鐵 1、2、4、8（同一把第幾次）。' },
+    '鋼鎬': { s: 16, kind: 'tool', tool: '鎬', dmg: 21, dur: 56, flavor: '鋼鎬。鑿山採礦，耐久五十六。重磨用鐵 1、2、4、8（同一把第幾次）。' },
+    '鋼鋤': { s: 16, kind: 'tool', tool: '鋤', dmg: 21, dur: 56, flavor: '鋼鋤。鋤地成田，耐久五十六。重磨用鐵 1、2、4、8（同一把第幾次）。' },
+    '鋼劍': { s: 16, kind: 'tool', tool: '劍', dmg: 56, dur: 56, flavor: '鋼劍。一下五十六，耐久五十六。重磨用鐵 1、2、4、8（同一把第幾次）。' },
+    '鋼斧': { s: 16, kind: 'tool', tool: '斧', dmg: 21, dur: 56, flavor: '鋼斧。伐木伐竹，耐久五十六。重磨用鐵 1、2、4、8（同一把第幾次）。' },
     // 鎢鋼具：鎢鋼二木一精煤一鍛成，強度是鋼具的 150%、耐久是鋼具的 200%；重磨要耗力也耗飽
-    '鎢鋼刀': { s: 21, kind: 'tool', tool: '刀', dmg: 63, dur: 112, tung: true, flavor: '鎢鋼刀。一下六十三，耐久一百一十二。重磨耗力八、飽十。' },
-    '鎢鋼鎬': { s: 21, kind: 'tool', tool: '鎬', dmg: 32, dur: 112, tung: true, flavor: '鎢鋼鎬。耐久一百一十二。重磨耗力八、飽十。' },
-    '鎢鋼鋤': { s: 21, kind: 'tool', tool: '鋤', dmg: 32, dur: 112, tung: true, flavor: '鎢鋼鋤。耐久一百一十二。重磨耗力八、飽十。' },
-    '鎢鋼劍': { s: 21, kind: 'tool', tool: '劍', dmg: 84, dur: 112, tung: true, flavor: '鎢鋼劍。一下八十四，耐久一百一十二。重磨耗力八、飽十。' },
-    '鎢鋼斧': { s: 21, kind: 'tool', tool: '斧', dmg: 32, dur: 112, tung: true, flavor: '鎢鋼斧。耐久一百一十二。重磨耗力八、飽十。' },
+    '鎢鋼刀': { s: 21, kind: 'tool', tool: '刀', dmg: 63, dur: 112, tung: true, flavor: '鎢鋼刀。一下六十三，耐久一百一十二。重磨用鐵一、鐵二、鐵三鎢鋼一、鐵六鎢鋼二，耗力八、飽十。' },
+    '鎢鋼鎬': { s: 21, kind: 'tool', tool: '鎬', dmg: 32, dur: 112, tung: true, flavor: '鎢鋼鎬。耐久一百一十二。重磨用鐵一、鐵二、鐵三鎢鋼一、鐵六鎢鋼二，耗力八、飽十。' },
+    '鎢鋼鋤': { s: 21, kind: 'tool', tool: '鋤', dmg: 32, dur: 112, tung: true, flavor: '鎢鋼鋤。耐久一百一十二。重磨用鐵一、鐵二、鐵三鎢鋼一、鐵六鎢鋼二，耗力八、飽十。' },
+    '鎢鋼劍': { s: 21, kind: 'tool', tool: '劍', dmg: 84, dur: 112, tung: true, flavor: '鎢鋼劍。一下八十四，耐久一百一十二。重磨用鐵一、鐵二、鐵三鎢鋼一、鐵六鎢鋼二，耗力八、飽十。' },
+    '鎢鋼斧': { s: 21, kind: 'tool', tool: '斧', dmg: 32, dur: 112, tung: true, flavor: '鎢鋼斧。耐久一百一十二。重磨用鐵一、鐵二、鐵三鎢鋼一、鐵六鎢鋼二，耗力八、飽十。' },
   };
   const TOOL_NAMES = { '刀': '刀', '鎬': '鎬', '鋤': '鋤', '劍': '劍', '斧': '斧', '鎚': '九閽鳴雷', '焚': '燭龍焚溟' };   // 石、鋼、鎢鋼都算
   // 船：兩種。off 是行船時船身相對於人的格子（人站在船身裡）；hp 命；slots 船頭放得下幾個獸首骨
@@ -226,7 +226,7 @@
     { id: 'sling', out: '彈弓', n: 1, need: { '木': 2, '麻': 3 }, sta: 4, note: '射石子：九格內，一下六；被打的獸七格內撲過來' },
     { id: 'seagod', out: '燭龍焚溟', n: 1, need: { '鎢鋼': 4, '精煤': 6, '火把': 4, '海水瓶': 3 }, sta: 60, level: 31, note: '三格內諸獸同受灼燒：海中之物一百二十，陸上天上減半' },
     { id: 'grind', out: null, need: { '石': 1, '石子': 1, '木': 1 }, sta: 8, note: '磨礪：選刀、鎬、鋤、劍、斧', choose: ['石刀', '石鎬', '石鋤', '石劍', '石斧'] },
-    { id: 'regrind', out: null, need: { '石子': 1 }, sta: 3, note: '重磨手中的工具，耐久復滿；同一把第一次石子一，再來二、四、八，八為上限', regrind: true },
+    { id: 'regrind', out: null, need: { '石子': 1 }, sta: 3, note: '重磨手中的工具，耐久復滿。同一把第 n 次：石具石子 1、2、4、8；鋼具鐵 1、2、4、8；鎢鋼具鐵一、鐵二、鐵三鎢鋼一、鐵六鎢鋼二；之後照最後一檔', regrind: true },
     { id: 'forge', out: null, need: { '鐵': 2, '木': 1, '煤': 1 }, sta: 10, note: '鍛鋼具：耐久與戰力是石具的 140%', choose: ['鋼刀', '鋼鎬', '鋼鋤', '鋼劍', '鋼斧'] },
     { id: 'coke', out: '精煤', n: 1, need: { '煤': 8 }, sta: 4, note: '八煤成一精煤，煉鎢鋼用' },
     { id: 'forgew', out: null, need: { '鎢鋼': 2, '木': 1, '精煤': 1 }, sta: 16, note: '鍛鎢鋼具：強度是鋼的 150%、耐久 200%', choose: ['鎢鋼刀', '鎢鋼鎬', '鎢鋼鋤', '鎢鋼劍', '鎢鋼斧'] },
@@ -285,6 +285,8 @@
     const t = U.fbm(x / 150 - 700, y / 150 + 700, seed + 29, 3);
     return { h, m, t, dd };
   }
+  // 鐵礦多 8%（v0.30 使用者定）：零星的礦脈機率 ×1.08；礦叢平均面積 9 + 16×0.4 = 15.4 格 ×1.08 = 16.632，外圈留下的機率因此是 0.477
+  const IRON_P = 1.08, IRON_RING = (15.4 * IRON_P - 9) / 16;
   function naturalTile(x, y, seed) {
     const { h, m, t } = fields(x, y, seed);
     const d = U.rand2(x, y, seed + 5);
@@ -293,9 +295,9 @@
     if (h < 0.395) return '水';
     if (h < 0.415) return d < 0.8 ? '沙' : d < 0.93 ? '礫' : '石';
     if (h < BOG_H && m > BOG_M && U.fbm(x / 13 + 500, y / 13 - 500, seed + 53, 2) > BOG_F) return '沼';   // 沼澤（v0.28）：近水的濕低地，極少見
-    const o = U.rand2(x, y, seed + 11);   // 山裡偶有煤層與鐵礦脈
-    if (h > 0.69) return d < 0.75 ? '雪' : (o < 0.04 ? '鐵' : o < 0.09 ? '煤' : '山');
-    if (h > 0.645) return d < 0.72 ? (o < 0.03 ? '鐵' : o < 0.07 ? '煤' : '山') : (o < 0.03 ? '煤' : '石');
+    const o = U.rand2(x, y, seed + 11);   // 山裡偶有煤層與鐵礦脈（v0.30 鐵多 8%：0.04→0.0432、0.03→0.0324，煤的份量不變）
+    if (h > 0.69) return d < 0.75 ? '雪' : (o < IRON_P * 0.04 ? '鐵' : o < IRON_P * 0.04 + 0.05 ? '煤' : '山');
+    if (h > 0.645) return d < 0.72 ? (o < IRON_P * 0.03 ? '鐵' : o < IRON_P * 0.03 + 0.04 ? '煤' : '山') : (o < 0.03 ? '煤' : '石');
     if (h > 0.615) return d < 0.4 ? '石' : d < 0.5 ? '礫' : (m > 0.5 ? '木' : '草');
 
     // 平原與丘陵：由濕度決定植被。棉的機率減半，麻是棉的一半
@@ -341,7 +343,7 @@
       centers.push(found);
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
         const nx = found[0] + dx, ny = found[1] + dy, ring2 = Math.max(Math.abs(dx), Math.abs(dy)) === 2;
-        if (ring2 && U.rand2(nx, ny, seed + 41) > 0.4) continue;
+        if (ring2 && U.rand2(nx, ny, seed + 41) > (kind === '鐵' ? IRON_RING : 0.4)) continue;
         if (inland(nx, ny) && !m.has(nx + ',' + ny)) m.set(nx + ',' + ny, kind);
       }
     });

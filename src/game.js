@@ -55,6 +55,8 @@
   const KILL_ONLY_LEVEL = 22, KILL_DAY = 0.8, KILL_NIGHT = 1.05;   // 廿二重起膽氣只從斃敵對生靈得來（製作採集讀碑都不長）；斃敵的膽氣白日八成、夜裡加半成（四捨五入）
   const WARN_LIGHT = 0.5, WARN_POP = 0.25;    // 五條數值不到五成亮燈、不到四分之一彈窗提醒（回到五成以上才會再提醒）
   const WEAR_CAP = 6, REPAIR_WM = 1.5, HAT_FUEL = 400;
+  // 修鐵器與鎢鋼器（v0.30 使用者定）：同一件第 n 次修。鐵器（鐵甲盔靴、鋼具）鐵 1、2、4、8；鎢鋼器（鎢鋼甲盔靴、鎢鋼具）鐵一、鐵二、鐵三鎢鋼一、鐵六鎢鋼二；之後都照最後一檔
+  const IRON_FIX = [1, 2, 4, 8], TUNG_FIX = [{ '鐵': 1 }, { '鐵': 2 }, { '鐵': 3, '鎢鋼': 1 }, { '鐵': 6, '鎢鋼': 2 }];
   const FOG_TOLL = 0.1, FAN_REACH = 3;
   // 海：船分孤帆與方舟（大小、命、船頭首骨格數在 G.SHIPS）。修船每次回滿命的 SHIP_REPAIR_FRAC，第 n 次修要 n 塊木板。
   // 船毀了落水，SWIM_TIME 息內游上岸，否則溺死；游泳時飽、愜意、力的消耗 ×SWIM_DRAIN、力不回反掉，武器傷害 ×SWIM_DMG。
@@ -202,16 +204,26 @@
       if (this.totemOn() && !was) this.toast('山海衣', '五件穿齊、一件鎢鋼、十六重膽氣，衣上浮出山海經裡的獸紋。七格內的獸慢一倍卻狠三分之二；你的攻擊 ' + Math.round(this.dmgMult() * 100) + '%、受傷 ' + Math.round(this.takenMult() * 100) + '%。');
       return true;
     }
-    repairWorn(slot) {   // 布件用麻布一、鐵件用鐵一，力 4：壽命回滿，損耗從 1.5 倍重新起算；燈帽則是續蠟燭
+    metalOf(n) { const it = ITEMS[n] || {}; return it.tung ? 'tung' : it.iron || (it.kind === 'tool' && n.charAt(0) === '鋼') ? 'iron' : ''; }   // 鎢鋼器、鐵器（鐵甲盔靴與鋼具）；其餘是石、布、神兵
+    fixCost(s) {   // 這一件下一次修要什麼：鐵器、鎢鋼器照修過幾次（s.rg）加價；石具、布件、神兵回 null
+      const m = s && this.metalOf(s.n); if (!m) return null; const k = Math.min(s.rg || 0, 3);
+      return m === 'tung' ? Object.assign({}, TUNG_FIX[k]) : { '鐵': IRON_FIX[k] };
+    }
+    matText(d) { return Object.keys(d).map(n => n + ' ' + d[n]).join('、'); }
+    hasAll(d) { for (const n in d) if (this.count(n) < d[n]) return false; return true; }
+    repairWorn(slot) {   // 布件用麻布一；鐵件、鎢鋼件照 fixCost 加價（力 4；鎢鋼力 12、飽 15）：壽命回滿，損耗從 1.5 倍重新起算；燈帽則是續蠟燭
       const p = this.player, s = p.worn[slot]; if (!s || !this.canAct()) return false;
       if (slot === '帽') { if (this.count('蠟燭') < 1) { this.message('續燈帽要一根蠟燭。'); SFX.fail(); return false; } this.removeItem('蠟燭', 1); s.fuel = HAT_FUEL; this.barSig = ''; this.buildBag(); this.message('燈帽續上一根蠟燭：四百息。'); SFX.write(); return true; }
-      const it = ITEMS[s.n], mat = it.tung ? '鎢鋼' : it.iron ? '鐵' : '麻布', sta = it.tung ? 12 : 4, food = it.tung ? 15 : 0;   // 鎢鋼具修補耗力也耗飽
-      if (this.count(mat) < 1) { this.message('修補「' + s.n + '」要' + mat + '一' + (food ? '、力 ' + sta + '、飽 ' + food : '') + '。'); SFX.fail(); return false; }
+      const it = ITEMS[s.n], need = this.fixCost(s) || { '麻布': 1 }, sta = it.tung ? 12 : 4, food = it.tung ? 15 : 0;   // 鎢鋼件修補耗力也耗飽
+      if (!this.hasAll(need)) { this.message('修補「' + s.n + '」' + (s.rg ? '（修過 ' + s.rg + ' 次）' : '') + '要' + this.matText(need) + (food ? '，力 ' + sta + '、飽 ' + food : '') + '。'); SFX.fail(); return false; }
       if (food && p.food < food) { this.message('太餓了，修不動鎢鋼。'); SFX.fail(); return false; }
       if (!this.spendSta(sta)) return false;
       if (food) p.food -= food;
-      this.removeItem(mat, 1); s.dur = this.lifeOf(s); s.wm = REPAIR_WM; this.barSig = ''; this.buildBag(); SFX.fuse();
-      this.message('「' + s.n + '」修補好了：壽命回滿，損耗從 150% 起算。'); return true;
+      for (const n in need) this.removeItem(n, need[n]);
+      if (this.metalOf(s.n)) s.rg = (s.rg || 0) + 1;
+      s.dur = this.lifeOf(s); s.wm = REPAIR_WM; this.barSig = ''; this.buildBag(); SFX.fuse();
+      const next = this.fixCost(s);
+      this.message('「' + s.n + '」修補好了，用了' + this.matText(need) + '：壽命回滿，損耗從 150% 起算。' + (next ? '下次要' + this.matText(next) + '。' : '')); return true;
     }
     takeOff(slot) {
       const p = this.player, s = p.worn[slot]; if (!s) return;
@@ -971,7 +983,7 @@
       if (d.regrow) w.schedule(a.x, a.y, to, a.ch, d.regrow);         // 草木會長回來
       let got = [];
       for (const n in d.yield) { if (shelf && shelf.length && n === '灶') this.addItem('灶', 1, { store: shelf }); else this.addItem(n, d.yield[n]); got.push(n + (d.yield[n] > 1 ? '×' + d.yield[n] : '')); }
-      if (d.bonus) for (const n in d.bonus) if (Math.random() < d.bonus[n]) { this.addItem(n, 1); got.push(n); }
+      if (d.bonus) for (const n in d.bonus) if ((d.trueBonus ? U.trueRand() : Math.random()) < d.bonus[n]) { this.addItem(n, 1); got.push(n); }   // 鐵礦脈出鎢礦是真隨機（v0.30）
       if (a.useTool) this.wearTool();
       p.sta = Math.max(0, p.sta - this.ironDrain()); this.stats.gathered++;
       if (d.kind !== 'object') this.addCourage(1);                          // 採天然的才長膽氣，拆回自己放的不算
@@ -1393,7 +1405,7 @@
     }
     canCraft(r) { const need = this.needOf(r); for (const n in need) if (this.count(n) < need[n]) return false; return true; }
     regrindCost(s) { return Math.min(REGRIND_CAP, Math.pow(2, (s && s.rg) || 0)); }   // 1、2、4、8、8……
-    needOf(r) { if (r.regrind) return { '石子': this.regrindCost(this.activeTool()) }; if (r.mend) { const k = this.mendCost(this.heldNet()); return { '棉': k, '麻': k }; } return r.need; }   // 重磨的料看手上那把磨過幾次；加固看手裡那張網固過幾次
+    needOf(r) { if (r.regrind) { const s = this.activeTool(); return this.fixCost(s) || { '石子': this.regrindCost(s) }; } if (r.mend) { const k = this.mendCost(this.heldNet()); return { '棉': k, '麻': k }; } return r.need; }   // 重磨的料看手上那把磨過幾次；加固看手裡那張網固過幾次
     mendCost(x) { return Math.min(REGRIND_CAP, Math.pow(2, (x && x.rf) || 0)); }   // 加固漁網：棉麻各 1、2、4、8、8……（x 是網的記錄或囊裡那疊）
     heldNet() { const s = this.held(); const it = s && ITEMS[s.n]; return it && it.tile && DB[it.tile] && DB[it.tile].net ? s : null; }   // 手裡選中的那張網
     netName(size) { return size === 1 ? '漁網' : size === 2 ? '中漁網' : '大漁網'; }
@@ -1484,8 +1496,8 @@
         const tung = !!ITEMS[s.n].tung, extraSta = tung ? 5 : 0, food = tung ? 10 : 0;   // 鎢鋼具重磨耗力八、飽十
         if (p.sta < r.sta + extraSta) { this.message('力氣不夠，歇一歇（鎢鋼具要力 ' + (r.sta + extraSta) + '）。'); SFX.fail(); return; }
         if (food && p.food < food) { this.message('太餓了，磨不動鎢鋼。'); SFX.fail(); return; }
-        const cost = this.regrindCost(s); this.removeItem('石子', cost); s.rg = (s.rg || 0) + 1;
-        p.sta -= r.sta + extraSta; if (food) p.food -= food; s.dur = ITEMS[s.n].dur; this.barSig = ''; this.afterCraft(r); this.message('「' + s.n + '」磨利了，用了石子 ' + cost + '；下次要 ' + this.regrindCost(s) + '。'); SFX.fuse(); this.buildCraft(); this.buildBag(); return;
+        const need = this.needOf(r); for (const n in need) this.removeItem(n, need[n]); s.rg = (s.rg || 0) + 1;   // 石具用石子；鋼具、鎢鋼具用鐵（與鎢鋼），v0.30
+        p.sta -= r.sta + extraSta; if (food) p.food -= food; s.dur = ITEMS[s.n].dur; this.barSig = ''; this.afterCraft(r); this.message('「' + s.n + '」' + (this.metalOf(s.n) ? '修好了' : '磨利了') + '，用了' + this.matText(need) + '；下次要' + this.matText(this.needOf(r)) + '。'); SFX.fuse(); this.buildCraft(); this.buildBag(); return;
       }
       const def = ITEMS[out], owned = def && def.slot ? this.ownedPiece(out) : null;
       if (owned) {       // 同一類衣甲只留一件：再造只是翻新
@@ -1869,7 +1881,7 @@
           const s = p.worn[k], el = document.createElement('div');
           el.className = 'slot bag worn' + (s ? '' : ' empty');
           if (s && s.fuel !== undefined) { el.innerHTML = '<span class="ch word">' + s.n + '</span><span class="cost">' + (s.fuel > 0 ? Math.ceil(s.fuel) + '息' : '滅') + '</span><i class="dur" style="width:' + Math.round(100 * s.fuel / HAT_FUEL) + '%"></i>'; el.title = ITEMS[s.n].flavor + '（點一下脫下，右鍵用一根蠟燭續上）'; }
-          else if (s) { const rate = Math.round(this.wearRate(s) * 100) + '%'; el.innerHTML = '<span class="ch word' + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">' + this.effDays(s) + '日</span><i class="dur" style="width:' + Math.round(100 * s.dur / this.lifeOf(s)) + '%"></i>'; el.title = ITEMS[s.n].flavor + '（照目前損耗速度 ' + rate + ' 還能穿 ' + this.effDays(s) + ' 日；點一下脫下，右鍵修補：' + (ITEMS[s.n].tung ? '鎢鋼一、力 12、飽 15' : (ITEMS[s.n].iron ? '鐵' : '麻布') + '一、力 4') + '）'; }
+          else if (s) { const rate = Math.round(this.wearRate(s) * 100) + '%'; el.innerHTML = '<span class="ch word' + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">' + this.effDays(s) + '日</span><i class="dur" style="width:' + Math.round(100 * s.dur / this.lifeOf(s)) + '%"></i>'; el.title = ITEMS[s.n].flavor + '（照目前損耗速度 ' + rate + ' 還能穿 ' + this.effDays(s) + ' 日；點一下脫下，右鍵修補：' + this.matText(this.fixCost(s) || { '麻布': 1 }) + (ITEMS[s.n].tung ? '，力 12、飽 15' : '，力 4') + (s.rg ? '；修過 ' + s.rg + ' 次' : '') + '）'; }
           else { el.innerHTML = '<span class="ch">' + k + '</span>'; el.title = '身上：' + k + '。囊裡選中衣甲按 F 穿上。'; }
           el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; if (ev.button === 2) this.repairWorn(k); else this.takeOff(k); });
           el.addEventListener('contextmenu', (ev) => ev.preventDefault());
