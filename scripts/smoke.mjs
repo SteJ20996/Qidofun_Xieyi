@@ -202,11 +202,11 @@ const result = await page.evaluate(async () => {
   await until(() => !g.ents.list.includes(g2), 4000);
   ok('by day a ghost in the woods freezes, one outside dissipates', g.ents.list.includes(g1) && g1.frozen && !g.ents.list.includes(g2));
   g.ents.remove(g1);
-  // 毒蛇：咬一口中毒五秒；連咬十五口必死
+  // 毒蛇：咬一口中毒九秒、每秒一點五（v0.28.1 起，原本五秒每秒三）；連咬十五口必死
   hold('木'); w.time = DAY * 13 + DAY * 0.3;
   face(1, 0); w.set(T().x, T().y, '草'); const snake = g.ents.add('蛇', T().x, T().y, { moveT: 0, atk: 0 }); p.hp = 100; p.biteN = 0; p.biteLast = -99;
   await until(() => p.poisonT > 0, 3000);
-  ok('snake bite poisons (3/s for 5 s)', p.poisonT > 0 && p.poisonPer === 3 && p.biteN === 1, [p.poisonT, p.poisonPer, p.biteN]);
+  ok('snake bite poisons (1.5/s for 9 s)', p.poisonT > 5 && p.poisonT <= 9 && p.poisonPer === 1.5 && p.biteN === 1, [p.poisonT, p.poisonPer, p.biteN]);
   ok('hostile beasts bite every 2.67 s and maul every 1.6 s (a quarter slower)', Math.abs(snake.atk - 2.0 * 4 / 3) < 0.3 && snake.hp === 90, [snake.atk, snake.hp]);
   const hpP = p.hp; await sleep(1000);
   ok('poison drains hp and screen tints green', p.hp < hpP && g.vignette().green > 0, [hpP - p.hp]);
@@ -1291,7 +1291,7 @@ const result = await page.evaluate(async () => {
     const hsCalm = !E.isHostile(hs); hs.angry = true;
     ok('one spider in ten is venomous: it hunts on sight; a harmless one only once angered', vs.venom === true && hs.venom === false && E.isHostile(vs) && hsCalm && E.isHostile(hs));
     p.poisonT = 0; p.poisonPer = 0; p.biteN = 0; vs.atk = 0; E.bite(vs, g);
-    ok('a venomous spider poisons at half the snake rate: 1.5 a second for 5 s', p.poisonPer === 1.5 && p.poisonT === 5 && D['蛇'].bite === 3, [p.poisonPer, p.poisonT]);
+    ok('a venomous spider poisons at half the snake rate: 0.75 a second, for the same 9 s', p.poisonPer === 0.75 && p.poisonT === 9 && D['蛇'].bite === 1.5 && D['蛇'].venomT === 9, [p.poisonPer, p.poisonT]);
     p.poisonT = 0; p.poisonPer = 0; p.hp = 100; hs.atk = 0; E.bite(hs, g);
     ok('a harmless spider only nips for 2, no poison', p.hp === 98 && p.poisonT === 0, [p.hp, p.poisonT]);
     E.remove(vs); E.remove(hs); p.hp = 100;

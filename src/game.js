@@ -1124,11 +1124,11 @@
     }
     turtleGone(e, d) { if (d <= 14) this.message('龜潛進海裡，不見了。'); }
     bite(e, per) {
-      const p = this.player, now = this.world.time, per2 = Math.round(per * (this.totemNear(e.x, e.y) ? 5 / 3 : 1) * this.takenMult() * 10) / 10;   // 毒蛛每秒一點五：留一位小數
+      const p = this.player, now = this.world.time, per2 = Math.round(per * (this.totemNear(e.x, e.y) ? 5 / 3 : 1) * this.takenMult() * 100) / 100;   // 蛇每秒一點五、毒蛛零點七五：留兩位小數
       this.armorHit(); this.platformRecoil(e);
       if (this.ironFull()) { p.hurtT = 3; this.renderer.shake = 0.2; SFX.fail(); this.message(this.beastName(e) + '咬在鐵甲上，毒牙咬不進。'); return; }
       p.biteN = (now - p.biteLast <= 6) ? p.biteN + 1 : 1; p.biteLast = now; this.stats.bites++;
-      this.poison(per2, 5); p.hurtT = 6; this.renderer.shake = 0.3; if (e.type === '蛇' || e.type === '蛛') SFX.beast(e.type); else SFX.fail();
+      this.poison(per2, (DB[e.type] && DB[e.type].venomT) || 5); p.hurtT = 6;   // 中毒幾秒：蛇與毒蛛九秒（v0.28.1），蟾五秒 this.renderer.shake = 0.3; if (e.type === '蛇' || e.type === '蛛') SFX.beast(e.type); else SFX.fail();
       if (p.biteN >= 15) { p.hp = 0; this.message('連咬十五口，毒發身亡。'); return; }
       this.message(this.beastName(e) + '咬了你一口（連咬 ' + p.biteN + '）。中毒：每秒 −' + per2 + '。藥可解。');
     }
