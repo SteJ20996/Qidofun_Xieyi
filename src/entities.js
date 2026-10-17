@@ -273,7 +273,7 @@
         if (e.foe) {
           if (!this.list.includes(e.foe) || e.foe.hp <= 0 || U.cheb(e.x, e.y, e.foe.x, e.foe.y) > 6) e.foe = null;
           else if (U.cheb(e.x, e.y, e.foe.x, e.foe.y) <= 1 && e.atk <= 0) {
-            const dmg = DB[e.type].atk || (DB[e.type].bite || 2) * 4;
+            const dmg = DB[e.type].atk || Math.round((DB[e.type].bite || 2) * (DB[e.type].venomT || 5));   // 咬鷹：一口的毒全算上（蛇 14、毒蛛 7、蟾 10）
             e.foe.hp -= dmg; e.atk = HOSTILE.indexOf(e.type) >= 0 ? 1.6 : 1.2; e.moveT = 0.5;
             if (e.foe.hp <= 0) { g.companionDied(e.foe, e); e.foe = null; }
             continue;
