@@ -1517,30 +1517,44 @@ const result = await page.evaluate(async () => {
     const gc = []; let sf = true; for (let i = 0; i < 4; i++) { const i0 = g.count('鐵'), t0 = g.count('鎢鋼'); p.tools[0].dur = 3; p.sta = 50; p.food = 50; g.craft('regrind'); gc.push((i0 - g.count('鐵')) + '+' + (t0 - g.count('鎢鋼'))); if (p.sta !== 34 || Math.round(p.food) !== 30) sf = false; }
     ok('v0.32: mending a god weapon costs twice tungsten — 鐵 2; 鐵 4; 鐵 6 + 鎢鋼 2; 鐵 12 + 鎢鋼 4 — and 16 stamina, 20 food', gc.join(',') === '2+0,4+0,6+2,12+4' && sf && p.tools[0].dur === 199, [gc, p.sta, p.food]);
     p.tools = keepT; p.tool = keepI; g.removeItem('鐵', 99); g.removeItem('鎢鋼', 99); g.barSig = ''; g.buildBag(); }
-  // —— v0.32：滑鼠點遠處的格子，自己找路走過去
+  // —— v0.32／v0.33：滑鼠點遠處的格子，自己找路走到它旁邊（不踩上去）、面向它；點會動的生靈就跟著
   { const X = p.x, Y = p.y; g.ents.list = g.ents.list.filter(e => e.type === '龍' || e.type === '鷹'); unarm(); p.sailing = false; p.swimming = false;
-    for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) w.set(X + dx, Y + dy, '草');
-    for (let dy = -3; dy <= 3; dy++) w.set(X + 3, Y + dy, '磚');   // 一道南北向的磚，擋在東邊
+    for (let dy = -9; dy <= 9; dy++) for (let dx = -9; dx <= 9; dx++) w.set(X + dx, Y + dy, '草');
     const goTo = async (tx, ty, ms) => { g.walkTo(tx, ty); await until(() => !g.path && p.moveT <= 0, ms || 8000); };
-    const path = g.findPath(X + 6, Y);
-    ok('v0.32: clicking a tile behind a wall finds a way round it (never through the bricks)', !!path && path.length >= 7 && path.every(([x, y]) => w.get(x, y) !== '磚') && path[path.length - 1][0] === X + 6, path && path.length);
+    const faces = (tx, ty) => p.x + p.fx === tx && p.y + p.fy === ty && !(p.x === tx && p.y === ty);
+    await goTo(X + 5, Y);
+    ok('v0.33: clicking a grass tile five east stops on the nearest of its eight neighbours (four east), facing it — not on it', p.x === X + 4 && p.y === Y && faces(X + 5, Y), [p.x - X, p.y - Y, p.fx, p.fy]);
+    p.x = p.rx = X; p.y = p.ry = Y; for (let dy = -3; dy <= 3; dy++) w.set(X + 3, Y + dy, '磚');   // 一道南北向的磚，擋在東邊
+    const path = g.findPath(X + 6, Y), last = path && path[path.length - 1];
+    ok('v0.32: clicking a tile behind a wall finds a way round it (never through the bricks), ending beside the tile', !!path && path.length >= 6 && path.every(([x, y]) => w.get(x, y) !== '磚' && !(x === X + 6 && y === Y)) && U.cheb(last[0], last[1], X + 6, Y) === 1, path && path.length);
     await goTo(X + 6, Y);
-    ok('…and walks there step by step', p.x === X + 6 && p.y === Y, [p.x - X, p.y - Y]);
-    w.set(X + 1, Y + 4, '山'); await goTo(X + 1, Y + 4);
-    ok('v0.32: clicking a tile you cannot stand on (a mountain) walks up beside it and faces it, ready for E', U.cheb(p.x, p.y, X + 1, Y + 4) === 1 && p.x + p.fx === X + 1 && p.y + p.fy === Y + 4, [p.x - X, p.y - Y, p.fx, p.fy]);
-    g.walkTo(X - 6, Y - 6); await sleep(250); await press('KeyD', 120);
-    ok('v0.32: pressing a direction key drops the clicked walk', !g.path, g.path && g.path.length);
+    ok('…walks there step by step and faces the clicked tile, ready for E or F', U.cheb(p.x, p.y, X + 6, Y) === 1 && faces(X + 6, Y), [p.x - X, p.y - Y]);
+    w.set(X + 1, Y + 5, '山'); await goTo(X + 1, Y + 5);
+    ok('v0.32: clicking a tile you cannot stand on (a mountain) walks up beside it and faces it', U.cheb(p.x, p.y, X + 1, Y + 5) === 1 && faces(X + 1, Y + 5), [p.x - X, p.y - Y, p.fx, p.fy]);
+    g.walkTo(X - 7, Y - 7); await sleep(250); await press('KeyD', 120);
+    ok('v0.32: pressing a direction key drops the clicked walk', !g.path && !g.follow, g.path && g.path.length);
     for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]]) w.set(X - 5 + dx, Y + 5 + dy, '磚');
     w.set(X - 5, Y + 5, '草'); await until(() => p.moveT <= 0, 2000); const was = [p.x, p.y]; const r = g.walkTo(X - 5, Y + 5);
-    ok('v0.32: a tile walled all round cannot be reached: a message, and no walking', !r && !g.path && g.msgText.indexOf('走不過去') >= 0 && p.x === was[0] && p.y === was[1]);
+    ok('v0.32: a tile whose eight neighbours are all walls cannot be reached: a message, and no walking', !r && !g.path && g.msgText.indexOf('走不過去') >= 0 && p.x === was[0] && p.y === was[1]);
+    for (let dy = -9; dy <= 9; dy++) for (let dx = -9; dx <= 9; dx++) w.set(X + dx, Y + dy, '草');
     await until(() => p.moveT <= 0, 2000); p.x = p.rx = X; p.y = p.ry = Y; g.renderer.camInit = false; await sleep(80);
-    const R = g.renderer, T = R.tile, cvs = document.getElementById('world'), sxp = R.w / 2 - R.camX * T + (X - 4 + 0.5) * T, syp = R.h / 2 - R.camY * T + (Y + 0.5) * T;
+    const R = g.renderer, T = R.tile, cvs = document.getElementById('world'), at = (x, y) => [R.w / 2 - R.camX * T + (x + 0.5) * T, R.h / 2 - R.camY * T + (y + 0.5) * T];
+    let [sxp, syp] = at(X - 4, Y);
     cvs.dispatchEvent(new MouseEvent('mousedown', { clientX: sxp, clientY: syp, button: 0, bubbles: true })); await sleep(30);
-    ok('v0.32: a real left click on a tile four away starts the walk there', !!g.path && g.pathGoal && g.pathGoal.x === X - 4 && g.pathGoal.y === Y, g.pathGoal);
+    ok('v0.32: a real left click on a tile four away starts the walk there', !!g.path && g.pathGoal && g.pathGoal.x === X - 4 && g.pathGoal.y === Y && !g.follow, g.pathGoal);
     cvs.dispatchEvent(new MouseEvent('mousemove', { clientX: sxp, clientY: syp, bubbles: true })); await sleep(30);
     ok('…the cell under the mouse and the path are drawn (mouse tracked)', !!g.mouse && g.mouse.x === sxp);
     await until(() => !g.path && p.moveT <= 0, 6000); g.mouse = null;
-    for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) w.set(X + dx, Y + dy, w.base(X + dx, Y + dy)); p.x = p.rx = X; p.y = p.ry = Y; }
+    ok('…and it stops beside that tile, facing it', p.x === X - 3 && p.y === Y && faces(X - 4, Y), [p.x - X, p.y - Y]);
+    p.x = p.rx = X; p.y = p.ry = Y; g.renderer.camInit = false; await sleep(80);
+    const ox0 = g.ents.add('牛', X + 7, Y, { moveT: 99, calm: 99 }); await sleep(40); [sxp, syp] = at(ox0.rx, ox0.ry);
+    cvs.dispatchEvent(new MouseEvent('mousedown', { clientX: sxp + 3, clientY: syp - 2, button: 2, bubbles: true })); await sleep(30);
+    const following = g.follow === ox0;
+    await sleep(500); ox0.x = ox0.rx = X + 6; ox0.y = ox0.ry = Y + 5;   // 走到一半，牛挪了
+    await until(() => !g.follow && p.moveT <= 0, 8000);
+    ok('v0.33: clicking a creature (either button) follows it, even when it moves, until it is right beside you and you face it', following && !g.follow && U.cheb(p.x, p.y, ox0.x, ox0.y) === 1 && faces(ox0.x, ox0.y) && g.msgText.indexOf('跟上了') >= 0, [following, p.x - X, p.y - Y, ox0.x - X, ox0.y - Y]);
+    g.ents.remove(ox0);
+    for (let dy = -9; dy <= 9; dy++) for (let dx = -9; dx <= 9; dx++) w.set(X + dx, Y + dy, w.base(X + dx, Y + dy)); p.x = p.rx = X; p.y = p.ry = Y; }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
   // —— 三格存檔：第一格沿用舊鍵；每格帶摘要
