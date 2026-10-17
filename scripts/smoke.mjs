@@ -1244,7 +1244,9 @@ const result = await page.evaluate(async () => {
     ok('the craft row shows the food cost', !!prow && prow.textContent.indexOf('飽 8') >= 0, prow && prow.textContent);
     face(1, 0); hold('階'); g.pressPlace(); w.set(X + 2, Y, '台');
     ok('the 階 is placed like any building', w.get(X + 1, Y) === '階' && g.count('階') === 0);
-    ok('beasts cannot stand on 台 or 階', !g.ents.canStand('虎', X + 2, Y, true) && !g.ents.canStand('狼', X + 1, Y, true));
+    ok('v0.35: beasts may stand on 階 and 台, but come onto the 台 only from a 階 or 台', g.ents.canStand('虎', X + 2, Y, true) && g.ents.canStand('狼', X + 1, Y, true) && !g.ents.climbOk({ x: X + 2, y: Y + 1 }, X + 2, Y) && g.ents.climbOk({ x: X + 1, y: Y }, X + 2, Y));
+    { const wf = g.ents.add('牛', X + 1, Y, { moveT: 1, calm: 99 }); g.ents.update(0.3, g); const onStair = wf.moveT;
+      ok('v0.35: a beast on the 階 steps half again as slowly (its move timer runs at two thirds)', Math.abs(onStair - (1 - 0.3 / 1.5)) < 1e-6, onStair); g.ents.remove(wf); }
     tAt(X + 2, Y + 1); ok('from the ground you cannot step onto the 台', !g.pass(X + 2, Y));
     tAt(X + 1, Y); ok('from the 階 you can', g.pass(X + 2, Y));
     p.moveT = 0; g.tryStep(1, 0); ok('and you walk up onto it', p.x === X + 2 && w.get(p.x, p.y) === '台', [p.x - X, w.get(p.x, p.y)]);
@@ -1256,6 +1258,8 @@ const result = await page.evaluate(async () => {
     ok('slowed: its move and pounce timers run at half speed', Math.abs(tg.moveT - 0.9) < 1e-6 && Math.abs(tg.atk - 0.9) < 1e-6, [tg.moveT, tg.atk]);
     const sn = g.ents.add('蛇', X + 2, Y + 1, { moveT: 99 }); g.bite(sn, 3); p.poisonT = 0; p.poisonPer = 0;
     ok('a snake biting you there loses 9 (a tenth of 90)', sn.hp === 81, sn.hp); g.ents.remove(sn);
+    { const up = g.ents.add('狼', X + 1, Y, { moveT: 99, calm: 99 }); up.hp = 160; g.hit(up, 10);
+      ok('v0.35: a beast that came up the 階 does not hit the platform edge', up.hp === 160, up.hp); g.ents.remove(up); p.hp = 100; }
     tAt(X, Y); tg.hp = 300; g.hit(tg, 20); ok('on the ground there is no such recoil', tg.hp === 300, tg.hp);
     g.ents.remove(tg); p.hp = 100;
     // 囊滿時：烤不了就不烤，肉不會少（v0.21 前烤好的會不見）；具欄裡的鋼劍熔了也要囊有地方放鐵
@@ -1590,6 +1594,38 @@ const result = await page.evaluate(async () => {
     ok('v0.34: either mouse button on the tile beside you acts like E (gathers), never places', w.get(X + 1, Y) === '草' && !!g.action && g.action.type === 'gather', [w.get(X + 1, Y), g.action && g.action.type]);
     g.action = null; g.removeItem('磚', 9);
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) w.set(X + dx, Y + dy, w.base(X + dx, Y + dy)); }
+  // ============ v0.35：玩家看得到的數一律整數，零頭攢著補（每下 53.13 → −53 −53 −53 −53 −54 …） ============
+  { const pd = g.ents.add('豹', p.x + 30, p.y + 30, { moveT: 99, calm: 99 }); pd.hp = 1000; const seq = [];
+    for (let i = 0; i < 8; i++) { pd.hp -= 53.13; seq.push(g.shown('dmg', 53.13, pd)); }
+    const sumShown = seq.reduce((a, b) => a + b, 0);
+    ok('v0.35: a 53.13 hit shows −53 four times, then −54 (the four 0.13s made 0.52), and the over-shown 0.48 is taken back later', seq.slice(0, 5).join(',') === '53,53,53,53,54' && seq.every(Number.isInteger) && Math.abs(sumShown - 53.13 * 8) < 0.5, seq);
+    ok('…and the beast\'s shown remaining life is its life minus the numbers you saw', g.shownHp(pd) === 1000 - sumShown, [g.shownHp(pd), 1000 - sumShown]);
+    g.ents.remove(pd);
+    const halves = []; for (let i = 0; i < 6; i++) halves.push(g.shown('test-half', 0.5));
+    ok('…half points alternate 1, 0, 1, 0 so they add up right', halves.join(',') === '1,0,1,0,1,0', halves);
+    const keepT2 = p.tools, keepI2 = p.tool; p.tools = [{ n: '石劍', c: 1, dur: 40 }]; p.tool = 0;
+    const near2 = (e) => e.type !== '龍' && U.cheb(e.x, e.y, p.x, p.y) <= 2; g.ents.list = g.ents.list.filter(e => !near2(e));   // 身邊別的生靈先請走，免得打到別隻
+    const tg2 = g.ents.add('虎', p.x + 1, p.y, { moveT: 99, calm: 99 }); face(1, 0); p.atkT = 0; g.pressGather(); await sleep(30);
+    const floats = g.fx.filter(f => f.type === 'float').map(f => f.text);
+    ok('v0.35: damage floats and the facing hint show whole numbers only', floats.length > 0 && floats.every(t => !/\d\.\d/.test(t)) && !/\d\.\d/.test(document.getElementById('msg').textContent), [floats.slice(-2), document.getElementById('msg').textContent.slice(0, 40)]);
+    g.ents.remove(tg2); g.ents.list = g.ents.list.filter(e => !near2(e)); p.tools = keepT2; p.tool = keepI2; g.barSig = ''; g.buildBag(); }
+  // ============ v0.35：裝著東西的櫃放得進櫃、拿得回來；磚旁邊亮的磚也亮；村裡的墟、門不會自己長回來 ============
+  { const X = p.x, Y = p.y; face(1, 0); const cx = X + 1, cy = Y, keep = w.get(cx, cy); w.set(cx, cy, '櫃'); w.chests.set(cx + ',' + cy, []);
+    p.bag.push({ n: '櫃', c: 1, store: [{ n: '石', c: 3 }, { n: '木', c: 2 }] }); g.barSig = ''; g.openChest({ x: cx, y: cy }); await sleep(30);
+    const bi = p.bag.findIndex(s => s.n === '櫃' && s.store); g.moveStack('bag', bi); const box = w.chests.get(cx + ',' + cy), inBox = box.find(s => s.n === '櫃');
+    ok('v0.35: a 櫃 with things in it goes into another 櫃, things and all, and the panel says how many', !!inBox && inBox.store.length === 2 && !p.bag.some(s => s.n === '櫃' && s.store) && [...document.querySelectorAll('#chest-grid .slot')].some(el => el.textContent.indexOf('2樣') >= 0));
+    g.moveStack('chest', box.indexOf(inBox)); const back = p.bag.find(s => s.n === '櫃' && s.store);
+    ok('…and comes back out with its things still inside', !!back && back.store.length === 2 && back.store[0].n === '石' && !box.some(s => s.n === '櫃'));
+    g.closeChest(); p.bag.splice(p.bag.indexOf(back), 1); w.chests.delete(cx + ',' + cy); w.set(cx, cy, keep); g.barSig = ''; g.buildBag(); }
+  { const R = g.renderer, lx = p.x - 20, ly = p.y + 20; for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) w.set(lx + dx, ly + dy, Math.max(Math.abs(dx), Math.abs(dy)) === 3 ? '磚' : '草');
+    w.set(lx, ly, '燈'); const vis = R.sight(w, lx, ly, 6), W = 13, at = (dx, dy) => vis[(dy + 6) * W + dx + 6];
+    let ring = true, out = false; for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (Math.max(Math.abs(dx), Math.abs(dy)) === 3 && !at(dx, dy)) ring = false;
+    for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) if (Math.max(Math.abs(dx), Math.abs(dy)) === 4 && at(dx, dy)) out = true;
+    ok('v0.35: a lamp in a brick room lights every brick of its walls (a brick next to a lit tile is lit), but nothing beyond them', !!vis && ring && !out, [ring, out]);
+    for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) w.set(lx + dx, ly + dy, w.base(lx + dx, ly + dy)); }
+  { const vil = w.places.find(q => q.id === 'cun'); let rx = null, ry = null;
+    if (vil) for (let dy = 0; dy < vil.h && rx === null; dy++) for (let dx = 0; dx < vil.w; dx++) if (w.base(vil.x + dx, vil.y + dy) === '墟') { rx = vil.x + dx; ry = vil.y + dy; break; }
+    ok('v0.35: blank paper over a village 墟 is written back as earth, not as the ruin again (墟 never mends itself)', rx !== null && w.rewriteBlank(rx, ry) === '土' && w.rewriteBlank(p.x, p.y) === w.base(p.x, p.y), [rx, ry]); }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
   // —— 三格存檔：第一格沿用舊鍵；每格帶摘要

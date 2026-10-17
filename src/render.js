@@ -81,6 +81,13 @@
       if (any) {
         const W = 2 * R + 1, R2 = (R + 0.5) * (R + 0.5); vis = new Uint8Array(W * W);
         for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) if (dx * dx + dy * dy <= R2 && world.clear(lx, ly, lx + dx, ly + dy)) vis[(dy + R) * W + dx + R] = 1;
+        // 擋光的字（磚、門、墟）：旁邊（八鄰）有一格看得見、不擋光的亮處，它朝光的那一面就亮（v0.35）
+        const lit = []; const op = (dx, dy) => { const d = DB[world.get(lx + dx, ly + dy)]; return !!(d && d.opaque); };
+        for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+          const i = (dy + R) * W + dx + R; if (vis[i] || dx * dx + dy * dy > R2 || !op(dx, dy)) continue;
+          for (let j = -1; j <= 1 && !vis[i]; j++) for (let k = -1; k <= 1; k++) { const nx = dx + k, ny = dy + j; if ((j || k) && Math.abs(nx) <= R && Math.abs(ny) <= R && vis[(ny + R) * W + nx + R] && !op(nx, ny)) { lit.push(i); break; } }
+        }
+        for (const i of lit) vis[i] = 1;
       }
       if (this.sightCache.size > 600) this.sightCache.clear();
       this.sightCache.set(key, { ver, vis }); return vis;

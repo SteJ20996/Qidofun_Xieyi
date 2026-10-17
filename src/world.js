@@ -599,11 +599,12 @@
         } else if (ch === '白') {
           // 白紙慢慢被天地"寫回"原字——但不會在玩家腳邊突然長出山或水
           if (U.cheb(x, y, px, py) <= 1) continue;
-          if (rng() < 0.04 && this.countAround(x, y, null) >= 5) this.set(x, y, this.base(x, y));
+          if (rng() < 0.04 && this.countAround(x, y, null) >= 5) this.set(x, y, this.rewriteBlank(x, y));
         }
       }
     }
 
+    rewriteBlank(x, y) { const b = this.base(x, y); return DB[b] && DB[b].kind === 'object' ? '土' : b; }   // 白紙寫回原字；原本是人造的（村裡的墟、門）不會自己長回來，成了土（v0.35）
     // 統計周圍 8 格中屬於 set 的字數；set 為 null 時統計"非白紙、非水"的格子
     countAround(x, y, set) {
       let n = 0;

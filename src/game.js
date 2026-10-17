@@ -24,7 +24,8 @@
   const TAME_CHANCE = [0.35, 0.25, 0.10], EAGLE_FEED = 40, TURTLE_PEACE_DAYS = 5;   // 馴鷹的機率看已經跟著幾隻；餵魚回力；龜卜吉兆幾日無魄
   // 膽氣：第 n 重升到 n+1 重要 20×(1+0.1n)² 點：20、24.2、28.8、33.8、39.2……八重共 300，十重 437，卅一重 4371
   const LEVEL_UNIT = 20;
-  const fmt = (n) => String(Math.round(n * 100) / 100);   // 顯示用：四捨五入到小數點後兩位（整數就不帶小數）；計算一律精確到小數點後四位（U.r4）
+  const rnd = (x) => (x < 0 ? -Math.round(-x) : Math.round(x));   // 四捨五入（負數也是「五入」到離零遠的那邊，零頭來回才不偏）
+  const fmt = (n) => String(rnd(n));   // 顯示用：玩家看得到的數一律整數（v0.35 使用者定）；計算一律精確到小數點後四位（U.r4）；一再出現的數（傷害、回復、膽氣）走 game.shown() 把零頭攢著
   const levelCost = (n) => U.r4(LEVEL_UNIT * (1 + 0.1 * n) * (1 + 0.1 * n));   // v0.29 起不取整：20、24.2、28.8、33.8、39.2、45、51.2……   // 四捨五入到個位：20、24、29、34、39、45、51、58、65、72、80……
   const CUM = [0]; for (let n = 0; n < 120; n++) CUM.push(U.r4(CUM[n] + levelCost(n)));
   // 衣甲：五件一套，一百八十日勻速穿破；十五息內挨打越多壞得越快，且會累加
@@ -190,7 +191,7 @@
     takenMult() { const k = this.ladder(); return (k < 0 ? 1 : Math.pow(1.15, -k)) * (1 - this.armorRed()) * this.diff.taken; }  // 受到的傷害
     totemNear(x, y) { return this.totemOn() && U.cheb(x, y, this.player.x, this.player.y) <= 7; }
     lifeOf(s) { const it = ITEMS[s.n] || {}; return (it.life || 180) * DAY; }     // 衣甲壽命：一般一百八十日，鎢鋼三百六十日
-    durText(s) { if (s.dur === undefined) return '×' + s.c; const it = ITEMS[s.n] || {}; return it.slot ? Math.max(1, Math.ceil(s.dur / DAY)) + ' 日' : '耐 ' + s.dur; }
+    durText(s) { if (s.store && s.store.length) return s.store.length + '樣'; if (s.dur === undefined) return '×' + s.c; const it = ITEMS[s.n] || {}; return it.slot ? Math.max(1, Math.ceil(s.dur / DAY)) + ' 日' : '耐 ' + Math.ceil(s.dur); }   // 耐久對折後可能有半點：顯示往上取整（真能再用幾次）
     wearRate(s) { return (s.wm || 1) * (HIT_MULT[this.player.hitWin.n] || 1); }                 // 這件現在的損耗速度
     effDays(s) { return Math.max(1, Math.ceil(s.dur / this.wearRate(s) / DAY)); }              // 照目前速度還能穿幾日
     wearItem(i) {        // 把囊裡第 i 格的衣甲穿上，原來那件回囊
@@ -528,7 +529,7 @@
       const p = this.player, s = p.ship; if (!p.sailing || !s) return;
       const dmg = U.r4(DB[e.type].ram * this.diff.taken);
       s.hp = Math.max(0, s.hp - dmg); this.renderer.shake = 0.6; SFX.tiger();
-      this.fx.push({ type: 'float', x: p.x, y: p.y, text: '船 −' + dmg, color: G.INK.red, t: 0, dur: 0.9 });
+      this.fx.push({ type: 'float', x: p.x, y: p.y, text: '船 −' + this.shown('ship', dmg), color: G.INK.red, t: 0, dur: 0.9 });
       if (s.hp <= 0) { this.wreck(); return; }
       this.message('蜃撞船！' + s.kind + '的命 ' + Math.round(s.hp) + '/' + this.shipMax(s) + '。');
     }
@@ -717,7 +718,7 @@
       const p = this.player, cut = (v) => U.r4(v * FOG_TOLL), parts = [];
       const lose = { '命': cut(p.hp), '飽': cut(p.food), '暖': cut(p.warm), '力': cut(p.sta), '愜意': cut(p.san) };
       p.hp = Math.max(Math.min(p.hp, 1), p.hp - lose['命']); p.food -= lose['飽']; p.warm -= lose['暖']; p.sta -= lose['力']; p.san -= lose['愜意'];
-      for (const k in lose) parts.push(k + ' −' + fmt(lose[k]));
+      for (const k in lose) parts.push(k + ' −' + this.shown('fog' + k, lose[k]));
       this.fx.push({ type: 'float', x: p.x, y: p.y, text: '霧', color: G.INK.ash, t: 0, dur: 1.2 });
       this.message('穿霧而過：' + parts.join('、') + '。'); SFX.fail();
     }
@@ -1119,9 +1120,9 @@
       if (e.type === '鷹') { if (e.tame) { e.tame = false; this.message('你打了自己的鷹，牠不跟你了。'); } e.angryT = 12; }
       p.atkT = 0.45; p.sta = Math.max(0, p.sta - this.ironDrain());
       e.hp -= dmg; e.angry = true; e.angryAt = this.world.time; this.wearTool(); SFX.write(); this.renderer.shake = 0.15;
-      this.fx.push({ type: 'float', x: e.x, y: e.y, text: '−' + fmt(dmg), color: G.INK.red, t: 0, dur: 0.7 });
+      this.fx.push({ type: 'float', x: e.x, y: e.y, text: '−' + this.shown('dmg', dmg, e), color: G.INK.red, t: 0, dur: 0.7 });
       if (e.hp <= 0) { this.kill(e); return; }
-      const left = fmt(e.hp);
+      const left = this.shownHp(e);
       if (e.type === '鹿') e.moveT = 0;
       else if (e.type === '虎' || e.type === '豹') { e.calm = 2; e.moveT = 0.3; this.message(e.type + '受創而退（還有 ' + left + '）。'); }
       else if (e.type === '龜') { e.moveT = 0; this.message('龜挨了一下，往海裡逃（還有 ' + left + '）。'); }
@@ -1155,17 +1156,17 @@
       const dmg = U.r4(SLING_DMG * this.dmgMult()), d = U.cheb(e.x, e.y, p.x, p.y);
       e.hp -= dmg; e.provoked = PROVOKE_TIME; e.angry = true; e.angryAt = this.world.time; e.calm = 0; if (e.type === '鷹') e.angryT = 12;
       this.fx.push({ type: 'shot', x: p.x, y: p.y, x1: e.x, y1: e.y, t: 0, dur: 0.12 + d * 0.03 });
-      this.fx.push({ type: 'float', x: e.x, y: e.y, text: '−' + fmt(dmg), color: G.INK.red, t: 0, dur: 0.7 }); SFX.write();
+      this.fx.push({ type: 'float', x: e.x, y: e.y, text: '−' + this.shown('dmg', dmg, e), color: G.INK.red, t: 0, dur: 0.7 }); SFX.write();
       if (e.hp <= 0) { this.kill(e); return; }
       const charges = '虎豹狼蛇蛛鷹豬牛'.indexOf(e.type) >= 0 || (e.type === '蟾' && e.venom);
-      this.message('石子打中「' + this.beastName(e) + '」（還有 ' + fmt(e.hp) + '）。' + (!charges ? '' : d <= 7 ? '牠惱了，撲過來！' : '牠惱了，你一進七格內就撲過來。'));
+      this.message('石子打中「' + this.beastName(e) + '」（還有 ' + this.shownHp(e) + '）。' + (!charges ? '' : d <= 7 ? '牠惱了，撲過來！' : '牠惱了，你一進七格內就撲過來。'));
     }
     platformRecoil(e) {   // 站在台上：撲上來的獸撞在台邊，掉命上限的一成、慢五息；回傳掉了多少
-      if (!e || e.type === '蜃' || this.world.get(this.player.x, this.player.y) !== '台' || !(DB[e.type] && DB[e.type].hp)) return 0;
-      const r = U.r4(DB[e.type].hp * PLATFORM_RECOIL); e.hp -= r; e.slowT = PLATFORM_SLOW;
-      this.fx.push({ type: 'float', x: e.x, y: e.y, text: '−' + r, color: G.INK.red, t: 0, dur: 0.8 });
+      if (!e || e.type === '蜃' || this.world.get(this.player.x, this.player.y) !== '台' || !(DB[e.type] && DB[e.type].hp) || '台階'.indexOf(this.world.get(e.x, e.y)) >= 0) return 0;   // 從階、台上過來的不算撞在台邊（v0.35）
+      const r = U.r4(DB[e.type].hp * PLATFORM_RECOIL), sh = this.shown('dmg', r, e); e.hp -= r; e.slowT = PLATFORM_SLOW;
+      this.fx.push({ type: 'float', x: e.x, y: e.y, text: '−' + sh, color: G.INK.red, t: 0, dur: 0.8 });
       if (e.hp <= 0) this.kill(e);
-      return r;
+      return sh;   // 回傳顯示的整數（訊息照用）
     }
     hammerStrike(targets) {
       const p = this.player;
@@ -1192,8 +1193,8 @@
       this.fx.push({ type: 'write', x: p.x, y: p.y, ch: '焚', color: G.INK.red, t: 0, dur: 0.6 });
       let selfNote = '';
       if (p.sailing && p.ship) {             // 火也燎到自己的船：怪物所受的十分之一
-        const self = U.r4(full * GOD_SELF); p.ship.hp = Math.max(0, p.ship.hp - self); selfNote = '；火燎到自己的船 −' + fmt(self);
-        this.fx.push({ type: 'float', x: p.x, y: p.y + 1, text: '船 −' + fmt(self), color: G.INK.red, t: 0, dur: 0.9 });
+        const self = U.r4(full * GOD_SELF), selfShown = this.shown('ship', self); p.ship.hp = Math.max(0, p.ship.hp - self); selfNote = '；火燎到自己的船 −' + selfShown;
+        this.fx.push({ type: 'float', x: p.x, y: p.y + 1, text: '船 −' + selfShown, color: G.INK.red, t: 0, dur: 0.9 });
         if (p.ship.hp <= 0) { this.message('燭龍的火燒穿了自己的船！'); this.wreck(); return; }
       }
       this.message('燭龍焚溟：' + targets.length + ' 頭同受灼燒，海中之物 ' + fmt(full) + '、陸上天上 ' + fmt(half) + (slain ? '，' + slain + ' 頭斃命' : '') + selfNote + '。');
@@ -1202,7 +1203,7 @@
       let slain = 0;
       for (const o of targets) {
         const dmg = dmgOf(o); o.hp -= dmg; o.angry = true; o.angryAt = this.world.time; if (o.type === '鷹') o.angryT = 12;
-        this.fx.push({ type: 'float', x: o.x, y: o.y, text: '−' + fmt(dmg), color: G.INK.red, t: 0, dur: 0.8 });
+        this.fx.push({ type: 'float', x: o.x, y: o.y, text: '−' + this.shown('dmg', dmg, o), color: G.INK.red, t: 0, dur: 0.8 });
         if (o.hp <= 0) { this.kill(o); slain++; }
       }
       return slain;
@@ -1222,9 +1223,9 @@
       }
       if (e.type === '蜃') {                  // 蜃死，吐出的霧也收回去
         for (const f of [...this.world.fogs.values()]) if (f.sea) this.world.removeFog(f.id);
-        this.toast('蜃斃', '海上的霧收了。膽氣 +' + fmt(got) + '。'); SFX.fuse(); return;
+        this.toast('蜃斃', '海上的霧收了。膽氣 +' + this.shown('cour', got) + '。'); SFX.fuse(); return;
       }
-      this.message((({ '鹿': '獵得一鹿，得肉二。', '虎': '虎斃，得肉三。', '豹': '豹斃，得肉二。', '狼': '狼斃，得肉二。', '蛇': '蛇斃，留下屍身。', '蛛': e.venom ? '毒蛛死了。' : '蜘蛛死了，什麼也沒留下。', '蟾': '蟾蜍死了。', '鷹': '鷹落了下來。', '龜': '龜死了，留下龜甲。', '豬': '野豬斃，得肉三' + (fat ? '，還割下一塊油脂' : '') + '。', '牛': '野牛斃，得肉四' + (fat ? '，還割下一塊油脂' : '') + '。' })[e.type] || '斃。') + (hostile ? '膽氣 +' + fmt(got) + (this.isNight() ? '（夜裡加半成）' : '（白日八成）') : ''));
+      this.message((({ '鹿': '獵得一鹿，得肉二。', '虎': '虎斃，得肉三。', '豹': '豹斃，得肉二。', '狼': '狼斃，得肉二。', '蛇': '蛇斃，留下屍身。', '蛛': e.venom ? '毒蛛死了。' : '蜘蛛死了，什麼也沒留下。', '蟾': '蟾蜍死了。', '鷹': '鷹落了下來。', '龜': '龜死了，留下龜甲。', '豬': '野豬斃，得肉三' + (fat ? '，還割下一塊油脂' : '') + '。', '牛': '野牛斃，得肉四' + (fat ? '，還割下一塊油脂' : '') + '。' })[e.type] || '斃。') + (hostile ? '膽氣 +' + this.shown('cour', got) + (this.isNight() ? '（夜裡加半成）' : '（白日八成）') : ''));
       if (e.type !== '鹿') SFX.fuse();
     }
     // 獸的撲咬與毒咬（由實體呼叫）
@@ -1234,7 +1235,7 @@
       const p = this.player, d = U.r4(raw);   // v0.29：精確到小數點後四位，畫面上才四捨五入
       p.hp = Math.max(0, p.hp - d); p.hurtT = 6; this.renderer.shake = 0.5; SFX.beast(e.type); this.armorHit();
       const rc = this.platformRecoil(e);
-      this.message(this.beastName(e) + '！命 −' + fmt(d) + '。' + (rc ? '牠撞在台邊，−' + fmt(rc) + '，慢了下來。' : ''));
+      this.message(this.beastName(e) + '！命 −' + this.shown('hurt', d) + '。' + (rc ? '牠撞在台邊，−' + rc + '，慢了下來。' : ''));
     }
     windowShare() {   // 睡覺這間屋子：窗數 ÷ 屋內面積（能走的格數）；不在圍起來的屋裡回 0（v0.29 使用者定）
       const p = this.player, sh = this.world.roomShell(p.x, p.y); if (!sh || !sh.area) return 0;
@@ -1247,8 +1248,16 @@
       const hat = p.worn['帽']; if (hat && hat.fuel > 0) { hat.fuel = Math.max(0, U.r4(hat.fuel - GHOST_HAT_COST)); this.barSig = ''; }
       if (!this.isNight() || this.indoors()) return;
       const got = this.addCourage(U.r4(levelCost(this.level()) * GHOST_COUR), 'ghost');
-      if (got > 0) { this.stats.ghosts = (this.stats.ghosts || 0) + 1; this.fx.push({ type: 'float', x: e.x, y: e.y, text: '魄滅 · 膽 +' + fmt(got), color: G.INK.gold, t: 0, dur: 1.4 }); }
+      if (got > 0) { this.stats.ghosts = (this.stats.ghosts || 0) + 1; this.fx.push({ type: 'float', x: e.x, y: e.y, text: '魄滅 · 膽 +' + this.shown('cour', got), color: G.INK.gold, t: 0, dur: 1.4 }); }
     }
+    // 一再出現的數（v0.35 使用者定）：這一回四捨五入顯示，零頭記在 owner（生靈）或遊戲身上；攢到過半就多顯示一點，多顯示的下回扣回來。
+    // 例：每下 53.13 → −53 −53 −53 −53 −54（零頭 0.52 湊成 1，多扣的記成 −0.35）……顯示的總和永遠跟真的總和差不到半點
+    shown(key, v, owner) {
+      const box = owner || this.carry || (this.carry = {}), k = '_c' + key, c = box[k] || 0;
+      const base = rnd(v), extra = rnd(c), out = base + extra;
+      box[k] = U.r4(c - extra + (v - base)); return out;
+    }
+    shownHp(e) { return rnd(e.hp + (e._cdmg || 0)); }   // 生靈還有多少命（照顯示過的傷害算：本來的命減掉看到的那些數）
     sanUp(n) { const p = this.player; return U.r4(n * (p.sanBoostUntil > this.world.time ? 1 + SAN_BOOST : 1)); }   // 愜意回復：睡過窗夠的屋子後一整天快 5%
     wallRammed(e, x, y, r) {   // 耐久不顯示：只在磚成了墟、窗門剩一半時說一聲
       const p = this.player, ch = this.world.get(x, y); this.renderer.shake = 0.25; SFX.ram(); this.fx.push({ type: 'float', x, y, text: '撞', color: G.INK.red, t: 0, dur: 0.6 });
@@ -1272,7 +1281,8 @@
       p.biteN = (now - p.biteLast <= 6) ? p.biteN + 1 : 1; p.biteLast = now; this.stats.bites++;
       this.poison(per2, (DB[e.type] && DB[e.type].venomT) || 5); p.hurtT = 6;   // 中毒幾秒：蛇與毒蛛九秒（v0.28.1），蟾五秒 this.renderer.shake = 0.3; if (e.type === '蛇' || e.type === '蛛') SFX.beast(e.type); else SFX.fail();
       if (p.biteN >= 15) { p.hp = 0; this.message('連咬十五口，毒發身亡。'); return; }
-      this.message(this.beastName(e) + '咬了你一口（連咬 ' + p.biteN + '）。中毒：每秒 −' + fmt(per2) + '。藥可解。');
+      const vt = (DB[e.type] && DB[e.type].venomT) || 5;
+      this.message(this.beastName(e) + '咬了你一口（連咬 ' + p.biteN + '）。中毒 ' + vt + ' 息，共 −' + this.shown('poison', per2 * vt) + '。藥可解。');
     }
     poison(per, sec) { const p = this.player; if (this.ironFull()) return; p.poisonPer = Math.max(p.poisonPer, per); p.poisonT = Math.max(p.poisonT, sec); }
 
@@ -1446,7 +1456,7 @@
       const n = p.pillsEaten, before = p.hpMax;
       p.hpMax = U.r4(100 + 3 * Math.min(n, 50) + 0.5 * Math.max(0, n - 50));   // 前五十顆每顆 +3，之後每顆 +0.5（v0.29 起不取整）
       const gain = p.hpMax - before; p.hp = Math.min(p.hpMax, p.hp + Math.max(0, gain));
-      this.toast('服下第 ' + n + ' 顆丹', '命上限 +' + fmt(gain) + '，現在 ' + fmt(p.hpMax) + '。' + (n === 50 ? '從第五十一顆起每顆 +0.5。' : '')); SFX.learn(); this.hudSig = '';
+      this.toast('服下第 ' + n + ' 顆丹', '命上限 +' + this.shown('hpmax', gain) + '，現在 ' + fmt(p.hpMax) + '。' + (n === 50 ? '從第五十一顆起每顆 +0.5。' : '')); SFX.learn(); this.hudSig = '';
     }
 
     // ---------- 吃（V） ----------
@@ -1496,7 +1506,7 @@
       if (f.heal) { p.hp = Math.min(p.hpMax, p.hp + f.heal); parts.push('命 +' + f.heal); }
       if (s.n.charAt(0) === '烤') { p.heatT = Math.min(HEAT_CAP, (p.heatT || 0) + HEAT_PER_MEAL); parts.push('熱氣 ' + Math.round(p.heatT) + ' 息' + (p.heatT >= HEAT_CAP ? '（滿）' : '')); }   // 烤的東西下肚：九十息內凍不傷命，最多一百五十
       if (f.cure && p.poisonT > 0) { p.poisonT = 0; p.poisonPer = 0; parts.push('毒解了'); }
-      if (f.san) { const g0 = this.sanUp(f.san); p.san = Math.min(100, p.san + g0); parts.push('愜意 +' + fmt(g0)); }
+      if (f.san) { const g0 = this.sanUp(f.san); p.san = Math.min(100, p.san + g0); parts.push('愜意 +' + this.shown('san', g0)); }
       if (f.poison) { this.poison(f.poison[0], f.poison[1]); parts.push('中毒'); }
       SFX.absorb();
       this.message('吃了「' + s.n + '」' + (age >= 1 ? '（最陳的那顆，放了 ' + age + ' 夜）' : '') + '，' + parts.join('，') + '。');
@@ -1630,14 +1640,14 @@
         for (const m in r.need) this.removeItem(m, r.need[m]);
         p.sta -= r.sta; const gain = this.afterCraft(r);
         if (def.light) owned.fuel = HAT_FUEL; else { owned.dur = this.lifeOf(owned); owned.wm = 1; }
-        this.barSig = ''; this.toast('「' + out + '」翻新了', '同一類衣甲只留一件：壽命回滿，損耗重新起算。　愜意 +' + fmt(gain)); SFX.fuse();
+        this.barSig = ''; this.toast('「' + out + '」翻新了', '同一類衣甲只留一件：壽命回滿，損耗重新起算。　愜意 +' + this.shown('san', gain)); SFX.fuse();
         this.buildCraft(); this.buildBag(); return;
       }
       if (!this.canAdd(out, n)) { this.message('囊已滿。'); SFX.fail(); return; }
       if (r.food && p.food < r.food) { this.message('太餓了，砌不動（要飽 ' + r.food + '）。'); SFX.fail(); return; }   // 台與階：耗力也耗飽
       for (const m in r.need) this.removeItem(m, r.need[m]);
       p.sta -= r.sta; if (r.food) p.food -= r.food; this.addItem(out, n); const gain = this.afterCraft(r);
-      this.toast('造了「' + out + '」' + (n > 1 ? ' ×' + n : ''), G.item(out).flavor + '　愜意 +' + fmt(gain)); SFX.fuse();
+      this.toast('造了「' + out + '」' + (n > 1 ? ' ×' + n : ''), G.item(out).flavor + '　愜意 +' + this.shown('san', gain)); SFX.fuse();
       this.buildCraft(); this.buildBag();
     }
     afterCraft(r) {
@@ -1664,7 +1674,7 @@
       this.gatherCompanions();
       this.stats.nights++; p.warned = {};
       if (bonus) p.sanBoostUntil = w.time + DAY;   // 窗夠的屋子睡過一覺：之後一整天愜意回得快 5%
-      this.toast('一夜無夢', '天亮了。愜意 +' + fmt(san) + (bonus ? '（窗是屋內面積的 ' + fmt(win * 100) + '%，多回 ' + Math.round(bonus * 100) + '%；今天一整天愜意回得快 5%）' : '') + '。');
+      this.toast('一夜無夢', '天亮了。愜意 +' + this.shown('san', san) + (bonus ? '（窗是屋內面積的 ' + fmt(win * 100) + '%，多回 ' + Math.round(bonus * 100) + '%；今天一整天愜意回得快 5%）' : '') + '。');
       this.save();
     }
 
@@ -1701,7 +1711,7 @@
       const box = this.world.chests.get(this.chestAt) || [], p = this.player;
       const mk = (s, i, from) => {
         const el = document.createElement('div'); el.className = 'slot bag' + (s ? '' : ' empty');
-        if (s) { el.innerHTML = '<span class="ch' + (s.n.length > 1 ? ' word' : '') + '">' + s.n + '</span><span class="cost">' + this.durText(s) + '</span>'; el.title = G.item(s.n).flavor; }
+        if (s) { el.innerHTML = '<span class="ch' + (s.n.length > 1 ? ' word' : '') + '">' + s.n + '</span><span class="cost">' + this.durText(s) + '</span>'; el.title = G.item(s.n).flavor + (s.store && s.store.length ? '\n裡面：' + s.store.map(x => x.n + '×' + x.c).join('、') : ''); }
         el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; this.moveStack(from, i); });
         return el;
       };
@@ -1714,11 +1724,10 @@
       if (from === 'chest') {
         const s = box[i]; if (!s) return;
         const ds = s.n === '果' ? this.fruitDays(s).slice() : undefined;
-        const left = this.addItem(s.n, s.c, { dur: s.dur, wm: s.wm, fuel: s.fuel, ds });
+        const left = this.addItem(s.n, s.c, { dur: s.dur, wm: s.wm, fuel: s.fuel, ds, store: s.store });   // 裝著東西的櫃、灶：裡面的跟著回囊
         if (left > 0) { s.c = left; if (ds) s.ds = ds.slice(ds.length - left); this.message('囊裡放不下這麼多。'); } else box.splice(i, 1);
       } else {
         const s = p.bag[i]; if (!s) return;
-        if (s.store && s.store.length) { this.message('裝著東西的「' + s.n + '」放不進櫃裡，先放到地上。'); return; }
         if (box.length >= CHEST_SLOTS) { this.message('櫃滿了。'); return; }
         box.push(s); p.bag.splice(i, 1); if (p.sel >= p.bag.length) p.sel = Math.max(0, p.bag.length - 1); this.barSig = ''; this.sortChest(box);
       }
@@ -2006,7 +2015,7 @@
         el.className = 'slot bag tool' + (s ? '' : ' empty') + (s && i === p.tool ? ' sel' : '');
         if (s) {
           const it = ITEMS[s.n];
-          el.innerHTML = '<span class="ch' + (s.n.length > 1 ? ' word' : '') + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">耐 ' + s.dur + '</span><i class="ring' + (s.dur / it.dur <= 0.25 ? ' low' : '') + '" style="--p:' + Math.round(100 * s.dur / it.dur) + '%"></i>'; el.classList.add('ringed');
+          el.innerHTML = '<span class="ch' + (s.n.length > 1 ? ' word' : '') + (s.n.length > 2 ? ' long' : '') + '">' + s.n + '</span><span class="cost">耐 ' + Math.ceil(s.dur) + '</span><i class="ring' + (s.dur / it.dur <= 0.25 ? ' low' : '') + '" style="--p:' + Math.round(100 * s.dur / it.dur) + '%"></i>'; el.classList.add('ringed');
           el.title = it.flavor + '（點一下手持，再點一下空手；右鍵移回囊）';
         } else el.title = '具欄：武器與農具共用這些格子；P 換武器、O 換農具';
         el.addEventListener('mousedown', (ev) => { ev.stopPropagation(); if (!s) return; if (ev.button === 2) { this.unequipToBag(i); return; } p.tool = (p.tool === i) ? -1 : i; this.buildBag(); });
@@ -2086,7 +2095,7 @@
       else if (e && e.type === '龍') s = '你的龍。';
       else if (e && e.type === '魄') s = '魄 · 無形。身上的光只逼得退；燈、火、旺灶三格內才煙滅';
       else if (e && e.type === '鷹') s = '鷹' + (e.tame ? '（你的 · 命 ' + Math.round(e.hp) + ' 力 ' + Math.round(e.sta) + '）' : e.angry ? '（怒）' : '（半友好）') + (hs && hs.n === '魚' ? ' · <kbd>F</kbd> ' + (e.tame ? '餵魚（力 +40）' : '投魚馴服（' + Math.round(this.tameChance() * 100) + '%）') : ' · 手持魚按 F ' + (e.tame ? '餵' : '馴')) + ' · <kbd>E</kbd> 攻擊';
-      else if (e) s = '「' + this.beastName(e) + '」' + (e.type === '蟾' || e.type === '蛛' ? (e.venom ? '（有毒）' : '（無毒）') : '') + (e.hp > 1 ? '（' + fmt(e.hp) + '）' : '') + ' · <kbd>E</kbd> ' + (e.type === '魚' ? '捉' : e.type === '鳥' ? '驚' : this.heldDmg() ? '攻擊（' + this.activeTool().n + '）' : '<i>徒手打不了，具欄裡選把刀劍</i>');
+      else if (e) s = '「' + this.beastName(e) + '」' + (e.type === '蟾' || e.type === '蛛' ? (e.venom ? '（有毒）' : '（無毒）') : '') + (e.hp > 1 ? '（' + this.shownHp(e) + '）' : '') + ' · <kbd>E</kbd> ' + (e.type === '魚' ? '捉' : e.type === '鳥' ? '驚' : this.heldDmg() ? '攻擊（' + this.activeTool().n + '）' : '<i>徒手打不了，具欄裡選把刀劍</i>');
       else if (w.fogAt(t.x, t.y)) { const n = this.count('扇'); s = '霧障 · 走進去會問你要不要用扇子吹散' + (n ? '（囊中 ' + n + ' 把' + (hs && hs.n === '扇' ? '；<kbd>V</kbd> 現在就搧' : '') + '）' : '（沒有扇子：草四木一可紮一把）'); }
       else if (ch === '碑') s = '一塊古碑 · <kbd>E</kbd> 讀碑';
       else if (ch === '包') s = '落下的荷包 · <kbd>E</kbd> 取回';
