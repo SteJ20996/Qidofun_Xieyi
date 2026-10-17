@@ -38,7 +38,7 @@ const result = await page.evaluate(async () => {
   const toasts = () => document.getElementById('toasts').textContent;
   const hidden = (id) => document.getElementById(id).classList.contains('hidden');
   const takeYes = () => { if (!hidden('takeask')) document.getElementById('takeask-yes').click(); };   // 拆人造的東西會先問，測試裡直接答「拆」
-  const calm = () => { p.san = 100; p.insane = false; p.ctrl = true; p.zeroSan = 0; p.hp = Math.max(p.hp, 60); p.knock = 0; setDay(0.3); g.ents.list = g.ents.list.filter(e => e.type !== '魄'); g.action = null; g.keys.clear(); };   // 測試裡真實時間會過，夜裡魄把愜意吸到零人就「手腳不聽使喚」；長等待之後先弄清醒
+  const calm = () => { p.san = 100; p.insane = false; p.ctrl = true; p.zeroSan = 0; p.hp = Math.max(p.hp, 60); p.knock = 0; setDay(0.53); g.ents.list = g.ents.list.filter(e => e.type !== '魄'); g.action = null; g.keys.clear(); };   // 測試裡真實時間會過，夜裡魄把愜意吸到零人就「手腳不聽使喚」；長等待之後先弄清醒
   const goNextTo = (x, y) => { w.set(x - 1, y, '草'); p.x = p.rx = x - 1; p.y = p.ry = y; face(1, 0); };
   const setDay = (frac) => { w.time = Math.floor(w.time / DAY) * DAY + DAY * frac; };
   const until = async (cond, ms) => { const t0 = performance.now(); while (!cond() && performance.now() - t0 < (ms || 8000)) await sleep(40); return cond(); };
@@ -102,14 +102,18 @@ const result = await page.evaluate(async () => {
   // ============ C. 放置、擋路、灶、鋤、鎬 ============
   face(1, 0); w.set(T().x, T().y, '白'); hold('磚'); g.pressPlace();
   ok('placed 磚 blocks beasts and ghosts', w.get(T().x, T().y) === '磚' && !g.ents.canStand('虎', T().x, T().y, true) && !g.ents.canStand('狼', T().x, T().y, true) && !g.pass(T().x, T().y), w.get(T().x, T().y));
-  face(0, -1); w.set(T().x, T().y, '草'); hold('門'); g.pressPlace();
-  ok('cannot place on grass before clearing it', w.get(T().x, T().y) === '草');
-  w.set(T().x, T().y, '土'); g.pressPlace();
+  face(0, -1); w.set(T().x, T().y, '沙'); w.set(T().x, T().y, '木'); hold('門'); g.pressPlace();
+  ok('cannot place on a tree before clearing it', w.get(T().x, T().y) === '木');
+  w.set(T().x, T().y, '草'); const tr0 = U.trueRand; U.trueRand = () => 0.9; const grass0 = g.count('草'); g.pressPlace(); U.trueRand = tr0;
+  ok('v0.29: a 門 goes straight onto grass; this time the grass is crushed', w.get(T().x, T().y) === '門' && g.count('草') === grass0 && g.msgText.indexOf('壓壞') >= 0, g.count('草'));
   ok('placed 門: player passes, ghosts do not', w.get(T().x, T().y) === '門' && g.pass(T().x, T().y) && !g.ents.canStand('狼', T().x, T().y, true) && !g.ents.canStand('虎', T().x, T().y, true));
-  face(-1, 0); w.set(T().x, T().y, '土'); hold('床'); g.pressPlace();
+  face(-1, 0); w.set(T().x, T().y, '花'); hold('床'); const fl0 = g.count('花'); U.trueRand = () => 0.1; g.pressPlace(); U.trueRand = tr0;
   const bed = T();
   ok('placed 床 sets home', w.get(bed.x, bed.y) === '床' && p.home && p.home.x === bed.x, p.home);
-  face(0, 1); w.set(T().x, T().y, '沙'); hold('灶'); g.pressPlace();
+  ok('v0.29: a 床 on 花 — half the time the flower is picked up as it goes down', g.count('花') === fl0 + 1, [fl0, g.count('花')]);
+  face(0, 1); w.set(T().x, T().y, '田'); hold('灶'); const stander = g.ents.add('鹿', T().x, T().y, { calm: 99, moveT: 99 }); g.pressPlace();
+  ok('v0.29: nothing goes down on a tile a creature stands on', w.get(T().x, T().y) === '田' && g.count('灶') === 1 && g.msgText.indexOf('有生靈') >= 0);
+  g.ents.list = g.ents.list.filter(e => e !== stander); w.set(T().x, T().y, '沙'); g.pressPlace();
   const stove = T();
   ok('placed 灶 is cold', w.get(stove.x, stove.y) === '灶' && !w.stoveLit(stove.x, stove.y));
   hold('木'); const wood0 = g.count('木'); g.pressPlace();
@@ -144,15 +148,15 @@ const result = await page.evaluate(async () => {
 
   // ============ E. 睡覺、發酵、醉果 ============
   g.ents.list = g.ents.list.filter(e => e.type !== '魄');
-  setDay(0.6); const dayBefore = g.day(); p.warm = 40; p.sta = 20; g.sleep(); await sleep(30);
+  setDay(0.83); const dayBefore = g.day(); p.warm = 40; p.sta = 20; g.sleep(); await sleep(30);
   ok('sleeping in a bed skips to morning', g.day() === dayBefore + 1 && p.warm === 100 && p.sta === p.staMax && g.stats.nights === 1, [g.day(), p.warm]);
-  setDay(0.6); const ghost = g.ents.add('魄', p.x + 3, p.y, { moveT: 99 }); const t1 = w.time; g.sleep();
+  setDay(0.83); const ghost = g.ents.add('魄', p.x + 3, p.y, { moveT: 99 }); const t1 = w.time; g.sleep();
   ok('cannot sleep with a ghost nearby', w.time === t1, g.msgText); g.ents.remove(ghost);
-  setDay(0.6); p.san = 50; g.sleep(); await sleep(30);
+  setDay(0.83); p.san = 50; g.sleep(); await sleep(30);
   ok('sleeping restores 20 sanity', Math.round(p.san) === 70, p.san);
-  setDay(0.04); const tN = w.time; g.sleep();
+  setDay(0.27); const tN = w.time; g.sleep();
   ok('no napping after sunrise', w.time === tN, g.msgText);
-  setDay(0.3); g.removeItem('果', 99); g.removeItem('肉', 99); g.removeItem('磚', 99);
+  setDay(0.53); g.removeItem('果', 99); g.removeItem('肉', 99); g.removeItem('磚', 99);
   g.addItem('果', 2); g.addItem('果', 3, { d: g.day() - 15 });
   const fstacks = () => p.bag.filter(s => s.n === '果'), dNow = g.day();
   ok('fruit picked on different days shares one stack, oldest first inside', fstacks().length === 1 && fstacks()[0].c === 5 && fstacks()[0].ds.join() === [dNow - 15, dNow - 15, dNow - 15, dNow, dNow].join(), JSON.stringify(fstacks()));
@@ -163,10 +167,10 @@ const result = await page.evaluate(async () => {
   g.removeItem('醉果', 99);
   // ============ F. 魄夜、毒、豹狼、稻草人 ============
   p.hp = 100; p.poisonT = 0; p.san = 100;
-  w.time = DAY * 12 + DAY * 0.7;   // 第 13 日的夜 → 第十三夜
+  w.time = DAY * 12 + DAY * 0.93;   // 第 13 日的夜 → 第十三夜
   ok('night thirteen is ghost night', g.day() === 13 && g.nightNo() === 13 && g.ghostNight() && g.ghostCap() === 2, [g.day(), g.nightNo(), g.ghostCap()]);
-  w.time = DAY * 9 + DAY * 0.7; ok('no ghosts on night ten any more', !g.ghostNight());
-  w.time = DAY * 12 + DAY * 0.7;
+  w.time = DAY * 9 + DAY * 0.93; ok('no ghosts on night ten any more', !g.ghostNight());
+  w.time = DAY * 12 + DAY * 0.93;
   // 手裡沒光：魄四格內蝕心耗力
   for (const [k] of w.stoves) w.stoves.set(k, 0);
   for (let dx = -10; dx <= 10; dx++) for (let dy = -10; dy <= 10; dy++) if (w.info(p.x + dx, p.y + dy).light) w.set(p.x + dx, p.y + dy, '白');
@@ -196,14 +200,14 @@ const result = await page.evaluate(async () => {
   ok('away from other lights it burns again', hat.fuel < 300, hat.fuel);
   g.takeOff('帽'); g.removeItem('燈帽', 1); hold('木');
   // 白天：林裡凍住，林外煙滅
-  w.time = DAY * 13 + DAY * 0.25;
+  w.time = DAY * 13 + DAY * 0.48;
   const g1 = g.ents.add('魄', p.x + 20, p.y + 20, { moveT: 99 }); w.set(p.x + 20, p.y + 20, '林');
   const g2 = g.ents.add('魄', p.x + 22, p.y + 22, { moveT: 99 }); w.set(p.x + 22, p.y + 22, '草');
   await until(() => !g.ents.list.includes(g2), 4000);
   ok('by day a ghost in the woods freezes, one outside dissipates', g.ents.list.includes(g1) && g1.frozen && !g.ents.list.includes(g2));
   g.ents.remove(g1);
   // 毒蛇：咬一口中毒九秒、每秒一點五（v0.28.1 起，原本五秒每秒三）；連咬十五口必死
-  hold('木'); w.time = DAY * 13 + DAY * 0.3;
+  hold('木'); w.time = DAY * 13 + DAY * 0.53;
   face(1, 0); w.set(T().x, T().y, '草'); const snake = g.ents.add('蛇', T().x, T().y, { moveT: 0, atk: 0 }); p.hp = 100; p.biteN = 0; p.biteLast = -99;
   await until(() => p.poisonT > 0, 3000);
   ok('snake bite poisons (1.5/s for 9 s)', p.poisonT > 5 && p.poisonT <= 9 && p.poisonPer === 1.5 && p.biteN === 1, [p.poisonT, p.poisonPer, p.biteN]);
@@ -233,7 +237,7 @@ const result = await page.evaluate(async () => {
   ok('cutting grass can startle a spider (1/10)', g.ents.count('蛛') === spiders0 + 1);
   g.ents.list = g.ents.list.filter(e => e.type !== '蛛');
   // 豹：一撲十滴血
-  w.time = DAY * 13 + DAY * 0.3; hold('木'); face(1, 0); w.set(T().x, T().y, '林');
+  w.time = DAY * 13 + DAY * 0.53; hold('木'); face(1, 0); w.set(T().x, T().y, '林');
   for (const [k] of w.stoves) w.stoves.set(k, 0);
   for (let dx = -3; dx <= 3; dx++) for (let dy = -3; dy <= 3; dy++) if (w.info(p.x + dx, p.y + dy).light) w.set(p.x + dx, p.y + dy, '白');
   const leo = g.ents.add('豹', T().x, T().y, { moveT: 0, atk: 0, calm: 0 }); p.hp = 100; await until(() => p.hp < 100, 3000);
@@ -254,7 +258,7 @@ const result = await page.evaluate(async () => {
   // 愜意：製作 +8；歸零失控；回到 10 解除
   trim(['木', '石', '石子', '草', '土', '石劍', '石鎬', '磚']);
   p.san = 50; p.cour = 0; g.addItem('土', 2); g.addItem('草', 1); p.sta = 50; g.craft('brick');
-  ok('crafting adds 8 sanity and courage equal to its stamina ×1.25 (normal difficulty bonus, rounded)', p.san === 58 && p.cour === 4, [p.san, p.cour]);
+  ok('crafting adds 8 sanity and courage equal to its stamina ×1.25 (normal difficulty bonus, kept to four decimals: 3.75)', p.san === 58 && p.cour === 3.75, [p.san, p.cour]);
   g.addItem('土', 8); g.addItem('草', 4); p.sta = 100; const sg = [];
   for (let i = 0; i < 4; i++) { const s0 = p.san; g.craft('brick'); sg.push(Math.round((p.san - s0) * 100) / 100); }
   ok('repeating the same recipe within 60 s gives 4, 2, 1, 1 sanity', sg.join(',') === '4,2,1,1', sg);
@@ -267,7 +271,7 @@ const result = await page.evaluate(async () => {
   // 膽氣：每 20 點一重，回復倍率
   p.cour = 45; g.addCourage(0);
   ok('courage level 2 gives 1.2x recovery', g.level() === 2 && Math.abs(g.mult() - 1.2) < 1e-9);
-  ok('level thresholds grow as 20×(1+0.1n)², rounded to whole points', g.levelCost(0) === 20 && g.levelCost(1) === 24 && g.levelCost(2) === 29 && g.levelCost(3) === 34 && g.levelCost(4) === 39 && g.levelAt(1) === 20 && g.levelAt(2) === 44 && g.levelAt(8) === 300 && g.levelAt(10) === 437 && Number.isInteger(g.levelAt(31)), [g.levelAt(8), g.levelAt(10), g.levelAt(31)]);
+  ok('level thresholds grow as 20×(1+0.1n)², kept to four decimals (v0.29)', g.levelCost(0) === 20 && g.levelCost(1) === 24.2 && g.levelCost(2) === 28.8 && g.levelCost(3) === 33.8 && g.levelCost(4) === 39.2 && g.levelAt(1) === 20 && g.levelAt(2) === 44.2 && g.levelAt(8) === 300 && g.levelAt(10) === 437 && g.levelAt(31) === 4371, [g.levelAt(8), g.levelAt(10), g.levelAt(31)]);
   ok('ship recipe locked below level 8', (() => { g.addItem('木板', 8); g.addItem('船槳', 1); g.addItem('船帆', 1); p.sta = 100; g.craft('ship'); return g.count('孤帆') === 0; })());
   p.cour = 300; g.craft('ship');
   ok('a 孤帆 is craftable at level 8 for 8 planks, an oar and a sail', g.count('孤帆') === 1 && g.level() === 8 && g.count('木板') === 0, [g.count('孤帆'), g.level()]);
@@ -291,7 +295,7 @@ const result = await page.evaluate(async () => {
   p.cour = g.levelAt(23); ok('level 23: attack ×1.15², taken ÷1.15', Math.abs(g.dmgMult() - 1.15 * 1.15 * (1 + 0.05 / 3)) < 1e-9 && Math.abs(g.takenMult() - 0.83 / 1.15) < 1e-9);
   p.cour = g.levelAt(30); ok('level 30: attack ×1.15³, taken ÷1.15²', Math.abs(g.dmgMult() - Math.pow(1.15, 3) * (1 + 0.05 / 3)) < 1e-9 && Math.abs(g.takenMult() - 0.83 / 1.15 / 1.15) < 1e-9);
   p.cour = g.levelAt(16); p.hp = 100; p.hitWin = { start: -99, n: 0 }; g.hit({ type: '虎', x: p.x + 1, y: p.y }, 20);
-  ok('near the 山海衣 beasts hit 5/3 harder; the armour still takes 17% off (20 × 5/3 × 0.83 → 28)', p.hp === 100 - Math.round(20 * 5 / 3 * 0.83), p.hp);
+  ok('near the 山海衣 beasts hit 5/3 harder; the armour still takes 17% off (20 × 5/3 × 0.83 = 27.6667)', Math.abs(p.hp - (100 - 27.6667)) < 1e-9, p.hp);
   w.set(p.x + 3, p.y, '草'); const tt = g.ents.add('虎', p.x + 3, p.y, { moveT: 0, calm: 0, atk: 0 }); g.ents.update(0.01, g);
   ok('near the 山海衣 hostile beasts move at half speed', Math.abs(tt.moveT - 0.6) < 1e-6, tt.moveT); g.ents.remove(tt);
   g.takeOff('盔');
@@ -335,9 +339,9 @@ const result = await page.evaluate(async () => {
   for (const k of ['襯', '甲', '褲', '盔', '靴']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); p.hitWin = { start: -99, n: 0 };
   // 難度：魄幾夜起、受傷與攻擊倍率、夜裡獸量
   const tSave = w.time; p.cour = 0;
-  g.diff = XIEYI.DIFF.hard; w.time = DAY * 8 + DAY * 0.7;
+  g.diff = XIEYI.DIFF.hard; w.time = DAY * 8 + DAY * 0.93;
   ok('hard: ghosts from night 9, taken ×1.1, attack ×0.9, night beasts ×1.5', g.ghostNight() && Math.abs(g.takenMult() - 1.1) < 1e-9 && Math.abs(g.dmgMult() - 0.9) < 1e-9 && g.beastMult() === 1.5, [g.takenMult(), g.dmgMult()]);
-  g.diff = XIEYI.DIFF.easy; w.time = DAY * 12 + DAY * 0.7; const e13 = g.ghostNight(); w.time = DAY * 20 + DAY * 0.7;
+  g.diff = XIEYI.DIFF.easy; w.time = DAY * 12 + DAY * 0.93; const e13 = g.ghostNight(); w.time = DAY * 20 + DAY * 0.93;
   ok('easy: no ghosts on night 13, ghosts from night 21, taken ×0.9, attack ×1.1', !e13 && g.ghostNight() && Math.abs(g.takenMult() - 0.9) < 1e-9 && Math.abs(g.dmgMult() - 1.1) < 1e-9 && g.beastMult() === 1);
   g.diff = XIEYI.DIFF.normal; w.time = tSave;
   // 錦囊：囊多兩格、具欄多一格，最多四個
@@ -410,14 +414,14 @@ const result = await page.evaluate(async () => {
   hold('丹'); g.useItem();
   ok('eating a pill raises max hp by 3 (first fifty)', p.hpMax === 103 && p.pillsEaten === 1, p.hpMax);
   p.pillsEaten = 50; p.hpMax = 250; g.addItem('丹', 2); hold('丹'); g.useItem(); const after51 = p.hpMax; hold('丹'); g.useItem();
-  ok('from the fifty-first pill each adds half, rounded to whole points (251, 251)', after51 === 251 && p.hpMax === 251 && p.pillsEaten === 52, [after51, p.hpMax]);
+  ok('from the fifty-first pill each adds half a point, not rounded (250.5, 251)', after51 === 250.5 && p.hpMax === 251 && p.pillsEaten === 52, [after51, p.hpMax]);
   p.hp = p.hpMax; await sleep(60);
   ok('hp bar and label follow the raised maximum', document.getElementById('hplabel').textContent.indexOf('251') >= 0, document.getElementById('hplabel').textContent);
   p.cour = g.levelAt(16); g.addItem('內襯', 1); g.addItem('布褲', 1); g.addItem('布甲', 1); g.addItem('布帽', 1); g.addItem('鎢鋼靴', 1); for (const n of ['內襯', '布褲', '布甲', '布帽', '鎢鋼靴']) { hold(n); g.pressPlace(); }
   face(1, 0); w.set(T().x, T().y, '草'); const rt = g.ents.add('虎', T().x, T().y, { moveT: 99, calm: 99 }); hold('石劍'); p.atkT = 0; g.pressGather();
-  ok('damage dealt is a whole number (40 × 1.15 × (1 + 0.05/3) = 46.77 → 47)', rt.hp === 300 - 47 && Number.isInteger(rt.hp), rt.hp);
+  ok('damage dealt keeps four decimals (40 × 1.15 × (1 + 0.05/3) = 46.7667)', Math.abs(rt.hp - (300 - 46.7667)) < 1e-9, rt.hp);
   p.hp = 100; g.hit({ type: '虎', x: p.x + 1, y: p.y }, 20);
-  ok('damage taken is a whole number (20 × 5/3 × 0.83 = 27.67 → 28)', p.hp === 72 && Number.isInteger(p.hp), p.hp);
+  ok('damage taken keeps four decimals (20 × 5/3 × 0.83 = 27.6667)', Math.abs(p.hp - (100 - 27.6667)) < 1e-9, p.hp);
   g.ents.remove(rt); for (const k of ['襯', '褲', '甲', '盔', '靴']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); p.cour = 0; p.hp = 100; p.hurtT = 0;
   p.hpMax = 100; p.hp = 100; p.pillsEaten = 0; p.pillsMade = 0; g.removeItem('丹', 9); g.removeItem('蟾蜍肉', 9); g.removeItem('毒蟾肉', 9); w.set(ding.x, ding.y, '土');
   // 龜：少見不咬人，命二百五（v0.28）；龜甲卜之，吉則五日無魄
@@ -430,7 +434,7 @@ const result = await page.evaluate(async () => {
   hold('龜甲'); Math.random = () => 0.9; g.useItem();
   ok('a bad omen wastes the shell', g.count('龜甲') === 0 && g.peaceDays() === 0);
   g.addItem('龜甲', 1); hold('龜甲'); Math.random = () => 0.1; g.useItem(); Math.random = rnd3;
-  ok('a good omen: five days without ghosts', g.peaceDays() === 5 && (() => { const t0 = w.time; w.time = Math.floor((p.noGhostUntil - DAY) / DAY) * DAY + DAY * 0.7; const inside = !g.ghostNight(); w.time = Math.floor(p.noGhostUntil / DAY) * DAY + DAY * 1.7; const after = g.ghostNight(); w.time = t0; return inside && after; })(), [g.peaceDays()]);
+  ok('a good omen: five days without ghosts', g.peaceDays() === 5 && (() => { const t0 = w.time; w.time = Math.floor((p.noGhostUntil - DAY) / DAY) * DAY + DAY * 0.93; const inside = !g.ghostNight(); w.time = Math.floor(p.noGhostUntil / DAY) * DAY + DAY * 1.93; const after = g.ghostNight(); w.time = t0; return inside && after; })(), [g.peaceDays()]);
   p.noGhostUntil = 0;
   // 漁網：棉麻草織小網，四小成中，四中或十三小成大（v0.21 起是撒網）
   trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); g.removeItem('草', 99); g.removeItem('魚', 99);
@@ -458,7 +462,7 @@ const result = await page.evaluate(async () => {
     g.pressPlace(); const big = g.held();
     ok('F casts the big net at once: the three fish in its shadow are caught, the one outside is not', g.count('魚') === f0 + 3 && inside.every(e => !g.ents.list.includes(e)) && g.ents.list.includes(outside) && g.msgText.indexOf('網到 3 條魚') >= 0, [g.count('魚') - f0, g.msgText]);
     ok('three or more fish cost 7 durability: one net is split off the pile and kept in hand (240 → 233)', big && big.n === '大漁網' && big.dur === 233 && big.c === 1 && g.count('大漁網') === 2 && g.durText(big) === '耐 233', [big && big.dur, bag()]);
-    ok('each fish caught is a point of courage (3 × 1.25 → 4)', p.cour === c0 + 4, p.cour - c0);
+    ok('each fish caught is a point of courage (3 × 1.25 = 3.75)', Math.abs(p.cour - c0 - 3.75) < 1e-9, p.cour - c0);
     g.pressPlace(); ok('an empty cast costs 1', big.dur === 232 && g.msgText.indexOf('空的') >= 0, [big.dur, g.msgText]);
     fishAt(PX + 2, PY); g.pressPlace(); ok('one fish costs 2', big.dur === 230, big.dur);
     fishAt(PX + 1, PY + 1); fishAt(PX + 3, PY); g.pressPlace(); ok('two fish cost 4', big.dur === 226, big.dur);
@@ -482,8 +486,8 @@ const result = await page.evaluate(async () => {
     ok('a small net catches the fish right in front: 30 − 2 = 28', g.count('魚') === fS + 1 && small.n === '漁網' && small.dur === 28, [g.count('魚') - fS, small && small.dur]);
     w.set(PX + 1, PY, '淼'); fishAt(PX + 1, PY); const fD = g.count('魚'); g.pressPlace();
     ok('a cast net works over deep water too', g.count('魚') === fD + 1, g.count('魚') - fD);
-    w.set(PX + 1, PY, '灘'); setDay(0.6); ok('over the flats at high tide the shadow shows', shadow() === '1:0' && w.get(PX + 1, PY) === '水', shadow());
-    setDay(0.3); ok('at low tide the flats are sand: no shadow, F says to find water', shadow() === '' && w.get(PX + 1, PY) === '沙' && (g.msgText = '', g.pressPlace(), g.msgText.indexOf('水邊') >= 0), [shadow(), g.msgText]);
+    w.set(PX + 1, PY, '灘'); setDay(0.83); ok('over the flats at high tide the shadow shows', shadow() === '1:0' && w.get(PX + 1, PY) === '水', shadow());
+    setDay(0.53); ok('at low tide the flats are sand: no shadow, F says to find water', shadow() === '' && w.get(PX + 1, PY) === '沙' && (g.msgText = '', g.pressPlace(), g.msgText.indexOf('水邊') >= 0), [shadow(), g.msgText]);
     w.set(PX + 1, PY, '水'); w.set(PX, PY - 1, '水'); w.set(PX, PY - 2, '水'); face(0, -1); g.addItem('中漁網', 1); hold('中漁網');
     ok('a medium net facing north from the shore spreads north, not over your feet', shadow() === '0:-1,0:-2,1:-1,1:-2', shadow());
     g.ents.list = g.ents.list.filter(e => e.type !== '魚');
@@ -502,7 +506,7 @@ const result = await page.evaluate(async () => {
   // 雪域與熱氣（v0.18）：離雪五格內待過五息暖才多掉、越待越快；烤的東西給九十息熱氣、累積一百五十；有熱氣時凍不傷命。雨裡燈的損壞率看難度
   ok('lamp ruin odds per difficulty: easy 1/4500, normal 1/2500, hard 1/800; the world carries the current one', XIEYI.DIFF.easy.lampP === 1 / 4500 && XIEYI.DIFF.normal.lampP === 1 / 2500 && XIEYI.DIFF.hard.lampP === 1 / 800 && w.rainLampP === 1 / 2500, w.rainLampP);
   {
-    const sx = p.x + 5, sy = p.y, keep = w.raw(sx, sy), lining = p.worn['襯']; p.worn['襯'] = null; setDay(0.3); hold('石子'); p.heatT = 0;
+    const sx = p.x + 5, sy = p.y, keep = w.raw(sx, sy), lining = p.worn['襯']; p.worn['襯'] = null; setDay(0.53); hold('石子'); p.heatT = 0;
     const dwAt = (sec) => { p.snowT = sec; p.warm = 50; g.updateStats(1); return p.warm - 50; };
     const base = dwAt(0); w.set(sx, sy, '雪');
     ok('a snow tile five away counts as the snow zone; under five seconds the warmth changes as usual', w.nearChar(p.x, p.y, '雪', 5) && Math.abs(dwAt(3) - base) < 1e-6 && Math.abs(p.snowT - 4) < 1e-9, [dwAt(3), base, p.snowT]);
@@ -516,13 +520,13 @@ const result = await page.evaluate(async () => {
     ok('a second helping tops it up to the cap of 150', Math.abs(p.heatT - 150) < 1e-9, p.heatT);
     g.addItem('烤魚', 1); hold('烤魚'); p.food = 10; g.useItem(); ok('roast fish counts too (still capped)', Math.abs(p.heatT - 150) < 1e-9, p.heatT);
     await sleep(60); ok('the 暖 label shows the heat', document.getElementById('warmlabel').textContent.indexOf('熱') >= 0, document.getElementById('warmlabel').textContent);
-    setDay(0.7); p.warm = 0; p.hp = 50; p.food = 100; p.sta = 100; p.san = 100; p.hurtT = 0; p.poisonT = 0; g.updateStats(1);
+    setDay(0.93); p.warm = 0; p.hp = 50; p.food = 100; p.sta = 100; p.san = 100; p.hurtT = 0; p.poisonT = 0; g.updateStats(1);
     ok('with heat in the belly freezing costs no hp', p.hp >= 50 && p.heatT > 148 && p.heatT < 150 && p.warm === 0, [p.hp, p.heatT, p.warm]);
     p.heatT = 0; p.hp = 50; g.updateStats(1);
     ok('without it the cold takes three a second', Math.abs(p.hp - 47) < 1e-6, p.hp);
     p.heatT = 42; g.save(); const svh = JSON.parse(localStorage.getItem('xieyi.save.v5')); p.heatT = 0; g.load(svh);
     ok('heat survives a save and load', Math.abs(p.heatT - 42) < 1e-9, p.heatT);
-    p.worn['襯'] = lining; setDay(0.3); p.warm = 100; p.hp = 100; p.heatT = 0; p.snowT = 0; g.removeItem('烤肉', 9); g.removeItem('烤魚', 9);
+    p.worn['襯'] = lining; setDay(0.53); p.warm = 100; p.hp = 100; p.heatT = 0; p.snowT = 0; g.removeItem('烤肉', 9); g.removeItem('烤魚', 9);
   }
   // v0.19：膽氣加成看難度；神兵減益看難度、兩件只算一重、困難掉力；錦囊六個；跨過燈；櫃裡自動歸類；回血門檻七成五含暖；霧障八方飄、會換形
   {
@@ -538,7 +542,7 @@ const result = await page.evaluate(async () => {
     ok('both together are still one debuff', g.hasGod() && g.decayDays() === 3 && g.decayFloor() === 27);
     g.diff = XIEYI.DIFF.hard; ok('hard: two days, floor 26', g.decayDays() === 2 && g.decayFloor() === 26 && g.godText() === '攜神兵：廿六重以上二日一減', g.godText());
     g.diff = XIEYI.DIFF.easy; ok('easy: four days, floor 28', g.decayDays() === 4 && g.decayFloor() === 28);
-    g.diff = XIEYI.DIFF.hard; setDay(0.3); p.sta = 50; p.swimming = false; const m0 = g.mult(); g.updateStats(1);
+    g.diff = XIEYI.DIFF.hard; setDay(0.53); p.sta = 50; p.swimming = false; const m0 = g.mult(); g.updateStats(1);
     ok('on hard a god weapon on you drains 0.3 stamina a second (net of the usual regen)', Math.abs(p.sta - (50 + 0.5 * m0 - 0.3)) < 1e-6, [p.sta, m0]);
     g.diff = XIEYI.DIFF.normal; p.sta = 50; g.updateStats(1);
     ok('on normal it does not', Math.abs(p.sta - (50 + 0.5 * m0)) < 1e-6, p.sta);
@@ -562,7 +566,7 @@ const result = await page.evaluate(async () => {
       ok('moving more 木 in lands in the same stack', box.filter(s => s.n === '木').length === 1 && box.find(s => s.n === '木').c === 8 + mv, box.map(s => s.n + s.c).join(','));
       g.closeChest(); box.length = 0; w.chests.delete(cx + ',' + cy); w.set(cx, cy, keepC);
     }
-    setDay(0.3); p.hp = 50; p.hurtT = 0; p.food = 76; p.san = 76; p.sta = 76; p.warm = 70; p.heatT = 0; p.poisonT = 0; g.updateStats(0.5);
+    setDay(0.53); p.hp = 50; p.hurtT = 0; p.food = 76; p.san = 76; p.sta = 76; p.warm = 70; p.heatT = 0; p.poisonT = 0; g.updateStats(0.5);
     ok('warmth below 75 blocks regeneration even with the other three above it', p.hp <= 50 + 1e-9, p.hp);
     p.warm = 76; p.hp = 50; g.updateStats(0.5);
     ok('with all four at 75 or more hp regenerates', p.hp > 50, p.hp);
@@ -587,7 +591,7 @@ const result = await page.evaluate(async () => {
   }
   // v0.20：魄加強——身上的光只逼得退、地上的光三格內才煙滅；撲燈、吹熄手裡的光、燈帽燒三倍；夜越深越多越快、蝕心更狠；屋外有魄而屋裡沒燈愜意緩掉
   {
-    const tKeep = w.time, X = p.x, Y = p.y; w.time = DAY * 12 + DAY * 0.75;
+    const tKeep = w.time, X = p.x, Y = p.y; w.time = DAY * 12 + DAY * 0.98;
     for (const [k] of w.stoves) w.stoves.set(k, 0);
     for (let dx = -12; dx <= 12; dx++) for (let dy = -12; dy <= 12; dy++) if (w.info(X + dx, Y + dy).light) w.set(X + dx, Y + dy, '白');
     g.ents.list = g.ents.list.filter(e => '魄龍'.indexOf(e.type) < 0); if (p.worn['帽']) g.takeOff('帽'); p.snuffT = 0; p.san = 100; p.insane = false; p.ctrl = true;
@@ -622,15 +626,15 @@ const result = await page.evaluate(async () => {
     ge.dash = 0; ge.moveT = 0; tick();
     ok('when the dash is over it backs off again', cheb(ge) === 2, cheb(ge));
     g.ents.remove(ge); g.ents.dashT = 1e9;
-    w.time = DAY * 12 + DAY * 0.75; const cap13 = g.ghostCap(); w.time = DAY * 32 + DAY * 0.75; const cap33 = g.ghostCap();
-    g.diff = XIEYI.DIFF.hard; w.time = DAY * 39 + DAY * 0.75; const capH = g.ghostCap(); g.diff = XIEYI.DIFF.normal;
+    w.time = DAY * 12 + DAY * 0.98; const cap13 = g.ghostCap(); w.time = DAY * 32 + DAY * 0.98; const cap33 = g.ghostCap();
+    g.diff = XIEYI.DIFF.hard; w.time = DAY * 39 + DAY * 0.98; const capH = g.ghostCap(); g.diff = XIEYI.DIFF.normal;
     ok('the deeper the nights the more 魄: two on night 13, up to eight (ten on hard)', cap13 === 2 && cap33 === 8 && capH === 10, [cap13, cap33, capH]);
-    const spAt = (n) => { w.time = DAY * (n - 1) + DAY * 0.75; return g.ghostSpeed(); };
+    const spAt = (n) => { w.time = DAY * (n - 1) + DAY * 0.98; return g.ghostSpeed(); };
     ok('from night twenty they get a tenth faster every four nights, up to double', spAt(19) === 1 && Math.abs(spAt(20) - 1.1) < 1e-9 && Math.abs(spAt(23) - 1.1) < 1e-9 && Math.abs(spAt(24) - 1.2) < 1e-9 && spAt(200) === 2, [spAt(19), spAt(20), spAt(24), spAt(200)]);
-    w.time = DAY * 23 + DAY * 0.75; hold('木'); const gf = g.ents.add('魄', X + 5, Y, { moveT: 0 }); tick();
+    w.time = DAY * 23 + DAY * 0.98; hold('木'); const gf = g.ents.add('魄', X + 5, Y, { moveT: 0 }); tick();
     ok('on night twenty-four a chasing 魄 steps every 0.375 s (0.45 ÷ 1.2)', Math.abs(gf.moveT - 0.375) < 1e-9 && cheb(gf) === 4, [gf.moveT, cheb(gf)]);
     g.ents.remove(gf);
-    w.time = DAY * 12 + DAY * 0.75; const gg = g.ents.add('魄', X + 3, Y, { moveT: 99 }); p.san = 80; p.sta = 80; g.updateStats(1); const dropN = 80 - p.san;
+    w.time = DAY * 12 + DAY * 0.98; const gg = g.ents.add('魄', X + 3, Y, { moveT: 99 }); p.san = 80; p.sta = 80; g.updateStats(1); const dropN = 80 - p.san;
     g.diff = XIEYI.DIFF.hard; p.san = 80; g.updateStats(1); const dropH = 80 - p.san; g.diff = XIEYI.DIFF.normal;
     ok('a 魄 within four tiles eats four 愜意 a second (five on hard)', dropN > 4 && dropN < 4.2 && dropH > 5 && dropH < 5.2, [dropN, dropH]);
     const lk = w.raw(X - 2, Y); w.set(X - 2, Y, '燈'); p.san = 80; g.updateStats(1);
@@ -764,15 +768,15 @@ const result = await page.evaluate(async () => {
   ok('respawn after a sea death is back on land', !p.dead && !p.sailing && w.info(p.x, p.y).walk > 0, [p.dead, p.sailing, p.x, p.y, w.get(p.x, p.y), JSON.stringify(p.home), JSON.stringify(g.spawn)]);
   // 漲潮困在灘上可以涉水走到別的灘
   let beach = null; for (let r = G.ISLAND_R; r <= Math.round(G.ISLAND_R * 1.25) && !beach; r++) for (let a = 0; a < 360 && !beach; a += 2) { const x = Math.round(Math.cos(a * Math.PI / 180) * r), y = Math.round(Math.sin(a * Math.PI / 180) * r); if (w.raw(x, y) === '灘' && w.raw(x + 1, y) === '灘') beach = [x, y]; }
-  if (beach) { p.x = p.rx = beach[0]; p.y = p.ry = beach[1]; setDay(0.6); ok('caught by the tide on the causeway you can wade to the next shoal', w.get(beach[0], beach[1]) === '水' && g.pass(beach[0] + 1, beach[1]), beach); p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; }
+  if (beach) { p.x = p.rx = beach[0]; p.y = p.ry = beach[1]; setDay(0.83); ok('caught by the tide on the causeway you can wade to the next shoal', w.get(beach[0], beach[1]) === '水' && g.pass(beach[0] + 1, beach[1]), beach); p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y; }
   else ok('caught by the tide on the causeway you can wade to the next shoal (no causeway found to test)', true);
   if (beach) {   // 漲潮時灘看起來是水，但船與魚梁不能停在灘上，否則退潮會堵住去燈塔的路；橋可以
-    setDay(0.6); p.x = p.rx = beach[0] - 1; p.y = p.ry = beach[1]; face(1, 0); g.addItem('漁', 1); hold('漁'); g.pressPlace();
+    setDay(0.83); p.x = p.rx = beach[0] - 1; p.y = p.ry = beach[1]; face(1, 0); g.addItem('漁', 1); hold('漁'); g.pressPlace();
     const parked = g.parkShip(beach[0], beach[1], true, 60); const pk = parked ? w.base(parked[0], parked[1]) : null; if (parked) w.set(parked[0], parked[1], w.base(parked[0], parked[1]));
     ok('no ship parks and no weir gets built on the causeway at high tide', w.raw(beach[0], beach[1]) === '灘' && g.count('漁') === 1 && parked && pk === '水', [w.raw(beach[0], beach[1]), g.count('漁'), JSON.stringify(parked), pk]);
     g.removeItem('漁', 9);
     g.addItem('橋', 1); hold('橋'); g.pressPlace();
-    const bridged = w.get(beach[0], beach[1]) === '橋'; setDay(0.25); const lowWalk = w.walkable(beach[0], beach[1]); setDay(0.6);
+    const bridged = w.get(beach[0], beach[1]) === '橋'; setDay(0.48); const lowWalk = w.walkable(beach[0], beach[1]); setDay(0.83);
     g.action = null; g.pressGather(); takeYes(); await until(() => !g.action, 4000);
     ok('a bridge may be built on the causeway, walkable at both tides, and taking it back leaves the causeway', bridged && lowWalk && w.raw(beach[0], beach[1]) === '灘' && g.count('橋') === 1, [bridged, lowWalk, w.raw(beach[0], beach[1]), g.count('橋'), g.msgText]);
     g.removeItem('橋', 9); p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y;
@@ -882,7 +886,7 @@ const result = await page.evaluate(async () => {
     const mm = g.ents.add('蜃', X + 4, Y, { moveT: 99, fogT: 999 }); p.cour = g.levelAt(12) + 10; g.save(); const sv3 = JSON.parse(localStorage.getItem('xieyi.save.v5')); g.ents.remove(mm);
     ok('an unresolved 蜃 is written into the save', sv3.ents.some(e => e.t === '蜃'));
     g.ents.list = g.ents.list.filter(e => e.type !== '龍' && !e.tame); g.load(sv3);
-    ok('loading drops the 蜃 and five courage levels, keeping the progress within the level', g.ents.count('蜃') === 0 && g.level() === 7 && p.cour === g.levelAt(7) + Math.floor(10 / g.levelCost(12) * g.levelCost(7)), [g.level(), p.cour]);
+    ok('loading drops the 蜃 and five courage levels, keeping the progress within the level', g.ents.count('蜃') === 0 && g.level() === 7 && Math.abs(p.cour - (g.levelAt(7) + 10 / g.levelCost(12) * g.levelCost(7))) < 1e-4, [g.level(), p.cour]);
     ok('vital bars carry three scale marks and tools wear a durability ring', getComputedStyle(document.querySelector('.bar'), '::after').backgroundPosition.split(',').length === 3 && (() => { g.addItem('石刀', 1); g.barSig = ''; g.buildBag(); return !!document.querySelector('#toolbar .slot.ringed .ring'); })());
     p.cour = 0;
     p.x = p.rx = g.spawn.x; p.y = p.ry = g.spawn.y;
@@ -905,13 +909,13 @@ const result = await page.evaluate(async () => {
     const mk = () => w.addFog([(X + 1) + ',' + Y, (X + 2) + ',' + Y], w.time + DAY);
     const stand = (x) => { p.x = p.rx = x; p.y = p.ry = Y; };
     const snap = () => ({ hp: p.hp, food: p.food, warm: p.warm, sta: p.sta, san: p.san });
-    const tolled = (a, b) => ['hp', 'food', 'warm', 'sta', 'san'].every(k => Math.abs(b[k] - (a[k] - Math.round(a[k] * 0.1))) < 1e-9);
+    const tolled = (a, b) => ['hp', 'food', 'warm', 'sta', 'san'].every(k => Math.abs(b[k] - (a[k] - U.r4(a[k] * 0.1))) < 1e-6);
     p.knock = 0; p.sailing = false; p.inFog = 0; g.removeItem('扇', 99); p.hp = 80; p.food = 50; p.warm = 60; p.sta = 40; p.san = 70;
     let f1 = mk(); stand(X + 1); await until(() => !hidden('fogask'), 3000);
     const noFanText = document.getElementById('fogask-text').textContent;
     ok('walking into fog pops the question and pauses the world; without a fan only "walk through" is offered', !hidden('fogask') && g.paused && noFanText.indexOf('沒有扇子') >= 0 && hidden('fogask-use'), noFanText);
     let s0 = snap(); document.getElementById('fogask-no').click(); const s1 = snap();
-    ok('without a fan: hp, food, warmth, stamina and ease each lose a tenth (rounded)', tolled(s0, s1) && !g.paused && p.inFog === f1.id, [JSON.stringify(s0), JSON.stringify(s1)]);
+    ok('without a fan: hp, food, warmth, stamina and ease each lose a tenth (to four decimals)', tolled(s0, s1) && !g.paused && p.inFog === f1.id, [JSON.stringify(s0), JSON.stringify(s1)]);
     stand(X + 2); await sleep(200);
     ok('moving about inside the same fog does not ask again', hidden('fogask'));
     stand(X); await sleep(150); g.addItem('扇', 2); stand(X + 1); await until(() => !hidden('fogask'), 3000);
@@ -948,7 +952,7 @@ const result = await page.evaluate(async () => {
   const dong = by('dong'); goNextTo(dong.x, dong.y); g.pressGather(); await sleep(30); await press('KeyE', 20);
   await until(() => p.creatures.indexOf('龍') >= 0, 4000);
   ok('洞 releases a dragon that follows', g.ents.list.some(e => e.type === '龍') && p.dragon && p.creatures.indexOf('龍') >= 0);
-  { const dr = g.ents.list.find(e => e.type === '龍'); setDay(0.75); hold('木'); if (p.worn['帽']) g.takeOff('帽'); g.removeItem('燈帽', 9);
+  { const dr = g.ents.list.find(e => e.type === '龍'); setDay(0.98); hold('木'); if (p.worn['帽']) g.takeOff('帽'); g.removeItem('燈帽', 9);
     const spot = [[6, 0], [-6, 0], [0, 6], [0, -6]].map(([dx, dy]) => [dr.x + dx, dr.y + dy]).find(([x, y]) => !w.lightNear(x, y, 7) && U.cheb(x, y, p.x, p.y) > 6);
     if (spot) {
       const dir = [Math.sign(spot[0] - dr.x), Math.sign(spot[1] - dr.y)];
@@ -966,7 +970,7 @@ const result = await page.evaluate(async () => {
   const st = [...w.steles.values()][0]; goNextTo(st.x, st.y); const sm = p.staMax; g.pressGather(); await sleep(30);
   ok('stele raises stamina cap', p.staMax === sm + 10, p.staMax);
   const reach = () => { const sp = g.spawn, d = by('deng'); const seen = new Set([sp.x + ',' + sp.y]); const q = [[sp.x, sp.y]]; while (q.length) { const [x, y] = q.shift(); for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, ny = y + dy, k = nx + ',' + ny; if (seen.has(k)) continue; if (Math.abs(nx - d.x) <= 1 && Math.abs(ny - d.y) <= 1) return true; if (w.walkable(nx, ny)) { seen.add(k); q.push([nx, ny]); } } } reach.last = { n: seen.size, sp: sp.x + ',' + sp.y + ' ' + w.get(sp.x, sp.y), around: [[1, 0], [-1, 0], [0, 1], [0, -1]].map(([dx, dy]) => w.get(sp.x + dx, sp.y + dy)).join('') }; return false; };
-  setDay(0.25); const lo = reach(); setDay(0.6); const hi = reach();
+  setDay(0.48); const lo = reach(); setDay(0.83); const hi = reach();
   ok('lighthouse reachable only at low tide', lo && !hi, [lo, hi, JSON.stringify(reach.last)]);
   await press('KeyM', 20); await sleep(50); const mapOpen = !hidden('map'); await press('KeyM', 20); await sleep(30);
   ok('island map toggles', mapOpen && hidden('map'));
@@ -1019,20 +1023,20 @@ const result = await page.evaluate(async () => {
   // —— 廿二重起只靠斃敵長膽氣；斃敵白日八成、夜裡加半成
   { const t0 = w.time, c0 = p.cour; trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']);
     p.cour = g.levelAt(21); g.addItem('土', 2); g.addItem('草', 1); p.sta = 50; g.craft('brick');
-    ok('below level 22 crafting still gives courage (3 × 1.25 → 4)', p.cour === g.levelAt(21) + 4, p.cour - g.levelAt(21));
+    ok('below level 22 crafting still gives courage (3 × 1.25 = 3.75)', Math.abs(p.cour - g.levelAt(21) - 3.75) < 1e-6, p.cour - g.levelAt(21));
     p.cour = g.levelAt(22); g.killOnlyHinted = false; g.addItem('土', 2); g.addItem('草', 1); p.sta = 50; g.craft('brick');
     ok('from level 22 crafting gives none (the brick is still made)', p.cour === g.levelAt(22) && g.count('磚') >= 2 && toasts().indexOf('膽氣不長了') >= 0);
     g.addCourage(5, 'other'); ok('nor do gathering, reading or fishing', p.cour === g.levelAt(22));
-    setDay(0.3); face(1, 0); w.set(T().x, T().y, '草'); g.kill(g.ents.add('鹿', T().x, T().y, { moveT: 99 }));
+    setDay(0.53); face(1, 0); w.set(T().x, T().y, '草'); g.kill(g.ents.add('鹿', T().x, T().y, { moveT: 99 }));
     ok('a deer is not hostile: no courage at 22', p.cour === g.levelAt(22) && !g.isNight());
     g.kill(g.ents.add('虎', T().x, T().y, { moveT: 99 }));
     ok('a tiger by day: 30 × 0.8 × 1.25 = 30', p.cour === g.levelAt(22) + 30, p.cour - g.levelAt(22));
-    setDay(0.7); p.cour = g.levelAt(22); g.kill(g.ents.add('虎', T().x, T().y, { moveT: 99 }));
-    ok('a tiger by night: 30 × 1.05 × 1.25 = 39.4 → 39', g.isNight() && p.cour === g.levelAt(22) + 39, p.cour - g.levelAt(22));
+    setDay(0.93); p.cour = g.levelAt(22); g.kill(g.ents.add('虎', T().x, T().y, { moveT: 99 }));
+    ok('a tiger by night: 30 × 1.05 × 1.25 = 39.375, kept to four decimals', g.isNight() && Math.abs(p.cour - (g.levelAt(22) + 39.375)) < 1e-6, p.cour - g.levelAt(22));
     p.cour = 0; g.kill(g.ents.add('狼', T().x, T().y, { moveT: 99 }));
-    ok('the day/night factor applies at any level: a wolf by night gives 20 (15 × 1.05 × 1.25)', p.cour === 20, p.cour);
-    setDay(0.3); p.cour = 0; g.kill(g.ents.add('鹿', T().x, T().y, { moveT: 99 }));
-    ok('below 22 a deer still gives its 3 (×1.25 → 4), no day factor', p.cour === 4, p.cour);
+    ok('the day/night factor applies at any level: a wolf by night gives 19.6875 (15 × 1.05 × 1.25)', p.cour === 19.6875, p.cour);
+    setDay(0.53); p.cour = 0; g.kill(g.ents.add('鹿', T().x, T().y, { moveT: 99 }));
+    ok('below 22 a deer still gives its 3 (×1.25 = 3.75), no day factor', p.cour === 3.75, p.cour);
     w.time = t0; p.cour = c0; for (const n of ['肉', '磚', '虎首骨', '狼首骨']) g.removeItem(n, 99); }
   // —— 霧障會動：慢慢挪，躲著光；沒光就亂飄
   { const X = p.x, Y = p.y; for (const id of [...w.fogs.keys()]) w.removeFog(id);
@@ -1248,7 +1252,7 @@ const result = await page.evaluate(async () => {
     g.closeStove(); for (const [x, y, c] of area) w.set(x, y, c);
     trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); p.tools = p.tools.filter(x => x.n !== '彈弓' && x.n !== '鋼劍'); p.tool = p.tools.length ? 0 : -1; g.barSig = ''; g.buildBag(); tAt(X, Y); }
   // 一山不容二虎：兩隻虎相距至少十二格（v0.22）
-  { calm(); setDay(0.7); const X = p.x + 20, Y = p.y, area = [];
+  { calm(); setDay(0.93); const X = p.x + 20, Y = p.y, area = [];
     for (let dx = -2; dx <= 18; dx++) for (let dy = -3; dy <= 3; dy++) { const x = X + dx, y = Y + dy; area.push([x, y, w.raw(x, y)]); w.set(x, y, '草'); }
     g.ents.list = g.ents.list.filter(e => e.type !== '虎');
     const A = g.ents.add('虎', X, Y, { moveT: 99 }), B = g.ents.add('虎', X + 13, Y, { moveT: 99 });
@@ -1282,10 +1286,12 @@ const result = await page.evaluate(async () => {
     const cx = 76, cy = 0, put = (x, y, c) => { area.push([x, y, w.get(x, y)]); w.set(x, y, c); };
     for (let dy = -9; dy <= 9; dy++) for (let dx = -13; dx <= 13; dx++) put(cx + dx, cy + dy, '草');
     E.list = []; p.x = cx; p.y = cy; p.rx = cx; p.ry = cy; p.bag = []; p.tools = []; p.tool = -1; p.sel = 0; g.barSig = ''; p.hp = 100;
-    ok('a day is 375 s (a quarter longer than 300)', DAY === 375);
+    ok('a day is 300 s (v0.29)', DAY === 300);
     const night = (f) => { setDay(f); return g.isNight(); };
-    ok('day and night are equal halves: night from 0.52 of the day to 0.02 of the next', !night(0.03) && !night(0.51) && night(0.52) && night(0.99) && night(0.01));
-    setDay(0.3);
+    ok('the day starts at midnight: night until 0.25, day 0.25–0.75, night again from 0.75', night(0.01) && night(0.24) && !night(0.25) && !night(0.74) && night(0.75) && night(0.99));
+    setDay(0.25); const hDawn = g.shichen(); setDay(0.75); const hDusk = g.shichen(); setDay(0.01); const hMid = g.shichen();
+    ok('dawn is 卯時 (6 o\'clock), dusk 酉時 (18), the start of the day 子時', hDawn === '卯時' && hDusk === '酉時' && hMid === '子時', [hDawn, hDusk, hMid]);
+    setDay(0.53);
     // 蜘蛛：十隻一隻毒蛛，見人就撲、毒是蛇的一半；其餘無毒，惹了才咬、不中毒
     Math.random = () => 0.05; const vs = E.add('蛛', cx + 1, cy, { moveT: 99 }); Math.random = () => 0.5; const hs = E.add('蛛', cx - 1, cy, { moveT: 99 }); Math.random = mr;
     const hsCalm = !E.isHostile(hs); hs.angry = true;
@@ -1313,8 +1319,11 @@ const result = await page.evaluate(async () => {
     ok('野牛: 450 hp, hits for 5, leaves you alone unprovoked', D['牛'].hp === 450 && D['牛'].atk === 5 && !E.isHostile(bison) && Math.max(Math.abs(bison.x - cx), Math.abs(bison.y - cy)) >= 2);
     for (const dy of [-1, 0, 1]) put(cx + 1, cy + dy, '磚');
     bison.x = cx + 2; bison.y = cy; bison.angry = true; bison.angryAt = w.time; bison.atk = 0; bison.moveT = 0;
-    let cracked = false; for (let i = 0; i < 90 && w.get(cx + 1, cy) === '磚'; i++) { E.update(0.1, g); if (E.rams.get((cx + 1) + ',' + cy) === 2) cracked = true; }
-    ok('an angered bison rams the brick between you: it cracks, and on the third ram it breaks', cracked && w.get(cx + 1, cy) === '白' && E.isHostile(bison), w.get(cx + 1, cy));
+    let ruined = false, rams = 0; for (let i = 0; i < 160 && w.get(cx + 1, cy) !== '白'; i++) { const a0 = bison.atk; E.update(0.1, g); if (bison.atk > a0 + 0.5) rams++; if (w.get(cx + 1, cy) === '墟') ruined = true; }
+    ok('v0.29: an angered bison rams the brick: at half its hidden strength it turns to 墟, and it breaks on the fourth ram', ruined && rams === 4 && w.get(cx + 1, cy) === '白' && E.isHostile(bison), [w.get(cx + 1, cy), rams]);
+    put(cx + 1, cy, '窗'); bison.x = cx + 2; bison.y = cy; bison.atk = 0; let red = false; rams = 0;
+    for (let i = 0; i < 120 && w.get(cx + 1, cy) === '窗'; i++) { const a0 = bison.atk; E.update(0.1, g); if (bison.atk > a0 + 0.5) rams++; if (w.wallHurt(cx + 1, cy)) red = true; }
+    ok('v0.29: a window has half a brick\'s strength: it turns red after one ram and breaks on the second', red && rams === 2 && w.get(cx + 1, cy) === '白', [w.get(cx + 1, cy), rams]);
     E.remove(bison);
     // 磚擋光擋眼；窗不擋
     put(cx - 6, cy, '燈'); for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]]) put(cx - 6 + dx, cy + dy, '磚');
@@ -1328,10 +1337,13 @@ const result = await page.evaluate(async () => {
     const rx = cx - 3, ry = cy + 6; put(rx, ry, '草'); put(rx + 1, ry, '床'); put(rx, ry - 1, '磚'); put(rx, ry + 1, '磚'); put(rx - 1, ry, '磚');
     for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) put(rx + dx, ry + dy, '磚');
     p.x = rx; p.y = ry; p.rx = rx; p.ry = ry; E.list = [];
-    setDay(0.7); p.san = 10; g.sleep(); const plain = p.san - 10;
-    put(rx - 1, ry, '窗'); setDay(0.7); p.san = 10; g.sleep(); const lit = p.san - 10, share = g.windowShare();
-    ok('sleeping in a room where windows are a third of the walls: 愜意 +35 instead of +20', plain === 20 && Math.abs(share - 1 / 3) < 1e-9 && lit === 35, [plain, share, lit]);
-    p.x = cx; p.y = cy; p.rx = cx; p.ry = cy; setDay(0.3);
+    setDay(0.93); p.san = 10; g.sleep(); const plain = p.san - 10;
+    put(rx - 1, ry, '窗'); setDay(0.93); p.san = 10; g.sleep(); const lit = p.san - 10, share = g.windowShare();
+    ok('v0.29: sleeping where windows ÷ room area is over 1/5: 愜意 +24 (20 × 1.2) instead of +20', plain === 20 && share === 1 && lit === 24, [plain, share, lit]);
+    ok('v0.29: window tiers — over 1/9 +5%, over 1/7 +12%, over 1/5 +20%; exactly 1/9 gives nothing', g.windowBonus(1 / 9) === 0 && g.windowBonus(0.12) === 0.05 && g.windowBonus(1 / 6) === 0.12 && g.windowBonus(0.21) === 0.2 && g.windowBonus(0) === 0);
+    ok('v0.29: a bright room also speeds every 愜意 gain by 5% for a whole day', p.sanBoostUntil > w.time + DAY - 2 && g.sanUp(10) === 10.5, [p.sanBoostUntil - w.time, g.sanUp(10)]);
+    w.time = p.sanBoostUntil + 1; ok('…and the day-long boost wears off', g.sanUp(10) === 10); p.sanBoostUntil = 0;
+    p.x = cx; p.y = cy; p.rx = cx; p.ry = cy; setDay(0.53);
     // 沼澤：獸除了蟾都不進；站在裡面掉力；木板鋪成棧道
     put(cx + 3, cy - 4, '沼');
     ok('swamp: beasts keep out of it except toads', !E.canStand('虎', cx + 3, cy - 4, true) && !E.canStand('豬', cx + 3, cy - 4, true) && !E.canStand('牛', cx + 3, cy - 4, true) && E.canStand('蟾', cx + 3, cy - 4, true));
@@ -1382,6 +1394,29 @@ const result = await page.evaluate(async () => {
     document.getElementById('pause-lang').click(); await sleep(20); const viaPause = I18N.hans; document.getElementById('pause-lang').click(); await sleep(20);
     ok('the pause-panel button switches back and forth', viaPause && !I18N.hans && document.getElementById('pause-lang').textContent === '简体中文');
     g.removeItem('鐵', 1); }
+  // ============ v0.29：一日三百息從半夜起算、精確到四位、墟與補牆、草花田路上放東西、舊存檔 ============
+  { ok('v0.29: a fresh island wakes in the early morning, just after dawn', new window.World(w.seed + 7).time === DAY * 0.26);
+    const old = JSON.parse(JSON.stringify(w.serialize())); delete old.dayLen; old.time = 375 * 9 + 375 * 0.8; old.diff['3,3'] = '牆';
+    old.scarecrows = { '0,0': old.time + 100 }; old.timers = { '1,1': ['苗', old.time + 50, '田'] };
+    const w3 = new window.World(w.seed); w3.restore(old, 10);
+    ok('v0.29: an old save keeps its day number and comes back at that day\'s early morning', w3.time === DAY * 9 + DAY * 0.26, w3.time / DAY);
+    ok('…timers saved in it keep the same countdown, and its old 牆 reads 墟', Math.abs(w3.scarecrows.get('0,0') - (w3.time + 100)) < 1e-6 && Math.abs(w3.timers.get('1,1').at - (w3.time + 50)) < 1e-6 && w3.diff.get('3,3') === '墟');
+    const w4 = new window.World(w.seed); w4.restore(w.serialize(), g.day());
+    ok('v0.29: a save made now keeps its exact time', w4.time === U.r4(w.time) && w4.timeShift === 0, [w4.time, w.time]);
+    ok('v0.29: 墟 replaces the village\'s broken walls (牆 is gone from the glyph table)', !!G.DB['墟'] && !G.DB['牆'] && G.DB['墟'].opaque && G.PLACES.find(q => q.id === 'cun').template.join('').indexOf('墟') >= 0 && G.PLACES.find(q => q.id === 'cun').template.join('').indexOf('牆') < 0);
+    ok('v0.29: U.r4 keeps four decimals', U.r4(20 * 5 / 3 * 0.83) === 27.6667 && U.r4(1 / 3) === 0.3333 && U.r4(2.00004) === 2);
+    face(1, 0); w.set(T().x, T().y, '磚'); const r1 = w.hitWall(T().x, T().y), r2 = w.hitWall(T().x, T().y);
+    ok('v0.29: two hits on a brick: still 磚 after the first, 墟 after the second', r1 === 'hit' && r2 === 'ruined' && w.get(T().x, T().y) === '墟', [r1, r2]);
+    g.addItem('磚', 1); hold('磚'); const b0 = g.count('磚'); g.pressPlace();
+    ok('v0.29: a 磚 laid straight onto 墟 makes a whole brick again', w.get(T().x, T().y) === '磚' && !w.wallHp.has(U.key(T().x, T().y)) && g.count('磚') === b0 - 1);
+    w.set(T().x, T().y, '墟'); const v1 = w.hitWall(T().x, T().y), v2 = w.hitWall(T().x, T().y);
+    ok('v0.29: the village\'s own 墟 is weaker than a brick: two hits and it is gone', v1 === 'hit' && v2 === 'broken', [v1, v2]);
+    w.set(T().x, T().y, '窗'); const c1 = w.hitWall(T().x, T().y);
+    ok('v0.29: a window hit once is at half strength and turns red', c1 === 'cracked' && w.wallHurt(T().x, T().y));
+    g.addItem('窗', 2); hold('窗'); const n0 = g.count('窗'); g.pressPlace();
+    ok('v0.29: a 窗 put onto the red window replaces it', w.get(T().x, T().y) === '窗' && !w.wallHurt(T().x, T().y) && g.count('窗') === n0 - 1);
+    g.pressPlace(); ok('…but a whole window is left alone', g.count('窗') === n0 - 1);
+    g.removeItem('窗', 9); w.set(T().x, T().y, '草'); }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
   // —— 三格存檔：第一格沿用舊鍵；每格帶摘要
@@ -1391,7 +1426,7 @@ const result = await page.evaluate(async () => {
     ok('summary of a save names island, difficulty, day, night, level and time', m.seed === g.seed && m.diff === g.diff.name && m.day === g.day() && m.level === g.level() && /^第 \d+ 日 · /.test(m.dayText) && /\d\d\/\d\d \d\d:\d\d/.test(m.whenText), m);
     const old = JSON.parse(JSON.stringify(sv)); delete old.brief; const mo = XIEYI.Game.summary(old);
     ok('an old save without a brief still gets day, night and level from time and courage', mo.day === m.day && mo.night === m.night && mo.level === m.level && mo.deaths === p.deaths);
-    const t0 = w.time; w.time = 0; ok('day 1 before dusk reads 未入夜, dusk reads 第 1 夜, next morning reads 過了 1 夜', (() => { const at = (tt) => { w.time = tt; return XIEYI.Game.summary({ world: { time: tt }, player: {}, savedAt: 1 }).dayText; }; return at(0) === '第 1 日 · 未入夜' && at(DAY * 0.6) === '第 1 日 · 第 1 夜' && at(DAY * 1.2) === '第 2 日 · 過了 1 夜'; })()); w.time = t0;
+    const t0 = w.time; w.time = 0; ok('day 1 before dusk reads 未入夜, dusk reads 第 1 夜, next morning reads 過了 1 夜', (() => { const at = (tt) => { w.time = tt; return XIEYI.Game.summary({ world: { time: tt }, player: {}, savedAt: 1 }).dayText; }; return at(0) === '第 1 日 · 未入夜' && at(DAY * 0.83) === '第 1 日 · 第 1 夜' && at(DAY * 1.4) === '第 2 日 · 過了 1 夜' && at(DAY * 1.1) === '第 2 日 · 第 1 夜'; })()); w.time = t0;
     g.slot = 2; g.save(); const s2 = XIEYI.Game.readSave(2); g.slot = 1;
     ok('saving while in slot 2 writes slot 2 only and leaves slot 1 as it was', !!s2 && s2.seed === g.seed && XIEYI.Game.readSave(1).savedAt === sv.savedAt && XIEYI.Game.readSave(3) === null);
     XIEYI.Game.clearSave(2); ok('clearing slot 2 empties only slot 2', XIEYI.Game.readSave(2) === null && !!XIEYI.Game.readSave(1));

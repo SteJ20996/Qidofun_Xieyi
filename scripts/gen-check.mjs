@@ -29,13 +29,13 @@ function touches(set, x0, y0, w0, h0) {   // 可達集合是否貼著這塊地�
 for (let seed = S0; seed < S0 + N; seed++) {
   const w = new World(seed), sp = w.findSpawn(), probs = [];
   if (w.places.length !== 8) probs.push('地標只有 ' + w.places.length + ' 處');
-  w.time = DAY * 0.25; const low = reach(w, sp);
-  w.time = DAY * 0.60; const high = reach(w, sp);
+  w.time = DAY * 0.5; const low = reach(w, sp);
+  w.time = DAY * 0.83; const high = reach(w, sp);
   if (low.size < REACH) probs.push('退潮可達範圍只有 ' + low.size + ' 格');
   // 可達範圍裡的資源（看底稿加差異層，灘以退潮算）
   const cnt = {}; for (const k of low) { const [x, y] = k.split(',').map(Number); for (const [dx, dy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) { const c = w.raw(x + dx, y + dy); for (const g in NEED) if (g.indexOf(c) >= 0) cnt[g] = (cnt[g] || 0) + 1; } }
   for (const g in NEED) if ((cnt[g] || 0) < NEED[g]) probs.push('可達的「' + g + '」只有 ' + (cnt[g] || 0) + '（要 ' + NEED[g] + '）');
-  w.time = DAY * 0.25; const dug = reach(w, sp, true); for (const k of dug) { const c = w.raw(...k.split(',').map(Number)); if (ORE[c] !== undefined) cnt[c] = (cnt[c] || 0) + 1; }
+  w.time = DAY * 0.5; const dug = reach(w, sp, true); for (const k of dug) { const c = w.raw(...k.split(',').map(Number)); if (ORE[c] !== undefined) cnt[c] = (cnt[c] || 0) + 1; }
   for (const g in ORE) if ((cnt[g] || 0) < ORE[g]) probs.push('挖得到的「' + g + '」只有 ' + (cnt[g] || 0) + '（要 ' + ORE[g] + '）');
   for (const pl of w.places) {
     const ok = pl.id === 'deng' ? touches(low, pl.x, pl.y, pl.w, pl.h) && !touches(high, pl.x, pl.y, pl.w, pl.h) : touches(low, pl.x, pl.y, pl.w, pl.h);
