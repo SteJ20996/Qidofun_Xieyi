@@ -17,6 +17,7 @@
   // 磚擋眼（v0.28）：獸跟人之間隔著磚、門、墟就看不見，只能循氣味找，找得到的距離是看得見時的七成；窗不擋。
   // 惹惱的野牛記仇比別的獸遠（十八格、三十息），擋在路上的人造磚、門、窗與墟（村裡的殘垣也算）都撞，一下隔 RAM_GAP 息；耐久在 world.js 的 WALL_HP
   const FISH_RATE = 1.8, EAGLE_RATE = 1.25;   // 魚出現得多八成、鷹多兩成五（v0.37 使用者定）：附近的上限與刷新的機會一起放大
+  const RILE_CALM = 20, RILE_GIVEUP = 12;   // 被惹的蛛、蟾：二十息後或人走出十二格就消氣（v0.41；鷹十二息、野牛三十息另算）
   const STAIRS = '台階', STAIR_SLOW = 1.5, FLIERS = '鳥龍鷹魄魚蜃';   // 獸也上得了階與台（v0.35 使用者定），一步多花一半時間
   const SMELL = 0.7, RAM_GAP = 1.6, RAMMABLE = '磚門窗墟';
   // 魄（v0.20 加強）：玩家身上的光（手裡的火把蠟燭、頭上的燈帽）只把魄逼到 GHOST_KEEP 格外，在 GHOST_HOVER 格內徘徊；
@@ -51,6 +52,7 @@
       if (r === 'broken') { if (g.wallBroken) g.wallBroken(e, x, y); } else if (g.wallRammed) g.wallRammed(e, x, y, r);
     }
     rammable(x, y) { const ch = this.world.get(x, y); return RAMMABLE.indexOf(ch) >= 0 && (ch === '墟' || this.world.base(x, y) !== ch); }   // 人造的磚門窗，與所有的墟
+    riled(e) { return !!e.angry && (e.type === '蛛' || e.type === '蟾' || e.type === '牛' || (e.type === '鷹' && !e.tame)); }   // 半友好的被惹了（v0.41：畫面上發紅變大）
     isHostile(o) {           // 會主動找人的：虎豹狼蛇、野豬、毒蛛；惹了才找人的：無毒蛛、蟾、野牛、沒馴的鷹
       return '虎豹狼蛇豬'.indexOf(o.type) >= 0 || (o.type === '蛛' && o.venom) || (o.angry && (o.type === '蛛' || o.type === '蟾' || o.type === '牛' || (o.type === '鷹' && !o.tame)));
     }
@@ -194,7 +196,7 @@
     }
     bite(e, g) {           // 毒咬，間隔 2.67 秒（原 2 秒放慢四分之一）；無毒蛛只是咬一口
       if (e.atk > 0) return;
-      if (e.type === '蛛' && !e.venom) { g.hit(e, DB['蛛'].nip); e.atk = 2.0 * 4 / 3; return; }
+      if ((e.type === '蛛' || e.type === '蟾') && !e.venom) { g.hit(e, DB[e.type].nip); e.atk = 2.0 * 4 / 3; return; }   // 無毒的蛛、蟾：咬一口傷二、不中毒
       g.bite(e, DB[e.type].bite); e.atk = 2.0 * 4 / 3;
     }
     seaTarget(e) {         // 龜逃命的方向：最近的海（離島心夠遠的水，島裡的水塘不算）
@@ -411,7 +413,8 @@
             }
           } else { e.moveT = 1.5 + Math.random() * 2; if (Math.random() < 0.5) this.wander(e, night, '草'); }
         } else if (e.type === '蛛' || e.type === '蟾') {
-          const hostile = (e.type === '蛛' && e.venom) || (e.angry && (e.type === '蛛' || e.venom));     // 毒蛛見人就撲；無毒蛛與毒蟾被惹了才咬
+          if (e.angry && !(e.type === '蛛' && e.venom) && (this.world.time - (e.angryAt || 0) > RILE_CALM || d > RILE_GIVEUP)) e.angry = false;   // 惹了的消氣（v0.41）
+          const hostile = (e.type === '蛛' && e.venom) || e.angry;     // 毒蛛見人就撲；其餘蛛、蟾被惹了才衝過來咬（v0.41 起無毒蟾也是）
           if (hostile && d <= 1) { this.bite(e, g); e.moveT = 0.5; }
           else if (hostile && d <= this.sense(e, p, 6)) { e.moveT = 0.35; this.stepTo(e, p.x, p.y, false, night); }
           else { e.moveT = 1 + Math.random() * 2; if (Math.random() < 0.4) this.wander(e, night, e.type === '蟾' ? '草沙土水' : null); }
