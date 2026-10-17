@@ -1464,7 +1464,7 @@ const result = await page.evaluate(async () => {
     w.set(ax + 2, ay, '草'); ok('…and a changed ground invalidates it', R.sight(w, ax, ay, 4) === null);
     for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) w.set(ax + dx, ay + dy, w.base(ax + dx, ay + dy));
     const lx = p.x + 2, ly = p.y - 1, was = w.get(lx, ly); w.set(lx, ly, '燈'); setDay(0.5); w.rainUntil = w.time + DAY; await sleep(1900);
-    const dayRain = R.lastLm; w.rainUntil = 0; R.rainA = 0; await sleep(120); const dayDry = R.lastLm;
+    const dayRain = R.lastLm; w.rainUntil = 0; const nr0 = w.nextRainAt; w.nextRainAt = w.time + DAY * 9; R.rainA = 0; await sleep(120); const dayDry = R.lastLm; w.nextRainAt = nr0;   // 天氣是真隨機：量乾天時先別讓雨自己下
     ok('v0.31: in daytime rain a lamp still glows faintly; on a dry day there is no light layer at all', !!dayRain && dayRain.glow && !dayDry, [!!dayRain, dayRain && dayRain.glow, !!dayDry]);
     setDay(0.9); await sleep(120); const nightLm = R.lastLm;
     ok('v0.31: at night the light map carries the darkness and the lamp\'s warm glow', !!nightLm && nightLm.glow && nightLm.cols > 0 && R.lmDark.width === nightLm.cols, nightLm && [nightLm.cols, nightLm.rows]);
@@ -1472,7 +1472,8 @@ const result = await page.evaluate(async () => {
   { const fx = p.x - 16, fy = p.y; for (let dy = -9; dy <= 9; dy++) for (let dx = -9; dx <= 9; dx++) w.set(fx + dx, fy + dy, '草');
     const ns = []; for (let i = 0; i < 40; i++) ns.push(window.World.newFogShape(18).n);
     ok('v0.31: fog shapes run from round (power near 2) to square (power near 6)', Math.min(...ns) < 2.8 && Math.max(...ns) > 5, [Math.min(...ns), Math.max(...ns)]);
-    const f = w.addFog(null, w.time + DAY, false, window.World.newFogShape(18), [fx + 0.5, fy + 0.5]), cov = w.fogCoverage(f);
+    for (const id of [...w.fogs.keys()]) w.removeFog(id);
+    const f = w.addFog(null, w.time + DAY, false, window.World.newFogShape(18), [fx + 0.5, fy + 0.5]), cov = w.fogCoverage(f, undefined, undefined, undefined, f.mul);
     const area = cov.reduce((a, e) => a + e.c, 0), counted = [...f.cells], byKey = new Map(cov.map(e => [e.k, e.c]));
     ok('v0.31: a fog covers about eighteen tiles of area; a tile counts once more than 5% of it is covered; at most thirty count', Math.abs(area - 18) < 1.6 && counted.length <= 30 && counted.length >= 18 && counted.every(k => byKey.get(k) > 0.05) && cov.filter(e => e.c > 0.05).length >= counted.length, [area, counted.length]);
     w.removeFog(f.id);
@@ -1497,6 +1498,9 @@ const result = await page.evaluate(async () => {
     for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (Math.max(Math.abs(dx), Math.abs(dy)) === 3) w.set(fx + dx, fy + dy, '磚');
     const fh = w.addFog(null, w.time + DAY, false, window.World.newFogShape(18), [fx - 5.5, fy + 0.5]); fh.ang = 0; fh.gx = fh.x; fh.gy = fh.y;
     let wrapped = true, inside = 0; for (let i = 0; i < 12; i++) { w.placeFog(fh, fh.gx + Math.cos(fh.ang) * 0.5, fh.gy + Math.sin(fh.ang) * 0.5, fh.age); const cv = w.fogCover(fh); if (Math.abs(cv.area - fh.shape.area) > 1.2) wrapped = false; inside += [...fh.cells].filter(k => { const [x, y] = k.split(',').map(Number); return Math.abs(x - fx) <= 2 && Math.abs(y - fy) <= 2; }).length; }
+    { const ix = fx - 8, iy = fy + 7; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) w.set(ix + dx, iy + dy, Math.max(Math.abs(dx), Math.abs(dy)) === 2 ? '水' : '草');
+      ok('v0.34: a little pocket ringed by water alone is not a house — fog may drift in', !w.fogRoom(ix, iy));
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) w.set(ix + dx, iy + dy, '草'); }
     ok('v0.32: meeting a small house the fog turns aside, wraps round it with the same area, and never enters', (fh.turned || 0) >= 1 && Math.abs(Math.cos(fh.ang)) < 0.9 && wrapped && inside === 0, [fh.turned, fh.ang, wrapped, inside]);
     w.removeFog(fh.id); clear(10, w.base(fx, fy));
     for (let dy = -10; dy <= 10; dy++) for (let dx = -10; dx <= 10; dx++) w.set(fx + dx, fy + dy, w.base(fx + dx, fy + dy));
@@ -1554,7 +1558,38 @@ const result = await page.evaluate(async () => {
     await until(() => !g.follow && p.moveT <= 0, 8000);
     ok('v0.33: clicking a creature (either button) follows it, even when it moves, until it is right beside you and you face it', following && !g.follow && U.cheb(p.x, p.y, ox0.x, ox0.y) === 1 && faces(ox0.x, ox0.y) && g.msgText.indexOf('跟上了') >= 0, [following, p.x - X, p.y - Y, ox0.x - X, ox0.y - Y]);
     g.ents.remove(ox0);
+    // v0.34：安全的路——先避開沼澤與霧障；繞不開才穿過去，並說一聲
+    for (let dy = -9; dy <= 9; dy++) for (let dx = -9; dx <= 9; dx++) w.set(X + dx, Y + dy, '草');
+    p.x = p.rx = X; p.y = p.ry = Y; for (let dy = -4; dy <= 4; dy++) w.set(X + 3, Y + dy, '沼');
+    const pb = g.findPath(X + 6, Y);
+    ok('v0.34: the clicked path goes round a swamp rather than through it', !!pb && pb.every(([x, y]) => w.get(x, y) !== '沼') && pb.some(([x, y]) => Math.abs(y - Y) >= 5), pb && pb.length);
+    for (let dy = -4; dy <= 4; dy++) w.set(X + 3, Y + dy, '草');
+    const fogCells = []; for (let dy = -4; dy <= 4; dy++) fogCells.push((X + 3) + ',' + (Y + dy)); const fgw = w.addFog(fogCells, w.time + DAY);
+    const pf = g.findPath(X + 6, Y);
+    ok('v0.34: …and round a fog bank too', !!pf && pf.every(([x, y]) => !w.fogAt(x, y)), pf && pf.length);
+    w.removeFog(fgw.id);
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (Math.max(Math.abs(dx), Math.abs(dy)) === 2) w.set(X + 6 + dx, Y + dy, '沼');
+    const plan = g.planPath(X + 6, Y); await goTo(X + 6, Y);
+    ok('v0.34: when every way crosses a swamp it still goes, and says so', !!plan && !plan.safe && U.cheb(p.x, p.y, X + 6, Y) === 1 && g.msgText.indexOf('只好穿過去') >= 0, [plan && plan.safe, p.x - X, p.y - Y]);
     for (let dy = -9; dy <= 9; dy++) for (let dx = -9; dx <= 9; dx++) w.set(X + dx, Y + dy, w.base(X + dx, Y + dy)); p.x = p.rx = X; p.y = p.ry = Y; }
+  // —— v0.34：= 捉、Q 餵、Shift+= 放大；Q 不再是囊往前一格；滑鼠左右鍵不分，點身旁一格跟 E 一樣
+  { const X = p.x, Y = p.y; await until(() => p.moveT <= 0, 2000); g.ents.list = g.ents.list.filter(e => e.type === '龍');
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) w.set(X + dx, Y + dy, '草');
+    face(1, 0); w.set(X + 1, Y, '水'); const fish = g.ents.add('魚', X + 1, Y, { moveT: 99 }); const rnd0 = Math.random; Math.random = () => 0.01; const f0 = g.count('魚');
+    await press('Equal', 20); Math.random = rnd0;
+    ok('v0.34: = catches the fish in front', g.count('魚') === f0 + 1 && !g.ents.list.includes(fish), [f0, g.count('魚')]);
+    const t0 = g.renderer.tile; window.dispatchEvent(new KeyboardEvent('keydown', { code: 'Equal', shiftKey: true, bubbles: true })); await sleep(20); window.dispatchEvent(new KeyboardEvent('keyup', { code: 'Equal', bubbles: true }));
+    ok('v0.34: Shift+= (the ＋ key) still zooms in', g.renderer.tile === Math.min(56, t0 + 4), [t0, g.renderer.tile]); g.renderer.tile = t0;
+    w.set(X + 1, Y, '草'); const eg = g.ents.add('鷹', X + 1, Y, { moveT: 99, tame: true, sta: 20 }); g.addItem('魚', 1); const sel0 = p.sel, fish1 = g.count('魚');
+    await press('KeyQ', 20);
+    ok('v0.34: Q feeds the eagle in front a fish (and no longer steps the bag)', Math.abs(eg.sta - 60) < 1 && g.count('魚') === fish1 - 1 && p.sel === sel0, [eg.sta, g.count('魚'), p.sel, sel0]);
+    g.ents.remove(eg); g.removeItem('魚', 99);
+    g.addItem('磚', 1); hold('磚'); g.action = null; g.renderer.camInit = false; await sleep(80);
+    const R = g.renderer, T = R.tile, cvs = document.getElementById('world'), cx = R.w / 2 - R.camX * T + (X + 1 + 0.5) * T, cy = R.h / 2 - R.camY * T + (Y + 0.5) * T;
+    cvs.dispatchEvent(new MouseEvent('mousedown', { clientX: cx, clientY: cy, button: 2, bubbles: true })); await sleep(20);
+    ok('v0.34: either mouse button on the tile beside you acts like E (gathers), never places', w.get(X + 1, Y) === '草' && !!g.action && g.action.type === 'gather', [w.get(X + 1, Y), g.action && g.action.type]);
+    g.action = null; g.removeItem('磚', 9);
+    for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) w.set(X + dx, Y + dy, w.base(X + dx, Y + dy)); }
   g.save(); const sv = JSON.parse(localStorage.getItem('xieyi.save.v5'));
   ok('save v5 keeps sanity, courage, scarecrows and chests', sv && sv.v === 5 && typeof sv.player.san === 'number' && typeof sv.player.cour === 'number' && sv.world.scarecrows && sv.world.chests && sv.player.places.ta === 2);
   // —— 三格存檔：第一格沿用舊鍵；每格帶摘要

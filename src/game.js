@@ -917,7 +917,12 @@
     }
     // ---------- 滑鼠點格子走過去（v0.32；v0.33 使用者改）：不踩上點的那一格，而是走到它周圍八格裡站得上去、走起來離人最近的那一格，面向它，
     // 好接著對它取、放、打；點的是會動的生靈，就一直跟著，跟到牠身旁一格、面向牠為止 ----------
-    findPath(tx, ty) {   // 從人到 (tx, ty) 周圍八格之一的路（A*、八方向、斜走不貼角、繞開獸站的格）；人已經在旁邊就回空路；到不了回 null
+    unsafe(x, y) { return !!(this.world.info(x, y).bog || this.world.fogAt(x, y)); }   // 沼澤與霧障：找路時先避開（v0.34）
+    planPath(tx, ty) {   // 先找安全的路（不踩沼澤、霧障）；找不到才退而求其次，回 { path, safe }
+      const safe = this.findPath(tx, ty); if (safe) return { path: safe, safe: true };
+      const any = this.findPath(tx, ty, true); return any ? { path: any, safe: false } : null;
+    }
+    findPath(tx, ty, risky) {   // 從人到 (tx, ty) 周圍八格之一的路（A*、八方向、斜走不貼角、繞開獸站的格；risky 不給就也繞開沼澤與霧障）；人已經在旁邊就回空路；到不了回 null
       const p = this.player, sx = p.x, sy = p.y, K = (x, y) => (x - sx + PATH_R) * (2 * PATH_R + 1) + (y - sy + PATH_R);
       const done = (x, y) => U.cheb(x, y, tx, ty) === 1;
       const cost = new Map([[K(sx, sy), 0]]), from = new Map(), heap = [[Math.max(0, U.cheb(sx, sy, tx, ty) - 1), 0, sx, sy]];
@@ -933,7 +938,7 @@
         }
         for (const [dx, dy] of N8) {
           const nx = x + dx, ny = y + dy; if (Math.abs(nx - sx) > PATH_R || Math.abs(ny - sy) > PATH_R || (nx === tx && ny === ty)) continue;   // 點的那格不踩上去
-          if (!this.pass(nx, ny, x, y) || beasts.has(U.key(nx, ny)) || (dx && dy && !(this.pass(x + dx, y, x, y) && this.pass(x, y + dy, x, y)))) continue;   // 斜走不能貼著擋路的角穿過去（跟方向鍵一樣）
+          if (!this.pass(nx, ny, x, y) || beasts.has(U.key(nx, ny)) || (!risky && this.unsafe(nx, ny)) || (dx && dy && !(this.pass(x + dx, y, x, y) && this.pass(x, y + dy, x, y)))) continue;   // 斜走不能貼著擋路的角穿過去（跟方向鍵一樣）
           const nc = c + (dx && dy ? 1.3 : 1) / Math.max(0.3, DB[this.world.get(nx, ny)].walk || 1), nk = K(nx, ny);
           if (cost.has(nk) && cost.get(nk) <= nc) continue;
           cost.set(nk, nc); from.set(nk, [x, y]); push([nc + Math.max(0, Math.max(Math.abs(tx - nx), Math.abs(ty - ny)) - 1), nc, nx, ny]);
@@ -945,12 +950,27 @@
       const p = this.player;
       if (p.knock > 0 || p.dead || !this.canAct()) return false;
       if (Math.max(Math.abs(tx - p.x), Math.abs(ty - p.y)) > PATH_R) { this.message('太遠了，在畫面裡點近一點的格子。'); return false; }
-      const path = this.findPath(tx, ty);
-      if (!path) { this.stopWalk(); this.message(ent ? '到不了牠那裡。' : '走不過去。'); SFX.fail(); return false; }
+      const plan = this.planPath(tx, ty);
+      if (!plan) { this.stopWalk(); this.message(ent ? '到不了牠那裡。' : '走不過去。'); SFX.fail(); return false; }
+      const path = plan.path; this.pathSafe = plan.safe;
       this.path = path; this.pathGoal = { x: tx, y: ty }; this.follow = ent || null; this.pathTries = 0; if (this.action) this.action = null;
-      if (ent) this.message('跟著「' + this.beastName(ent) + '」走。按方向鍵停下。');
+      if (!plan.safe) this.message('沒有不經沼澤、霧障的路，只好穿過去。按方向鍵停下。');
+      else if (ent) this.message('跟著「' + this.beastName(ent) + '」走。按方向鍵停下。');
       if (!path.length) { if (ent) this.followPath(); else this.facePathGoal(); }
       return true;
+    }
+    pressCatch() {   // = 捉（v0.34 使用者定）：面前的魚；以後可捉的生靈也走這裡
+      if (!this.canAct()) return; const t = this.facing(), e = this.ents.at(t.x, t.y);
+      if (!e) { this.message('面前沒有能捉的。面向水裡的魚按 = 捉。'); return; }
+      if (e.type === '魚') { this.catchFish(e); return; }
+      this.message('「' + this.beastName(e) + '」捉不住。' + (e.type === '魄' ? '魄無形，用光。' : '要打按 E。'));
+    }
+    pressFeed() {    // Q 餵（v0.34 使用者定）：面前的鷹，囊裡有魚就餵一條（野的投魚馴，馴了的回力）
+      if (!this.canAct()) return; const t = this.facing(), e = this.ents.at(t.x, t.y);
+      if (!e) { this.message('面前沒有能餵的。面向鷹按 Q 餵魚。'); return; }
+      if (e.type !== '鷹') { this.message('「' + this.beastName(e) + '」不吃餵。'); return; }
+      if (this.count('魚') < 1) { this.message('囊裡沒有魚，餵不了鷹。'); SFX.fail(); return; }
+      this.feedEagle(e);
     }
     stopWalk() { this.path = null; this.follow = null; this.pathEnd = false; }
     facePathGoal() { const p = this.player, gl = this.pathGoal; if (gl && U.cheb(gl.x, gl.y, p.x, p.y) === 1) { p.fx = gl.x - p.x; p.fy = gl.y - p.y; } this.stopWalk(); }
@@ -960,18 +980,23 @@
         if (this.ents.list.indexOf(e) < 0) { this.stopWalk(); this.message('跟丟了。'); return; }
         if (U.cheb(e.x, e.y, p.x, p.y) <= 1) { if (e.x !== p.x || e.y !== p.y) { p.fx = e.x - p.x; p.fy = e.y - p.y; } this.stopWalk(); this.message('跟上了「' + this.beastName(e) + '」，就在面前。'); return; }
         if (!this.path || !this.path.length || e.x !== this.pathGoal.x || e.y !== this.pathGoal.y) {
-          const again = this.findPath(e.x, e.y);
+          const again = this.planPath(e.x, e.y);
           if (!again) { this.stopWalk(); this.message('跟不過去了。'); return; }
-          this.path = again; this.pathGoal = { x: e.x, y: e.y };
-          if (!again.length) return;
+          this.path = again.path; this.pathSafe = again.safe; this.pathGoal = { x: e.x, y: e.y };
+          if (!again.path.length) return;
         }
       } else if (!this.path || !this.path.length) { this.facePathGoal(); return; }
       const [nx, ny] = this.path[0], dx = nx - p.x, dy = ny - p.y;
       if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (!dx && !dy)) { this.path.shift(); return; }
+      const gl = this.pathGoal;
+      if (this.pathSafe && this.unsafe(nx, ny) && gl) {   // 霧飄到路上了：重找一條安全的；沒有就照舊走（並說一聲）
+        const again = this.planPath(e ? e.x : gl.x, e ? e.y : gl.y);
+        if (again && again.safe) { this.path = again.path; return; }
+        this.pathSafe = false; this.message('霧飄到路上了，繞不開，只好穿過去。');
+      }
       p.fx = dx; p.fy = dy;
       if (this.tryStep(dx, dy)) { this.path.shift(); if (!this.path.length && !e) this.pathEnd = true; return; }
-      const gl = this.pathGoal;   // 路被擋了（獸、剛放的東西）：重找，三次不成就停
-      if (gl && ++this.pathTries <= 3) { const again = this.findPath(e ? e.x : gl.x, e ? e.y : gl.y); if (again) { this.path = again; return; } }
+      if (gl && ++this.pathTries <= 3) { const again = this.planPath(e ? e.x : gl.x, e ? e.y : gl.y); if (again) { this.path = again.path; this.pathSafe = again.safe; return; } }   // 路被擋了（獸、剛放的東西）：重找，三次不成就停
       this.stopWalk(); this.message('路被擋住了。');
     }
     tryStep(dx, dy) {
@@ -1877,9 +1902,11 @@
           case 'KeyL': this.drawGod(); break;
           case 'KeyY': this.toggleSling(); break;
           case 'KeyN': this.message(SFX.toggle() ? '已靜音' : '聲音已開'); break;
-          case 'BracketLeft': case 'KeyQ': this.cycle(-1); break;
+          case 'BracketLeft': this.cycle(-1); break;
+          case 'KeyQ': this.pressFeed(); break;   // Q 餵（v0.34；囊往前一格改用 [ 與滾輪）
           case 'BracketRight': case 'KeyZ': case 'Tab': this.cycle(1); break;
-          case 'Equal': case 'NumpadAdd': this.renderer.tile = Math.min(56, this.renderer.tile + 4); break;
+          case 'Equal': if (!ev.shiftKey) { this.pressCatch(); break; }   // = 捉（v0.34）；Shift+=（也就是＋）照舊放大
+          case 'NumpadAdd': this.renderer.tile = Math.min(56, this.renderer.tile + 4); break;
           case 'Minus': case 'NumpadSubtract': this.renderer.tile = Math.max(28, this.renderer.tile - 4); break;
           default: return;
         }
@@ -1897,9 +1924,9 @@
         for (const e of this.ents.list) { if (e.type === '魄') continue; const dd = Math.hypot(e.rx + 0.5 - fx, e.ry + 0.5 - fy); if (dd < bd) { bd = dd; ent = e; } }
         const wx = ent ? ent.x : Math.floor(fx), wy = ent ? ent.y : Math.floor(fy), d = U.cheb(wx, wy, p.x, p.y);
         if (d === 0) return;
-        if (d > 1) { this.walkTo(wx, wy, ent); return; }   // 點遠處（左右鍵都一樣）：走到它旁邊、面向它；點生靈就跟著（v0.33）
+        if (d > 1) { this.walkTo(wx, wy, ent); return; }   // 點遠處：走到它旁邊、面向它；點生靈就跟著（v0.33）
         this.stopWalk(); p.fx = wx - p.x; p.fy = wy - p.y;
-        if (ev.button === 2) this.pressPlace(); else this.pressGather();
+        this.pressGather();   // 點身旁一格：跟按 E 一樣（v0.34 起左右鍵不分，觸控板好用）；放東西用 F
       });
       cv.addEventListener('mousemove', (ev) => { this.mouse = { x: ev.clientX, y: ev.clientY }; });   // 畫面上框出滑鼠指著的格子
       cv.addEventListener('mouseleave', () => { this.mouse = null; });
