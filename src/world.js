@@ -5,22 +5,22 @@
   const U = root.U, G = root.G, DB = G.DB;
   const CH = 16;                 // 區塊邊長（格）
   const STEP = 0.5;              // 模擬步長（秒）
-  const DAY = 300;               // 一晝夜（秒），潮汐隨之起落；v0.17 從 240 加長四分之一，要跟 game.js 的 DAY 一致
+  const DAY = 375;               // 一晝夜（秒），潮汐隨之起落；v0.17 從 240 加長到 300、v0.28 再加四分之一，要跟 game.js 的 DAY 一致
   const STOVE_CAP = 999, SHELF_SLOTS = 4;   // 灶與鼎的火最多存 999 息（v0.21，原 900）；灶的柴架四格
   const NET_DUR = { 1: 30, 2: 90, 3: 240 };   // 漁網的耐久：小中大各能取幾條魚（v0.17.1），取完就破、不再進魚，棉麻加固回滿
   const TIDE_WET = 0.7;          // 灘一天裡有七成時間在水下（退潮 0.12–0.42）；放在灘上的網魚來得慢，間隔除以這個數
   const N8 = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];
   const N4 = [[0, -1], [-1, 0], [1, 0], [0, 1]];
   // 天氣：雨。一場雨下 RAIN_MIN–RAIN_MAX 秒，停後隔 RAIN_GAP_MIN–RAIN_GAP_MAX 秒再來（真隨機，不走種子）；
-  // 下雨時屋外的燈每盞每息有 rainLampP 的真隨機機會被澆壞（預設 RAIN_LAMP_P；開局由 game.js 照難度改成 DIFF.*.lampP：簡單 1/4500、一般 1/2500、困難 1/800）；ROOM_LIMIT 格內被牆圍得住才算屋裡
+  // 下雨時屋外的燈每盞每息有 rainLampP 的真隨機機會被澆壞（預設 RAIN_LAMP_P；開局由 game.js 照難度改成 DIFF.*.lampP：簡單 1/4500、一般 1/2500、困難 1/800）；ROOM_LIMIT 格內被磚圍得住才算屋裡
   // 霧障：每日擲 FOG_ROLLS 次、每次 FOG_P 的真隨機機會起一片霧（每日最多兩片，第二日起）；一片 FOG_MIN–FOG_MAX 格、形狀隨機長；
   // 起在玩家 FOG_NEAR 格外的陸地上；放著不管 FOG_LIFE 後自己散
   const FOG_ROLLS = 2, FOG_P = 0.25, FOG_MIN = 8, FOG_MAX = 12, FOG_NEAR = [8, 28], FOG_LIFE = DAY;
   const SEA_FOG_MIN = 6, SEA_FOG_MAX = 10, SEA_FOG_LIFE = 90;   // 蜃吐的海霧：六到十格，九十息就散
   const SHIPS = G.SHIPS;                                        // 船的兩種（孤帆、方舟）：大小、命、船頭首骨格數
   const RAIN_MIN = DAY * 0.25, RAIN_MAX = DAY * 1.0, RAIN_GAP_MIN = DAY * 1.0, RAIN_GAP_MAX = DAY * 4.0, RAIN_LAMP_P = 1 / 2500, ROOM_LIMIT = 121;
-  // 小屋：牆與門圍起的小空間，裡面不生生靈、生靈也進不去。多小才算看難度，由 game 透過 roomLimitFor(type) 告訴世界：獸一個門檻、魄一個門檻
-  // （簡單 28／18、一般 18／8、困難 10／0，0 ＝ 牆擋不住魄）；MAX_ROOM 是各門檻的最大值，漫延數到這裡就停
+  // 小屋：磚與門圍起的小空間，裡面不生生靈、生靈也進不去。多小才算看難度，由 game 透過 roomLimitFor(type) 告訴世界：獸一個門檻、魄一個門檻
+  // （簡單 28／18、一般 18／8、困難 10／0，0 ＝ 磚擋不住魄）；MAX_ROOM 是各門檻的最大值，漫延數到這裡就停
   const MAX_ROOM = 28;
   // 霧障會動：每 FOG_STEP 息上下挪一格（v0.19 起間隔六到十四成之間抖動），速度慢；FOG_LIGHT_R 格內有光（燈、火、旺灶、玩家手裡的光）就往反方向躲，沒光就順著自己的風向慢慢飄，風向有慣性、偶爾轉；挪完偶爾換形（尾巴掉一格、前頭長一格）
   const FOG_STEP = 6, FOG_LIGHT_R = 10;
@@ -73,7 +73,7 @@
       this.fogDay = Math.floor(this.time / DAY);   // 已經擲過的那一日（第一日不起霧）
       this.fogSeq = 0; this.fogP = FOG_P; this.fogStep = FOG_STEP;
       this.playerLit = () => false;   // 回調：玩家手裡（或帽上）有沒有光，霧障躲光用
-      this.roomCache = new Map();     // "x,y" -> 圍起來的格數（超過 MAX_ROOM 記 MAX_ROOM+1，牆上門上水裡記 Infinity）；每步與每次改格清掉
+      this.roomCache = new Map();     // "x,y" -> 圍起來的格數（超過 MAX_ROOM 記 MAX_ROOM+1，磚上門上水裡記 Infinity）；每步與每次改格清掉
       this.roomLimitFor = () => 0;    // 回調：某種生靈被多小的屋子擋住（0 ＝ 擋不住），game 依難度給
       this.onFog = null;         // 回調：起了一片霧
       this.ships = new Map();    // 錨點 "x,y" -> { kind, hp, skulls: [[首骨, 鎮到幾時]…], repairs, cells }：停著的船
@@ -226,11 +226,24 @@
     }
     extinguish(x, y) { this.burn.delete(U.key(x, y)); }
 
-    // 某格附近是否有光（虎怕光）/ 有熱（人怕冷）
+    // 兩格之間看不看得見（v0.28）：中間的格子（不算兩端）有擋光的字——磚、門、殘牆——就看不見；窗不擋
+    clear(x0, y0, x1, y1) {
+      let x = x0, y = y0; const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+      let err = dx + dy;
+      while (true) {
+        if (x === x1 && y === y1) return true;
+        const e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x += sx; }
+        if (e2 <= dx) { err += dx; y += sy; }
+        if (x === x1 && y === y1) return true;
+        const d = this.info(x, y); if (d && d.opaque) return false;
+      }
+    }
+    // 某格附近是否有光（虎怕光）/ 有熱（人怕冷）；磚擋光：屋裡的燈照不出去（v0.28）
     lightNear(x, y, r) {
       for (let j = -r; j <= r; j++) for (let i = -r; i <= r; i++) {
         const d = this.info(x + i, y + j);
-        if (d.light > 0 || this.isBurning(x + i, y + j) || this.stoveLit(x + i, y + j)) return true;
+        if ((d.light > 0 || this.isBurning(x + i, y + j) || this.stoveLit(x + i, y + j)) && this.clear(x + i, y + j, x, y)) return true;
       }
       return false;
     }
@@ -375,7 +388,7 @@
 
     // ---------- 天氣：雨 ----------
     raining() { return this.time < this.rainUntil; }
-    passable(x, y) { const d = this.info(x, y); return d.walk > 0 && !d.gate; }   // 門雖能走，算牆
+    passable(x, y) { const d = this.info(x, y); return d.walk > 0 && !d.gate; }   // 門雖能走，算磚
     // 屋裡：從這格四鄰出發順著能走的格子漫延，不可通行的字與門擋住；ROOM_LIMIT 格內圍得住才算屋裡
     covered(x, y) {
       const seen = new Set(), q = [];
@@ -388,7 +401,17 @@
       }
       return true;
     }
-    // 小屋：從這格順著能走的格子四向漫延（門算牆），數圍起來有幾格；超過 MAX_ROOM 就回 MAX_ROOM+1，牆上、門上、水裡回 Infinity
+    // 圍住這格的屋子的四面（v0.28，算窗佔幾成）：從這格順著能走的格子漫延，碰到的不能走的格子就是四面，"x,y" -> 字；ROOM_LIMIT 格內圍不住回 null
+    roomShell(x, y) {
+      const seen = new Set([U.key(x, y)]), q = [[x, y]], shell = new Map();
+      while (q.length) {
+        if (seen.size > ROOM_LIMIT) return null;
+        const [cx, cy] = q.shift();
+        for (const [dx, dy] of N4) { const nx = cx + dx, ny = cy + dy, k = U.key(nx, ny); if (seen.has(k) || shell.has(k)) continue; if (this.passable(nx, ny)) { seen.add(k); q.push([nx, ny]); } else shell.set(k, this.get(nx, ny)); }
+      }
+      return shell;
+    }
+    // 小屋：從這格順著能走的格子四向漫延（門算磚），數圍起來有幾格；超過 MAX_ROOM 就回 MAX_ROOM+1，磚上、門上、水裡回 Infinity
     roomSize(x, y) {
       const k0 = U.key(x, y), hit = this.roomCache.get(k0);
       if (hit !== undefined) return hit;

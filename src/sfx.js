@@ -65,5 +65,34 @@
       osc.connect(f); f.connect(g); g.connect(o); osc.start(t); lfo.start(t); osc.stop(t + 0.75); lfo.stop(t + 0.75);
     });
   };
+  // 各種獸的聲音（v0.28）：撲咬時一聲，走近八格內先聽見一聲（soft：小聲些）
+  function growl(c, out, t, f0, f1, dur, vol, lfoHz, lfoAmt, cut, type) {
+    const osc = c.createOscillator(); osc.type = type || 'sawtooth'; osc.frequency.setValueAtTime(f0, t); osc.frequency.linearRampToValueAtTime(f1, t + dur);
+    const lfo = c.createOscillator(); lfo.frequency.value = lfoHz; const lg = c.createGain(); lg.gain.value = lfoAmt; lfo.connect(lg); lg.connect(osc.frequency);
+    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cut;
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.08, dur * 0.2)); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(f); f.connect(g); g.connect(out); osc.start(t); lfo.start(t); osc.stop(t + dur + 0.05); lfo.stop(t + dur + 0.05);
+  }
+  function hiss(c, out, t, dur, vol, lo) {
+    const src = c.createBufferSource(); src.buffer = SFX.noiseBuf;
+    const f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = lo || 3800;
+    const g = c.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.06); g.gain.exponentialRampToValueAtTime(vol * 0.6, t + dur * 0.7); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(out); src.start(t); src.stop(t + dur + 0.05);
+  }
+  const BEAST = {
+    '虎': (c, o, t, v) => growl(c, o, t, 78, 52, 0.85, 0.5 * v, 16, 10, 320),                                   // 低沉長吼
+    '豹': (c, o, t, v) => { growl(c, o, t, 150, 115, 0.38, 0.4 * v, 34, 18, 950); swoosh(c, o, t, 1600, 700, 0.18, 0.12 * v); },   // 短促尖嘯
+    '狼': (c, o, t, v) => { const g = c.createGain(); g.gain.value = 1; g.connect(o); tone(c, g, t, 330, 0.5, 0.16 * v, 'sine', 560); tone(c, g, t + 0.45, 560, 0.75, 0.14 * v, 'sine', 400); },   // 拉長的嚎
+    '蛇': (c, o, t, v) => hiss(c, o, t, 0.7, 0.22 * v, 4200),                                                   // 嘶——
+    '蛛': (c, o, t, v) => { for (let i = 0; i < 7; i++) swoosh(c, o, t + i * 0.035, 3200, 2400, 0.03, 0.1 * v); },   // 細碎的爬動聲
+    '豬': (c, o, t, v) => { growl(c, o, t, 120, 95, 0.16, 0.35 * v, 45, 20, 700, 'square'); growl(c, o, t + 0.2, 110, 85, 0.2, 0.32 * v, 45, 20, 700, 'square'); },   // 兩聲哼哼
+    '牛': (c, o, t, v) => growl(c, o, t, 140, 105, 1.1, 0.4 * v, 5, 4, 520),                                    // 長長一聲哞
+  };
+  SFX.beastTypes = Object.keys(BEAST);
+  SFX.beast = function (type, soft) {
+    const fn = BEAST[type]; if (!fn) { if (!soft) this.tiger(); return; }
+    this.play((c, o, t) => fn(c, o, t, soft ? 0.45 : 1));
+  };
+  SFX.ram = function () { this.play((c, o, t) => { tone(c, o, t, 90, 0.25, 0.4, 'sine', 40); swoosh(c, o, t, 600, 180, 0.22, 0.25); }); };   // 野牛撞磚的悶響
   window.SFX = SFX;
 })();

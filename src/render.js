@@ -10,7 +10,7 @@
     '土': '#a98a62', '灰': '#8d8781', '白': '#f3ebd8', '火': '#d9593c', '炎': '#d9593c', '焱': '#d9593c',
     '明': '#f0c54a', '休': '#9a6b45', '橋': '#9a6b45', '困': '#7a5a3e', '碑': '#2a2724', '日': '#e07a4a', '月': '#e3c35a',
     '果': '#c9654a', '灶': '#d9593c', '鼎': '#b4452c', '包': '#2a2724', '煤': '#2a2724', '鐵': '#8a5a3a', '網': '#5a86a8', '罟': '#4f7a9c', '罾': '#446e90', '路': '#c9b27a', '牆': '#8a6a4a', '門': '#9a7a55', '井': '#4a6f8f',
-    '棉': '#e8e2d0', '礫': '#b9b4a8', '磚': '#9a5a40', '床': '#a06a4a', '橋': '#9a6b45', '漁': '#5a86a8', '麻': '#a9b07a', '偶': '#b08a5a', '櫃': '#7a4e2d', '舟': '#7a4e2d',
+    '棉': '#e8e2d0', '礫': '#b9b4a8', '磚': '#9a5a40', '窗': '#c09a6a', '沼': '#6b6a3c', '棧': '#9a6b45', '床': '#a06a4a', '橋': '#9a6b45', '漁': '#5a86a8', '麻': '#a9b07a', '偶': '#b08a5a', '櫃': '#7a4e2d', '舟': '#7a4e2d',
     '塔': '#2a2724', '寺': '#5a3e2b', '船': '#5a3e2b', '泉': '#4a6f8f', '墓': '#6e6c75', '洞': '#2a2724', '燈': '#e0a020'
   };
 
@@ -178,7 +178,7 @@
         if (e.type === '虎' && e.calm <= 0 && U.cheb(e.x, e.y, p.x, p.y) <= 8) {
           ctx.save(); ctx.fillStyle = 'rgba(180,57,42,0.12)'; ctx.beginPath(); ctx.arc(px, py, T * 0.6, 0, 7); ctx.fill(); ctx.restore();
         }
-        this.drawGlyph(e.type, e.type === '蟾' && e.venom ? G.INK.red : d.ink, px, py + bobY, T * size, rot, 1);
+        this.drawGlyph(e.type, (e.type === '蟾' || e.type === '蛛') && e.venom ? G.INK.red : d.ink, px, py + bobY, T * size, rot, 1);
         if (e.provoked > 0 && U.cheb(e.x, e.y, p.x, p.y) <= 7) { ctx.save(); ctx.fillStyle = G.INK.red; ctx.font = 'bold ' + Math.round(T * 0.42) + 'px ' + FONT; ctx.textAlign = 'center'; ctx.fillText('怒', px + T * 0.4, py - T * 0.42); ctx.restore(); }   // 被彈弓惹惱、七格內要撲過來的
       }
       // —— 彈弓的準星：手持彈弓時，面前九格內會被打到的那隻
@@ -281,16 +281,28 @@
         nc.fillStyle = 'rgba(12, 16, 36,' + (0.8 * dark) + ')'; nc.fillRect(0, 0, w, h);
         nc.globalCompositeOperation = 'destination-out';
         const cut = (px, py, r, a) => { const gr = nc.createRadialGradient(px, py, 0, px, py, r); gr.addColorStop(0, 'rgba(0,0,0,' + a + ')'); gr.addColorStop(0.55, 'rgba(0,0,0,' + (a * 0.7) + ')'); gr.addColorStop(1, 'rgba(0,0,0,0)'); nc.fillStyle = gr; nc.fillRect(px - r, py - r, r * 2, r * 2); };
-        cut(ox + p.rx * T + T / 2, oy + p.ry * T + T / 2, T * g.playerLight(), 1);
+        // 磚擋光（v0.28）：光源附近有磚、門、殘牆時，只照得到看得見的格子（屋裡的燈照不出去）；附近沒擋就照常畫圓
+        const litCells = (lx, ly, r) => {
+          const R = Math.ceil(r) + 1; let any = false;
+          for (let dy = -R; dy <= R && !any; dy++) for (let dx = -R; dx <= R; dx++) { const d = DB[world.get(lx + dx, ly + dy)]; if (d && d.opaque) { any = true; break; } }
+          if (!any) return null;
+          const cells = []; for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) if (dx * dx + dy * dy <= R * R && world.clear(lx, ly, lx + dx, ly + dy)) cells.push([lx + dx, ly + dy]);
+          return cells;
+        };
+        const clipTo = (c, cells) => { c.beginPath(); for (const [x, y] of cells) c.rect(ox + x * T - 0.5, oy + y * T - 0.5, T + 1, T + 1); c.clip(); };
+        const cutLit = (lx, ly, px, py, r, a) => { const cells = litCells(lx, ly, r / T); if (!cells) { cut(px, py, r, a); return; } nc.save(); clipTo(nc, cells); cut(px, py, r, a); nc.restore(); };
+        cutLit(p.x, p.y, ox + p.rx * T + T / 2, oy + p.ry * T + T / 2, T * g.playerLight(), 1);
         if (g.torchLit()) lights.push({ x: p.x, y: p.y, r: 3 });
-        for (const l of lights) cut(ox + l.x * T + T / 2, oy + l.y * T + T / 2, T * (l.r + 0.25 * Math.sin(now * 6 + l.x * 3 + l.y)), 1);
+        for (const l of lights) cutLit(l.x, l.y, ox + l.x * T + T / 2, oy + l.y * T + T / 2, T * (l.r + 0.25 * Math.sin(now * 6 + l.x * 3 + l.y)), 1);
         ctx.drawImage(n, 0, 0, n.width, n.height, 0, 0, w, h);
         // 光源的暖暈
         ctx.save(); ctx.globalCompositeOperation = 'source-over';
         for (const l of lights) {
-          const px = ox + l.x * T + T / 2, py = oy + l.y * T + T / 2, r = T * l.r;
+          const px = ox + l.x * T + T / 2, py = oy + l.y * T + T / 2, r = T * l.r, cells = litCells(l.x, l.y, l.r);
+          if (cells) { ctx.save(); clipTo(ctx, cells); }
           const gr = ctx.createRadialGradient(px, py, 0, px, py, r); gr.addColorStop(0, 'rgba(255,190,90,' + (0.22 * dark) + ')'); gr.addColorStop(1, 'rgba(255,190,90,0)');
           ctx.fillStyle = gr; ctx.fillRect(px - r, py - r, r * 2, r * 2);
+          if (cells) ctx.restore();
         }
         ctx.restore();
       }

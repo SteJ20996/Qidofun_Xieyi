@@ -420,9 +420,10 @@ const result = await page.evaluate(async () => {
   ok('damage taken is a whole number (20 × 5/3 × 0.83 = 27.67 → 28)', p.hp === 72 && Number.isInteger(p.hp), p.hp);
   g.ents.remove(rt); for (const k of ['襯', '褲', '甲', '盔', '靴']) g.takeOff(k); trim(['木', '石', '石子', '草', '土', '磚', '孤帆', '方舟']); p.cour = 0; p.hp = 100; p.hurtT = 0;
   p.hpMax = 100; p.hp = 100; p.pillsEaten = 0; p.pillsMade = 0; g.removeItem('丹', 9); g.removeItem('蟾蜍肉', 9); g.removeItem('毒蟾肉', 9); w.set(ding.x, ding.y, '土');
-  // 龜：少見不咬人，命五十；龜甲卜之，吉則五日無魄
-  face(1, 0); w.set(T().x, T().y, '草'); const tu = g.ents.add('龜', T().x, T().y, { moveT: 99 }); hold('石劍'); p.atkT = 0; g.pressGather();
-  ok('a turtle takes two sword blows (50 hp)', tu.hp === 10 && g.ents.list.includes(tu), tu.hp);
+  // 龜：少見不咬人，命二百五（v0.28）；龜甲卜之，吉則五日無魄
+  face(1, 0); w.set(T().x, T().y, '草'); const tu = g.ents.add('龜', T().x, T().y, { moveT: 99 }); hold('石劍');
+  for (let i = 0; i < 6; i++) { p.atkT = 0; g.pressGather(); }
+  ok('a turtle takes seven sword blows (250 hp): six leave it at 10', tu.hp === 10 && g.ents.list.includes(tu), tu.hp);
   p.san = 80; p.atkT = 0; g.pressGather();
   ok('a slain turtle leaves a 龜甲', !g.ents.list.includes(tu) && g.count('龜甲') === 1);
   ok('killing a turtle is ill-omened: 愜意 −30', Math.abs(p.san - 50) < 1, p.san);
@@ -1275,6 +1276,90 @@ const result = await page.evaluate(async () => {
     p.tools.length = 0; while (p.tools.length < g.toolSlots()) p.tools.push({ n: '石刀', c: 1, dur: 30 }); p.bag.push({ n: '彈弓', c: 1, dur: 80 }); p.tool = 0; g.barSig = '';
     await press('KeyY'); ok('with the tool bar full, Y says so and nothing changes', held() === '石刀' && p.bag.some(s => s.n === '彈弓') && g.msgText.indexOf('具欄滿了') >= 0, g.msgText);
     p.tools = keepT; p.bag = keepB; p.tool = keepI; p.sel = keepSel; g.prevTool = null; g.barSig = ''; g.buildBag(); }
+  // ============ v0.28：毒蛛、龜、野豬、野牛、晝夜各半、磚擋光擋眼、窗、野牛撞磚、沼澤、製作欄的樹、各獸的聲音 ============
+  { calm(); const E = g.ents, D = G.DB, X0 = p.x, Y0 = p.y, keepB = p.bag, keepT = p.tools, keepI = p.tool, mr = Math.random, tr = window.U.trueRand, area = [];
+    for (const k of ['襯', '褲', '甲', '盔', '靴']) g.takeOff(k);
+    const cx = 76, cy = 0, put = (x, y, c) => { area.push([x, y, w.get(x, y)]); w.set(x, y, c); };
+    for (let dy = -9; dy <= 9; dy++) for (let dx = -13; dx <= 13; dx++) put(cx + dx, cy + dy, '草');
+    E.list = []; p.x = cx; p.y = cy; p.rx = cx; p.ry = cy; p.bag = []; p.tools = []; p.tool = -1; p.sel = 0; g.barSig = ''; p.hp = 100;
+    ok('a day is 375 s (a quarter longer than 300)', DAY === 375);
+    const night = (f) => { setDay(f); return g.isNight(); };
+    ok('day and night are equal halves: night from 0.52 of the day to 0.02 of the next', !night(0.03) && !night(0.51) && night(0.52) && night(0.99) && night(0.01));
+    setDay(0.3);
+    // 蜘蛛：十隻一隻毒蛛，見人就撲、毒是蛇的一半；其餘無毒，惹了才咬、不中毒
+    Math.random = () => 0.05; const vs = E.add('蛛', cx + 1, cy, { moveT: 99 }); Math.random = () => 0.5; const hs = E.add('蛛', cx - 1, cy, { moveT: 99 }); Math.random = mr;
+    const hsCalm = !E.isHostile(hs); hs.angry = true;
+    ok('one spider in ten is venomous: it hunts on sight; a harmless one only once angered', vs.venom === true && hs.venom === false && E.isHostile(vs) && hsCalm && E.isHostile(hs));
+    p.poisonT = 0; p.poisonPer = 0; p.biteN = 0; vs.atk = 0; E.bite(vs, g);
+    ok('a venomous spider poisons at half the snake rate: 1.5 a second for 5 s', p.poisonPer === 1.5 && p.poisonT === 5 && D['蛇'].bite === 3, [p.poisonPer, p.poisonT]);
+    p.poisonT = 0; p.poisonPer = 0; p.hp = 100; hs.atk = 0; E.bite(hs, g);
+    ok('a harmless spider only nips for 2, no poison', p.hp === 98 && p.poisonT === 0, [p.hp, p.poisonT]);
+    E.remove(vs); E.remove(hs); p.hp = 100;
+    // 龜：命二百五、一步一息半；挨打往最近的海逃，快四成，下水就不見
+    put(cx + 5, cy + 2, '水'); const tt = E.add('龜', cx + 2, cy + 2, { moveT: 99 });
+    ok('turtles have 250 hp', tt.hp === 250 && D['龜'].hp === 250);
+    hold('石劍'); g.addItem('石劍', 1); hold('石劍'); p.atkT = 0; g.attack(tt); E.update(0.01, g);
+    ok('hit, the turtle heads for the nearest sea at 1.4× its pace (a step every 1.07 s)', tt.hp < 250 && tt.flee && tt.flee.x === cx + 5 && tt.flee.y === cy + 2 && Math.abs(tt.moveT - 1.5 / 1.4) < 1e-6 && tt.x === cx + 3, [tt.flee, tt.moveT, tt.x]);
+    for (let i = 0; i < 60 && E.list.includes(tt); i++) E.update(0.1, g);
+    ok('reaching the water it dives and is gone', !E.list.includes(tt));
+    // 野豬：命二百、一撞七點五、五格內見人就衝，速度同豹
+    const boar = E.add('豬', cx + 3, cy, { moveT: 0 }); E.update(0.01, g);
+    ok('野豬: 200 hp, hits for 7.5, charges within five tiles at leopard speed', D['豬'].hp === 200 && D['豬'].atk === 7.5 && D['豬'].name === '野豬' && boar.x === cx + 2 && Math.abs(boar.moveT - 0.22) < 1e-6 && E.isHostile(boar), [boar.x, boar.moveT]);
+    p.hp = 100; g.hit(boar, D['豬'].atk);
+    ok('a boar hit takes exactly 7.5 (not rounded to 8)', Math.abs((100 - p.hp) - 7.5 * g.takenMult()) < 0.06, p.hp);
+    E.remove(boar); p.hp = 100;
+    // 野牛：命四百五、一頂五、不惹不動；惹了追著撞，擋路的人造磚三下就碎
+    const bison = E.add('牛', cx + 3, cy, { moveT: 0 }); for (let i = 0; i < 5; i++) E.update(0.5, g);
+    ok('野牛: 450 hp, hits for 5, leaves you alone unprovoked', D['牛'].hp === 450 && D['牛'].atk === 5 && !E.isHostile(bison) && Math.max(Math.abs(bison.x - cx), Math.abs(bison.y - cy)) >= 2);
+    for (const dy of [-1, 0, 1]) put(cx + 1, cy + dy, '磚');
+    bison.x = cx + 2; bison.y = cy; bison.angry = true; bison.angryAt = w.time; bison.atk = 0; bison.moveT = 0;
+    let cracked = false; for (let i = 0; i < 90 && w.get(cx + 1, cy) === '磚'; i++) { E.update(0.1, g); if (E.rams.get((cx + 1) + ',' + cy) === 2) cracked = true; }
+    ok('an angered bison rams the brick between you: it cracks, and on the third ram it breaks', cracked && w.get(cx + 1, cy) === '白' && E.isHostile(bison), w.get(cx + 1, cy));
+    E.remove(bison);
+    // 磚擋光擋眼；窗不擋
+    put(cx - 6, cy, '燈'); for (const [dx, dy] of [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]]) put(cx - 6 + dx, cy + dy, '磚');
+    ok('bricks block light: a lamp ringed with bricks is not seen two tiles outside', w.lightNear(cx - 6, cy - 2, 3) === false && w.lightNear(cx - 6, cy, 3) === true);
+    put(cx - 6, cy - 1, '窗');
+    ok('a window lets the light through', w.lightNear(cx - 6, cy - 2, 3) === true && !w.clear(cx - 6, cy + 2, cx - 6, cy) && w.clear(cx - 6, cy - 2, cx - 6, cy));
+    const tg = E.add('虎', cx + 4, cy, { moveT: 99 }); put(cx + 2, cy, '磚'); const hid = E.sense(tg, p, 10); put(cx + 2, cy, '窗'); const seen = E.sense(tg, p, 10);
+    ok('a beast that sees you senses you at full range; behind bricks only by smell, at 70%', Math.abs(hid - 7) < 1e-9 && seen === 10, [hid, seen]);
+    E.remove(tg); put(cx + 2, cy, '草');
+    // 窗多的屋子睡得舒坦：一格的小屋，北南西三面磚、東邊是床
+    const rx = cx - 3, ry = cy + 6; put(rx, ry, '草'); put(rx + 1, ry, '床'); put(rx, ry - 1, '磚'); put(rx, ry + 1, '磚'); put(rx - 1, ry, '磚');
+    for (const [dx, dy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) put(rx + dx, ry + dy, '磚');
+    p.x = rx; p.y = ry; p.rx = rx; p.ry = ry; E.list = [];
+    setDay(0.7); p.san = 10; g.sleep(); const plain = p.san - 10;
+    put(rx - 1, ry, '窗'); setDay(0.7); p.san = 10; g.sleep(); const lit = p.san - 10, share = g.windowShare();
+    ok('sleeping in a room where windows are a third of the walls: 愜意 +35 instead of +20', plain === 20 && Math.abs(share - 1 / 3) < 1e-9 && lit === 35, [plain, share, lit]);
+    p.x = cx; p.y = cy; p.rx = cx; p.ry = cy; setDay(0.3);
+    // 沼澤：獸除了蟾都不進；站在裡面掉力；木板鋪成棧道
+    put(cx + 3, cy - 4, '沼');
+    ok('swamp: beasts keep out of it except toads', !E.canStand('虎', cx + 3, cy - 4, true) && !E.canStand('豬', cx + 3, cy - 4, true) && !E.canStand('牛', cx + 3, cy - 4, true) && E.canStand('蟾', cx + 3, cy - 4, true));
+    put(cx, cy, '沼'); p.sta = 50; await sleep(700);
+    ok('standing in a swamp drains 力 instead of resting it', p.sta < 50, p.sta);
+    put(cx, cy, '草'); put(cx + 1, cy, '沼'); p.fx = 1; p.fy = 0; g.addItem('木板', 1); hold('木板'); g.pressPlace();
+    ok('a plank laid on the swamp makes a boardwalk you walk on as on flat ground', w.get(cx + 1, cy) === '棧' && D['棧'].walk === 1 && g.count('木板') === 0 && D['棧'].to === '沼');
+    g.addItem('磚', 1); hold('磚'); put(cx + 1, cy, '沼'); g.pressPlace();
+    ok('nothing else can be set down on a swamp', w.get(cx + 1, cy) === '沼' && g.count('磚') === 1);
+    // 油脂：斃野豬野牛四分之一得；棉一油脂一做三根蠟燭
+    p.bag = []; g.barSig = '';
+    const b2 = E.add('豬', cx + 4, cy + 4, { moveT: 99 }); window.U.trueRand = () => 0.1; g.kill(b2);
+    const b3 = E.add('牛', cx + 4, cy + 4, { moveT: 99 }); window.U.trueRand = () => 0.9; g.kill(b3); window.U.trueRand = tr;
+    ok('a slain boar gives 3 meat and (a quarter of the time) fat; a bison gives 4 meat', g.count('肉') === 7 && g.count('油脂') === 1, bag());
+    g.addItem('棉', 1); p.sta = p.staMax; g.craft('candle2');
+    ok('棉一油脂一 makes three candles', g.count('蠟燭') === 3 && g.count('油脂') === 0, bag());
+    // 製作欄：衍生的畫在底下
+    g.craftCat = '燈火'; const vr = g.visibleRecipes().map(r => r.id), tl = g.craftTree();
+    ok('craft panel 燈火: 燈 hangs under 火把, 燈帽 under 蠟燭', vr.indexOf('lamp') === vr.indexOf('torch') + 1 && tl.find(n => n.r.id === 'lamp').depth === 1 && tl.find(n => n.r.id === 'hat').depth === 1 && vr.indexOf('hat') === vr.indexOf('candle') + 1, vr);
+    g.craftCat = '全部'; const ta = g.craftTree(), dep = (id) => ta.find(n => n.r.id === id).depth;
+    ok('craft panel 全部: 漁網 → 中漁網 → 大漁網 runs a level deeper each step, every recipe listed once', dep('midnet') === dep('net') + 1 && dep('bignet') === dep('net') + 2 && ta.length === G.RECIPES.length, [dep('net'), dep('midnet'), dep('bignet')]);
+    g.craftCat = '燈火'; g.toggleCraft(); await sleep(30);
+    ok('the craft panel draws the branches', document.querySelectorAll('#craft-list .recipe.child .tree .elbow').length >= 2 && document.querySelectorAll('#craft-list .recipe.parent .tree .down').length >= 2);
+    g.toggleCraft(); g.craftCat = '全部';
+    ok('each of 虎豹狼蛇蛛 (and 野豬、野牛) has its own call', typeof SFX.beast === 'function' && ['虎', '豹', '狼', '蛇', '蛛', '豬', '牛'].every(t => SFX.beastTypes.indexOf(t) >= 0));
+    ok('the help says 磚, not 牆, for walls', document.getElementById('help').textContent.indexOf('穿牆') < 0 && document.getElementById('help').textContent.indexOf('砌牆') < 0);
+    for (let i = area.length - 1; i >= 0; i--) w.set(area[i][0], area[i][1], area[i][2]);
+    E.list = []; p.x = X0; p.y = Y0; p.rx = X0; p.ry = Y0; p.bag = keepB; p.tools = keepT; p.tool = keepI; p.sel = 0; g.barSig = ''; g.buildBag(); Math.random = mr; calm(); }
   // ============ 簡體中文（v0.24）：只在顯示那一層轉字，程式、存檔、字庫的鍵一律繁體 ============
   { calm();
     ok('the converter: 字裡行間 → 字里行间; 乾坤 and 著名 kept as words; 穿著 → 穿着; 九閽鳴雷 → 九阍鸣雷', I18N.toHans('字裡行間 · 一紙之島') === '字里行间 · 一纸之岛' && I18N.toHans('乾坤') === '乾坤' && I18N.toHans('著名') === '著名' && I18N.toHans('穿著') === '穿着' && I18N.toHans('九閽鳴雷') === '九阍鸣雷');
