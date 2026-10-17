@@ -22,8 +22,9 @@
   const SEA_FOG_LIFE = 90;   // 蜃吐的海霧：九十息就散
   // 霧的形（v0.31 使用者定）：一片霧是一塊連續的形，面積十八格上下（FOG_AREA），可圓可方（超橢圓的次方 2–6）、扁圓不一、斜著放，
   // 邊上再疊兩三道慢慢轉的起伏，次方、扁圓、角度也慢慢變，所以形狀一直在變。蓋到一格超過 FOG_COVER（5%）就算霧，最多算 FOG_CAP（30）格（蓋得最多的那些）。
-  // 霧不進圍起來、裡面能走的格子不超過 FOG_ROOM（45）格的屋子。海霧的面積是 SEA_FOG_AREA。
-  const FOG_AREA = [16, 20], SEA_FOG_AREA = [6, 10], FOG_COVER = 0.05, FOG_CAP = 30, FOG_ROOM = 45, FOG_SAMPLE = 5;
+  // 霧不進圍起來、裡面能走的格子不超過 FOG_ROOM（45）格的屋子；其餘山、海、林都飄得過去，不回頭（v0.32 使用者定）。
+  // 碰到這種屋子，被擋掉的那一塊撐到屋外別處（形變了、面積不變，最多撐到 FOG_GROW_MAX 倍），方向也拐開繞過去。海霧的面積是 SEA_FOG_AREA。
+  const FOG_AREA = [16, 20], SEA_FOG_AREA = [6, 10], FOG_COVER = 0.05, FOG_CAP = 30, FOG_ROOM = 45, FOG_SAMPLE = 5, FOG_GROW_MAX = 6, FOG_EDGE = 8;
   const SUPER_K = (() => {   // 超橢圓 |x|^n + |y|^n = 1 的面積，n = 2.0、2.1 … 6.0（n=2 是 π，越方越近 4）
     const t = []; for (let i = 0; i <= 40; i++) { const n = 2 + i / 10; let a = 0; const M = 720; for (let j = 0; j < M; j++) { const ph = (j + 0.5) / M * Math.PI * 2, r = Math.pow(Math.pow(Math.abs(Math.cos(ph)), n) + Math.pow(Math.abs(Math.sin(ph)), n), -1 / n); a += r * r; } t.push(a * Math.PI / M); }
     return (n) => { const f = (U.clamp(n, 2, 6) - 2) * 10, i = Math.min(39, Math.floor(f)); return t[i] + (t[i + 1] - t[i]) * (f - i); };
@@ -286,9 +287,9 @@
       return { area, n: 2 + R() * 4, nA: 0.4 + R() * 0.8, nW: 0.004 + R() * 0.01, nP: R() * 6.28, q: 0.7 + R() * 0.6, qA: 0.1 + R() * 0.15, qW: 0.003 + R() * 0.008, qP: R() * 6.28, rot: R() * 6.28, rotW: (R() - 0.5) * 0.01, h };
     }
     // 霧在 (cx, cy)、霧齡 t 時的樣子：回傳「點 (dx, dy) 在不在霧裡」的判斷，與外框半徑
-    fogForm(f, t) {
+    fogForm(f, t, mul) {
       const sh = f.shape, n = U.clamp(sh.n + sh.nA * Math.sin(t * sh.nW + sh.nP), 2, 6), q = sh.q * (1 + sh.qA * Math.sin(t * sh.qW + sh.qP)), rot = sh.rot + t * sh.rotW;
-      const sc = Math.sqrt(sh.area / SUPER_K(n)), a = sc * Math.sqrt(q), b = sc / Math.sqrt(q), c = Math.cos(rot), sn = Math.sin(rot);
+      const sc = Math.sqrt(sh.area * (mul || 1) / SUPER_K(n)), a = sc * Math.sqrt(q), b = sc / Math.sqrt(q), c = Math.cos(rot), sn = Math.sin(rot);
       const hs = sh.h.map(([k, amp, ph, w]) => [k, amp, ph + w * t]);
       const edge = (cu, sv, ph) => {   // 方向 (cu, sv)（在形自己的座標裡）上的外框半徑
         let R = Math.pow(Math.pow(Math.abs(cu) / a, n) + Math.pow(Math.abs(sv) / b, n), -1 / n);
@@ -303,11 +304,13 @@
       for (let i = 0; i < 72; i++) { const ph = i / 72 * Math.PI * 2, R = edge(Math.cos(ph), Math.sin(ph), ph); if (R < rmin) rmin = R; if (R > rmax) rmax = R; }
       return { inside, reach: rmax * 1.04, rmin: rmin * 0.96 };
     }
-    // 霧蓋到哪些格、各蓋幾成（每格 5×5 個點），也記蓋到的那部分的中心（畫霧用）；只算這片霧能待的格子
-    fogCoverage(f, cx, cy, t) {
+    // 霧蓋到哪些格、各蓋幾成（每格 5×5 個點），也記蓋到的那部分的中心（畫霧用）；只算這片霧能待的格子（不在四十五格以內的屋子裡、不是別的霧的格）。
+    // 回傳的陣列另帶 area（能待的格子共蓋了幾格）、lost（被擋掉幾格）與被擋掉那一塊的中心 lx、ly
+    fogCoverage(f, cx, cy, t, mul) {
       cx = cx === undefined ? f.x : cx; cy = cy === undefined ? f.y : cy; t = t === undefined ? f.age : t;
-      const { inside, reach, rmin } = this.fogForm(f, t), S = FOG_SAMPLE, out = [], R = Math.ceil(reach) + 1, reach2 = reach * reach, rmin2 = rmin * rmin;
-      const ok = f.sea ? (x, y) => this.fogSea(x, y) : (x, y) => this.fogLand(x, y) && !this.fogRoom(x, y);
+      const { inside, reach, rmin } = this.fogForm(f, t, mul), S = FOG_SAMPLE, out = [], R = Math.ceil(reach) + 1, reach2 = reach * reach, rmin2 = rmin * rmin;
+      const ok = (x, y) => !this.fogRoom(x, y);
+      let area = 0, lost = 0, lx = 0, ly = 0;
       for (let y = Math.floor(cy) - R; y <= Math.floor(cy) + R; y++) for (let x = Math.floor(cx) - R; x <= Math.floor(cx) + R; x++) {
         const nx = U.clamp(cx, x, x + 1) - cx, ny = U.clamp(cy, y, y + 1) - cy;          // 格子離中心最近的一點
         if (nx * nx + ny * ny > reach2) continue;                                         // 整格在外框外
@@ -316,11 +319,23 @@
         if (fx * fx + fy * fy < rmin2) { n = S * S; mx = (x + 0.5) * n; my = (y + 0.5) * n; }   // 整格在裡面
         else for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) { const sx = x + (i + 0.5) / S, sy = y + (j + 0.5) / S; if (inside(sx - cx, sy - cy)) { n++; mx += sx; my += sy; } }
         if (!n) continue;
-        const k = U.key(x, y), other = this.fogCells.get(k);
-        if ((other && other !== f.id) || !ok(x, y)) continue;
-        out.push({ x, y, k, c: n / (S * S), mx: mx / n, my: my / n });
+        const k = U.key(x, y), other = this.fogCells.get(k), c = n / (S * S);
+        if ((other && other !== f.id) || !ok(x, y)) { lost += c; lx += (x + 0.5) * c; ly += (y + 0.5) * c; continue; }
+        area += c; out.push({ x, y, k, c, mx: mx / n, my: my / n });
       }
+      out.area = area; out.lost = lost; out.lx = lost ? lx / lost : cx; out.ly = lost ? ly / lost : cy;
       return out;
+    }
+    // 照形算格子；有一塊被屋子（或別的霧）擋掉，就把形撐大，讓能待的那部分面積仍是原本的：撐的倍數用二分法找（面積隨倍數遞增），最多 FOG_GROW_MAX 倍
+    fogCover(f, cx, cy, t) {
+      const want = f.shape.area, at = (m) => this.fogCoverage(f, cx, cy, t, m);
+      let m0 = U.clamp(f.mul || 1, 1, FOG_GROW_MAX), cov = at(m0);
+      if (Math.abs(cov.area - want) < 0.4 || (m0 <= 1 && cov.area >= want - 0.4)) { cov.mul = m0; return cov; }
+      let lo, hi, cl = null, ch = null;
+      if (cov.area < want) { lo = m0; cl = cov; hi = m0; while (hi < FOG_GROW_MAX) { hi = Math.min(FOG_GROW_MAX, hi * 2); ch = at(hi); if (ch.area >= want) break; lo = hi; cl = ch; } if (ch && ch.area < want) { ch.mul = hi; return ch; } }
+      else { hi = m0; ch = cov; lo = m0; while (lo > 1) { lo = Math.max(1, lo / 2); cl = at(lo); if (cl.area <= want) break; hi = lo; ch = cl; } if (cl && cl.area > want) { cl.mul = lo; return cl; } }
+      for (let i = 0; i < 6; i++) { const mid = (lo + hi) / 2, cm = at(mid); if (cm.area < want) { lo = mid; cl = cm; } else { hi = mid; ch = cm; } if (Math.abs(cm.area - want) < 0.4) { cm.mul = mid; return cm; } }
+      const best = ch || cl; best.mul = ch ? hi : lo; return best;
     }
     fogCount(cov) { return cov.filter(e => e.c > FOG_COVER).sort((a, b) => b.c - a.c).slice(0, FOG_CAP); }   // 算作霧的格子：蓋過 5%、最多三十格
     setFogCells(f, cells) {
@@ -335,7 +350,7 @@
       f.shape = shape || World.newFogShape(Math.max(1, list.length));
       if (at && at[2] !== undefined) { f.age = at[2]; if (at[3] !== undefined) f.ang = at[3]; }
       this.fogs.set(id, f);
-      if (list.length) this.setFogCells(f, list); else this.setFogCells(f, this.fogCount(this.fogCoverage(f)).map(e => e.k));
+      if (list.length) this.setFogCells(f, list); else { const cov = this.fogCover(f); f.mul = cov.mul; this.setFogCells(f, this.fogCount(cov).map(e => e.k)); }
       f.base = f.cells.size; f.gx = f.x; f.gy = f.y;
       return f;
     }
@@ -356,7 +371,7 @@
       }
       if (!at) { this.fogNoSeed = (this.fogNoSeed || 0) + 1; return null; }
       const shape = World.newFogShape(FOG_AREA[0] + R() * (FOG_AREA[1] - FOG_AREA[0]));
-      const probe = { id: -1, shape, sea: false, age: 0 }, cells = this.fogCount(this.fogCoverage(probe, at[0], at[1], 0));
+      const probe = { id: -1, shape, sea: false, age: 0 }, cells = this.fogCount(this.fogCover(probe, at[0], at[1], 0));
       if (cells.length < 10 || cells.some(e => Math.abs(e.x - px) <= 1 && Math.abs(e.y - py) <= 1)) return null;
       const f = this.addFog(null, this.time + FOG_LIFE, false, shape, at);
       if (this.onFog) this.onFog(f);
@@ -369,7 +384,7 @@
         const t = 2 + Math.floor(R() * 4), x = mx + dx * t + Math.round((R() - 0.5) * 4), y = my + dy * t + Math.round((R() - 0.5) * 4);
         if (!this.fogSea(x, y) || this.fogCells.has(U.key(x, y))) continue;
         const shape = World.newFogShape(SEA_FOG_AREA[0] + R() * (SEA_FOG_AREA[1] - SEA_FOG_AREA[0]));
-        const probe = { id: -1, shape, sea: true, age: 0 }, cells = this.fogCount(this.fogCoverage(probe, x + 0.5, y + 0.5, 0));
+        const probe = { id: -1, shape, sea: true, age: 0 }, cells = this.fogCount(this.fogCover(probe, x + 0.5, y + 0.5, 0));
         if (cells.length < 3 || cells.some(e => e.x === px && e.y === py)) continue;
         return this.addFog(null, this.time + SEA_FOG_LIFE, true, shape, [x + 0.5, y + 0.5]);
       }
@@ -414,12 +429,17 @@
       else f.ang += (R() - 0.5) * (R() < 0.15 ? 2.4 : 0.7);
       return !!src;
     }
-    // 把霧挪到 (x, y)、霧齡 t，重算算作霧的格子；蓋得到的地不到原本的一半（撞上海、山、屋）就不挪、掉頭，回 false
+    // 把霧挪到 (x, y)、霧齡 t，重算算作霧的格子。山、海都飄得過去，不回頭（v0.32）；碰到四十五格以內的屋子，形撐開繞過去、方向拐開；
+    // 飄到海的盡頭（離島心 G.SEA_EDGE − FOG_EDGE 外）就轉回島這邊，免得飄出紙外
     placeFog(f, x, y, t) {
-      const cells = this.fogCount(this.fogCoverage(f, x, y, t));
-      if (cells.length < Math.max(f.sea ? 2 : 5, Math.floor((f.base || 0) * 0.5))) { f.x = f.gx; f.y = f.gy; f.ang += Math.PI * (0.6 + U.trueRand() * 0.4); return false; }
+      const cov = this.fogCover(f, x, y, t), cells = this.fogCount(cov);
       const dx = x - f.gx, dy = y - f.gy; if (Math.abs(dx) + Math.abs(dy) > 1e-6) f.dir = [Math.sign(Math.round(dx * 10)), Math.sign(Math.round(dy * 10))];
-      f.x = x; f.y = y; f.age = t; f.gx = x; f.gy = y; this.setFogCells(f, cells.map(e => e.k));
+      f.x = x; f.y = y; f.age = t; f.gx = x; f.gy = y; f.mul = cov.mul; this.setFogCells(f, cells.map(e => e.k));
+      if (cov.lost > 0.3 && this.time >= (f.turnAt || 0)) {   // 碰上屋子：往屋子去的就拐成繞著走（偏外一點），四息內不再拐
+        const oa = Math.atan2(cov.ly - y, cov.lx - x), d = Math.atan2(Math.sin(f.ang - oa), Math.cos(f.ang - oa));
+        if (Math.abs(d) < Math.PI / 2) { f.ang = oa + (d >= 0 ? 1 : -1) * (Math.PI / 2 + 0.35); f.turnAt = this.time + 4; f.turned = (f.turned || 0) + 1; }
+      }
+      if (Math.hypot(x, y) > G.SEA_EDGE - FOG_EDGE) { const home = Math.atan2(-y, -x), d = Math.atan2(Math.sin(f.ang - home), Math.cos(f.ang - home)); if (Math.abs(d) > Math.PI / 2) f.ang = home + (U.trueRand() - 0.5) * 0.8; }
       return true;
     }
     // 測試與舊介面：定方向後一口氣挪一格的距離
@@ -526,7 +546,7 @@
       this.fogRoomCache.clear();
       for (const f of this.fogs.values()) {   // 霧障：每 fogStep 息上下重新定方向（躲光、隨風），每一步照現在的位置與形狀重算格子
         if (this.time >= f.moveAt) { f.moveAt = this.time + this.fogStep * (0.6 + U.trueRand() * 0.8); this.steerFog(f, px, py); }
-        if (this.fogStep < 1e6) this.placeFog(f, f.x, f.y, f.age);
+        if (this.fogStep < 1e6) this.placeFog(f, f.x, f.y, f.age);   // 每半息照此刻的位置與形狀重算
       }
       this.roomCache.clear();
       // —— 灶裡的柴

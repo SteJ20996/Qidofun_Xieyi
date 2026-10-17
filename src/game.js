@@ -43,7 +43,8 @@
   const SLING_RANGE = 9, SLING_DMG = 6, SLING_CD = 0.8, SLING_PREY = '鹿虎豹狼蛇蛛蟾鷹龜蜃豬牛', PROVOKE_TIME = 20, PLATFORM_RECOIL = 0.1, PLATFORM_SLOW = 5;
   const SAN_REST = 0.1, CONTENT_AT = 90;   // 飽、暖、力都在九成以上：愜意不掉，反而每息回 0.1×倍率（v0.21）
   const CRUSH_PEBBLES = 2, STONE_TOOLS = ['石刀', '石鎬', '石鋤', '石劍', '石斧'];   // 舊石器磨回石子（v0.31）
-  const FARM_KINDS = '鎬鋤斧';   // 具欄分兩段（v0.31）：武器（刀、劍、彈弓、神兵）在前、農具（鎬、鋤、斧）在後，共用原來的格數；P 換武器、O 換農具
+  const FARM_KINDS = '鎬鋤斧';
+  const PATH_R = 40, PATH_NODES = 6000;   // 滑鼠點格子走過去（v0.32）：找路只在人四十格內、最多試六千格   // 具欄分兩段（v0.31）：武器（刀、劍、彈弓、神兵）在前、農具（鎬、鋤、斧）在後，共用原來的格數；P 換武器、O 換農具
   const REGRIND_CAP = 8, MEND_STA = 3, CAST_COST = [1, 2, 4, 7];   // CAST_COST：撒一網網到 0／1／2／3 條以上各耗幾點耐久   // 1、2、4、8 法則的上限：重磨的石子、加固漁網的棉麻（MEND_STA 是面向網按 F 加固的耗力）                      // 同一把工具重磨：第一次石子一、再來二、四、八，八為上限（rg 記在那把工具上）
   const CLOTH_FUEL = 50;                      // 舊布製品（內襯、布褲、布甲、布帽、布靴）丟進灶裡當柴：一件五十息（v0.21 前一百二十）
   const FAT_P = 0.25;   // v0.28：斃野豬、野牛得油脂的機會（真隨機）
@@ -58,7 +59,9 @@
   const WARN_LIGHT = 0.5, WARN_POP = 0.25;    // 五條數值不到五成亮燈、不到四分之一彈窗提醒（回到五成以上才會再提醒）
   const WEAR_CAP = 6, REPAIR_WM = 1.5, HAT_FUEL = 400;
   // 修鐵器與鎢鋼器（v0.30 使用者定）：同一件第 n 次修。鐵器（鐵甲盔靴、鋼具）鐵 1、2、4、8；鎢鋼器（鎢鋼甲盔靴、鎢鋼具）鐵一、鐵二、鐵三鎢鋼一、鐵六鎢鋼二；之後都照最後一檔
-  const IRON_FIX = [1, 2, 4, 8], TUNG_FIX = [{ '鐵': 1 }, { '鐵': 2 }, { '鐵': 3, '鎢鋼': 1 }, { '鐵': 6, '鎢鋼': 2 }];
+  const IRON_FIX = [1, 2, 4, 8], TUNG_FIX = [{ '鐵': 1 }, { '鐵': 2 }, { '鐵': 3, '鎢鋼': 1 }, { '鐵': 6, '鎢鋼': 2 }], GOD_FIX = 2;   // 神兵修理是鎢鋼的兩倍（料、力、飽，v0.32）
+  // 魄煙滅（v0.32 使用者定）：夜裡人在屋外，地上的光或龍每煙滅一隻魄，膽氣長「這一重」的 1%（比例，不乘難度）；燈帽每煙滅一隻少兩息
+  const GHOST_COUR = 0.01, GHOST_HAT_COST = 2;
   const FOG_TOLL = 0.1, FAN_REACH = 3;
   // 海：船分孤帆與方舟（大小、命、船頭首骨格數在 G.SHIPS）。修船每次回滿命的 SHIP_REPAIR_FRAC，第 n 次修要 n 塊木板。
   // 船毀了落水，SWIM_TIME 息內游上岸，否則溺死；游泳時飽、愜意、力的消耗 ×SWIM_DRAIN、力不回反掉，武器傷害 ×SWIM_DMG。
@@ -206,9 +209,10 @@
       if (this.totemOn() && !was) this.toast('山海衣', '五件穿齊、一件鎢鋼、十六重膽氣，衣上浮出山海經裡的獸紋。七格內的獸慢一倍卻狠三分之二；你的攻擊 ' + Math.round(this.dmgMult() * 100) + '%、受傷 ' + Math.round(this.takenMult() * 100) + '%。');
       return true;
     }
-    metalOf(n) { const it = ITEMS[n] || {}; return it.tung ? 'tung' : it.iron || (it.kind === 'tool' && n.charAt(0) === '鋼') ? 'iron' : ''; }   // 鎢鋼器、鐵器（鐵甲盔靴與鋼具）；其餘是石、布、神兵
+    metalOf(n) { const it = ITEMS[n] || {}; return GODS.indexOf(n) >= 0 ? 'god' : it.tung ? 'tung' : it.iron || (it.kind === 'tool' && n.charAt(0) === '鋼') ? 'iron' : ''; }   // 神兵、鎢鋼器、鐵器（鐵甲盔靴與鋼具）；其餘是石、布
     fixCost(s) {   // 這一件下一次修要什麼：鐵器、鎢鋼器照修過幾次（s.rg）加價；石具、布件、神兵回 null
       const m = s && this.metalOf(s.n); if (!m) return null; const k = Math.min(s.rg || 0, 3);
+      if (m === 'god') { const d = {}; for (const n in TUNG_FIX[k]) d[n] = TUNG_FIX[k][n] * GOD_FIX; return d; }   // 神兵：鎢鋼的兩倍
       return m === 'tung' ? Object.assign({}, TUNG_FIX[k]) : { '鐵': IRON_FIX[k] };
     }
     matText(d) { return Object.keys(d).map(n => n + ' ' + d[n]).join('、'); }
@@ -248,10 +252,10 @@
         if (gone.length) { this.toast('衣甲碎了', '十五息內挨了五下，' + gone.join('、') + '都碎了。'); SFX.fail(); }
       }
     }
-    addCourage(n, src) {   // src 'kill'：斃敵對生靈；其餘（製作、採集、讀碑、捕魚、煉丹）廿二重起就不長了。回傳實際加了多少（乘上難度加成、取整）
+    addCourage(n, src) {   // src 'kill'：斃敵對生靈；'ghost'：魄煙滅（比例，不乘難度）；其餘（製作、採集、讀碑、捕魚、煉丹）廿二重起就不長了。回傳實際加了多少
       const p = this.player, l0 = this.level();
-      if (src !== 'kill' && l0 >= KILL_ONLY_LEVEL) { if (n > 0 && !this.killOnlyHinted) { this.killOnlyHinted = true; this.toast('膽氣不長了', '廿二重起，膽氣只從斃敵對的生靈得來：白日八成、夜裡加半成。'); } return 0; }
-      if (n > 0) n = U.r4(n * (this.diff.cour || 1));   // 難度加成：簡單 ×1.4、一般 ×1.25、困難 ×1.15
+      if (src !== 'kill' && src !== 'ghost' && l0 >= KILL_ONLY_LEVEL) { if (n > 0 && !this.killOnlyHinted) { this.killOnlyHinted = true; this.toast('膽氣不長了', '廿二重起，膽氣只從斃敵對的生靈得來：白日八成、夜裡加半成。'); } return 0; }
+      if (n > 0 && src !== 'ghost') n = U.r4(n * (this.diff.cour || 1));   // 難度加成：簡單 ×1.4、一般 ×1.25、困難 ×1.15（魄煙滅是這一重的比例，不乘）
       p.cour += n;
       const l = this.level();
       if (l > l0) {
@@ -552,7 +556,7 @@
     }
     askFog(f) {
       const n = this.count('扇');
-      this.fogAsk = f.id; this.paused = true; this.keys.clear(); this.action = null;
+      this.fogAsk = f.id; this.paused = true; this.path = null; this.keys.clear(); this.action = null;
       $('fogask-text').innerHTML = '一片霧障，' + f.cells.size + ' 格。不吹散就硬闖，命、飽、暖、力、愜意各掉當前的一成（不會致命）。' + (n ? '<br>囊中有扇子 ' + n + ' 把。' : '<br>你身上沒有扇子（草四木一可紮一把）。');
       $('fogask-use').classList.toggle('hidden', !n); $('fogask-use').textContent = '用一把扇子吹散（' + n + '）';
       $('fogask-no').textContent = n ? '不用，硬闖' : '穿霧而過';
@@ -882,12 +886,12 @@
     spendSta(n) { const p = this.player; if (p.sta < n) { this.message('力氣不夠，歇一歇。'); SFX.fail(); return false; } p.sta -= n; return true; }
 
     // ---------- 移動 ----------
-    pass(x, y) {
+    pass(x, y, ox, oy) {   // (ox, oy)：從哪一格走過來，不給就是人現在站的那格（找路時一格一格試）
       const ch = this.world.get(x, y), d = DB[ch];
       if (this.player.sailing || this.player.swimming) return d.kind === 'water' || d.walk > 0;
-      const w = this.world, p = this.player;
-      if (ch === '水' && w.raw(x, y) === '灘' && w.raw(p.x, p.y) === '灘') return true;   // 漲潮困在灘上：可涉水走到別的灘
-      if (ch === '台') { const here = w.get(p.x, p.y); if (here !== '台' && here !== '階') return false; }   // 台要從階或台走上去（下台可以直接跳）
+      const w = this.world, p = this.player, ax = ox === undefined ? p.x : ox, ay = oy === undefined ? p.y : oy;
+      if (ch === '水' && w.raw(x, y) === '灘' && w.raw(ax, ay) === '灘') return true;   // 漲潮困在灘上：可涉水走到別的灘
+      if (ch === '台') { const here = w.get(ax, ay); if (here !== '台' && here !== '階') return false; }   // 台要從階或台走上去（下台可以直接跳）
       return d.walk > 0 || ch === '燈' || (ch === '水' && this.has('竹筏'));   // 燈：人跨得過（獸照 canStand 過不去，魄本來就穿磚）
     }
     handleMove(dt) {
@@ -904,10 +908,60 @@
       if (p.insane && !p.ctrl) { const d = N8[Math.floor(Math.random() * 8)]; dx = d[0]; dy = d[1]; }   // 失控：亂走
       else for (const code of this.keys) { const d = DIRS[code]; if (d) { dx += d[0]; dy += d[1]; } }
       dx = U.sign(dx); dy = U.sign(dy);
+      if (dx || dy) this.path = null;                                  // 按了方向鍵：滑鼠點的路不走了
+      else if (this.path && !(p.insane && !p.ctrl)) { this.followPath(); return; }
       if (!dx && !dy) return;
       p.fx = dx; p.fy = dy;
       if (this.action) this.action = null;
       this.tryStep(dx, dy) || (dx && dy && (this.tryStep(dx, 0) || this.tryStep(0, dy)));
+    }
+    // ---------- 滑鼠點格子走過去（v0.32）：左鍵點兩格以外的格子，自己找路走過去；那格站不上去（樹、磚、山……）就走到它旁邊、面向它 ----------
+    findPath(tx, ty) {
+      const p = this.player, sx = p.x, sy = p.y, K = (x, y) => (x - sx + PATH_R) * (2 * PATH_R + 1) + (y - sy + PATH_R);
+      const stand = this.pass(tx, ty, tx, ty) && !this.ents.beastAt(tx, ty);
+      const done = stand ? (x, y) => x === tx && y === ty : (x, y) => U.cheb(x, y, tx, ty) === 1;
+      const cost = new Map([[K(sx, sy), 0]]), from = new Map(), heap = [[U.cheb(sx, sy, tx, ty), 0, sx, sy]];
+      const beasts = new Set(); for (const e of this.ents.list) if (this.ents.beastAt(e.x, e.y) === e) beasts.add(U.key(e.x, e.y));   // 獸站的格子繞開（找路當下的位置）
+      const push = (e) => { heap.push(e); let i = heap.length - 1; while (i > 0) { const j = (i - 1) >> 1; if (heap[j][0] <= heap[i][0]) break; [heap[i], heap[j]] = [heap[j], heap[i]]; i = j; } };
+      const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[i], heap[m]] = [heap[m], heap[i]]; i = m; } } return top; };
+      let n = 0;
+      while (heap.length && n++ < PATH_NODES) {
+        const [, c, x, y] = pop(); if (c > cost.get(K(x, y))) continue;
+        if (done(x, y) && !(x === sx && y === sy && !stand && U.cheb(x, y, tx, ty) !== 1)) {
+          const path = []; let k = K(x, y), cx = x, cy = y; while (!(cx === sx && cy === sy)) { path.unshift([cx, cy]); [cx, cy] = from.get(k); k = K(cx, cy); }
+          return path;
+        }
+        for (const [dx, dy] of N8) {
+          const nx = x + dx, ny = y + dy; if (Math.abs(nx - sx) > PATH_R || Math.abs(ny - sy) > PATH_R) continue;
+          if (!this.pass(nx, ny, x, y) || beasts.has(U.key(nx, ny)) || (dx && dy && !(this.pass(x + dx, y, x, y) && this.pass(x, y + dy, x, y)))) continue;   // 斜走不能貼著擋路的角穿過去（跟方向鍵一樣）
+          const nc = c + (dx && dy ? 1.3 : 1) / Math.max(0.3, DB[this.world.get(nx, ny)].walk || 1), nk = K(nx, ny);
+          if (cost.has(nk) && cost.get(nk) <= nc) continue;
+          cost.set(nk, nc); from.set(nk, [x, y]); push([nc + Math.max(Math.abs(tx - nx), Math.abs(ty - ny)), nc, nx, ny]);
+        }
+      }
+      return null;
+    }
+    walkTo(tx, ty) {
+      const p = this.player;
+      if (p.knock > 0 || p.dead || !this.canAct()) return false;
+      if (Math.max(Math.abs(tx - p.x), Math.abs(ty - p.y)) > PATH_R) { this.message('太遠了，在畫面裡點近一點的格子。'); return false; }
+      const path = this.findPath(tx, ty);
+      if (!path) { this.path = null; this.message('走不過去。'); SFX.fail(); return false; }
+      this.path = path; this.pathGoal = { x: tx, y: ty }; this.pathTries = 0; if (this.action) this.action = null;
+      if (!path.length) this.facePathGoal();
+      return true;
+    }
+    facePathGoal() { const p = this.player, gl = this.pathGoal; if (gl && U.cheb(gl.x, gl.y, p.x, p.y) === 1) { p.fx = gl.x - p.x; p.fy = gl.y - p.y; } this.path = null; }
+    followPath() {
+      const p = this.player;
+      if (!this.path.length) { this.facePathGoal(); return; }
+      const [nx, ny] = this.path[0], dx = nx - p.x, dy = ny - p.y;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (!dx && !dy)) { this.path.shift(); return; }
+      p.fx = dx; p.fy = dy;
+      if (this.tryStep(dx, dy)) { this.path.shift(); if (!this.path.length) this.pathEnd = true; return; }
+      const gl = this.pathGoal;   // 路被擋了（獸、剛放的東西）：重找，三次不成就停
+      if (gl && ++this.pathTries <= 3) { const again = this.findPath(gl.x, gl.y); if (again) { this.path = again; return; } }
+      this.path = null; this.message('路被擋住了。');
     }
     tryStep(dx, dy) {
       const p = this.player, w = this.world, nx = p.x + dx, ny = p.y + dy;
@@ -929,7 +983,7 @@
       p.moveT = p.stepDur;
       return true;
     }
-    onArrive() { if (!this.player.sailing) this.world.trample(this.player.x, this.player.y); }
+    onArrive() { if (!this.player.sailing) this.world.trample(this.player.x, this.player.y); if (this.pathEnd) { this.pathEnd = false; this.facePathGoal(); } }
     facing() { return { x: this.player.x + this.player.fx, y: this.player.y + this.player.fy }; }
 
     // ---------- 取（E） ----------
@@ -1152,6 +1206,13 @@
       return win / sh.area;
     }
     windowBonus(share) { return (WINDOW_SAN.find(([at]) => share > at) || [0, 0])[1]; }   // 窗／屋裡面積：過 1/9 +5%、過 1/7 +12%、過 1/5 +20%
+    ghostBurned(e) {   // 魄被地上的光或龍煙滅（v0.32）：燈帽少兩息；夜裡人在屋外，膽氣長這一重的 1%
+      const p = this.player; if (p.dead) return;
+      const hat = p.worn['帽']; if (hat && hat.fuel > 0) { hat.fuel = Math.max(0, U.r4(hat.fuel - GHOST_HAT_COST)); this.barSig = ''; }
+      if (!this.isNight() || this.indoors()) return;
+      const got = this.addCourage(U.r4(levelCost(this.level()) * GHOST_COUR), 'ghost');
+      if (got > 0) { this.stats.ghosts = (this.stats.ghosts || 0) + 1; this.fx.push({ type: 'float', x: e.x, y: e.y, text: '魄滅 · 膽 +' + fmt(got), color: G.INK.gold, t: 0, dur: 1.4 }); }
+    }
     sanUp(n) { const p = this.player; return U.r4(n * (p.sanBoostUntil > this.world.time ? 1 + SAN_BOOST : 1)); }   // 愜意回復：睡過窗夠的屋子後一整天快 5%
     wallRammed(e, x, y, r) {   // 耐久不顯示：只在磚成了墟、窗門剩一半時說一聲
       const p = this.player, ch = this.world.get(x, y); this.renderer.shake = 0.25; SFX.ram(); this.fx.push({ type: 'float', x, y, text: '撞', color: G.INK.red, t: 0, dur: 0.6 });
@@ -1522,9 +1583,9 @@
       }
       if (r.regrind) {
         const s = this.activeTool(); if (!s) { this.message('具欄裡要選中一把工具（P 換）。'); SFX.fail(); return; }
-        const tung = !!ITEMS[s.n].tung, extraSta = tung ? 5 : 0, food = tung ? 10 : 0;   // 鎢鋼具重磨耗力八、飽十
+        const tung = !!ITEMS[s.n].tung, god = GODS.indexOf(s.n) >= 0, extraSta = god ? (r.sta + 5) * GOD_FIX - r.sta : tung ? 5 : 0, food = god ? 10 * GOD_FIX : tung ? 10 : 0;   // 鎢鋼具重磨耗力八、飽十；神兵兩倍（力十六、飽二十）
         if (p.sta < r.sta + extraSta) { this.message('力氣不夠，歇一歇（鎢鋼具要力 ' + (r.sta + extraSta) + '）。'); SFX.fail(); return; }
-        if (food && p.food < food) { this.message('太餓了，磨不動鎢鋼。'); SFX.fail(); return; }
+        if (food && p.food < food) { this.message(god ? '太餓了，修不動神兵。' : '太餓了，磨不動鎢鋼。'); SFX.fail(); return; }
         const need = this.needOf(r); for (const n in need) this.removeItem(n, need[n]); s.rg = (s.rg || 0) + 1;   // 石具用石子；鋼具、鎢鋼具用鐵（與鎢鋼），v0.30
         p.sta -= r.sta + extraSta; if (food) p.food -= food; s.dur = ITEMS[s.n].dur; this.barSig = ''; this.afterCraft(r); this.message('「' + s.n + '」' + (this.metalOf(s.n) ? '修好了' : '磨利了') + '，用了' + this.matText(need) + '；下次要' + this.matText(this.needOf(r)) + '。'); SFX.fuse(); this.buildCraft(); this.buildBag(); return;
       }
@@ -1793,7 +1854,7 @@
         }
         if (!$('map').classList.contains('hidden') || !$('journal').classList.contains('hidden')) return;
         const p = this.player;
-        if (DIRS[ev.code]) { this.keys.add(ev.code); ev.preventDefault(); return; }
+        if (DIRS[ev.code]) { this.keys.add(ev.code); this.path = null; ev.preventDefault(); return; }   // 方向鍵一按，滑鼠點的路就不走了
         if (/^Digit[1-9]$/.test(ev.code)) { const n = +ev.code[5] - 1; if (n < p.bag.length) p.sel = n; this.buildBag(); ev.preventDefault(); return; }
         switch (ev.code) {
           case 'KeyE': case 'Space': this.keys.add(ev.code); this.pressGather(); break;
@@ -1821,10 +1882,14 @@
         if (this.paused || this.player.dead || this.player.knock > 0) return;
         const r = this.renderer, T = r.tile, p = this.player;
         const wx = Math.floor((ev.clientX - (r.w / 2 - r.camX * T)) / T), wy = Math.floor((ev.clientY - (r.h / 2 - r.camY * T)) / T);
-        if (U.cheb(wx, wy, p.x, p.y) !== 1) { this.message('太遠了，走近一點。'); return; }
-        p.fx = wx - p.x; p.fy = wy - p.y;
+        const d = U.cheb(wx, wy, p.x, p.y);
+        if (d === 0) return;
+        if (d > 1) { if (ev.button === 2) this.message('右鍵只放在身旁一格；左鍵點遠處的格子就走過去。'); else this.walkTo(wx, wy); return; }   // 左鍵點遠處：走過去（v0.32）
+        this.path = null; p.fx = wx - p.x; p.fy = wy - p.y;
         if (ev.button === 2) this.pressPlace(); else this.pressGather();
       });
+      cv.addEventListener('mousemove', (ev) => { this.mouse = { x: ev.clientX, y: ev.clientY }; });   // 畫面上框出滑鼠指著的格子
+      cv.addEventListener('mouseleave', () => { this.mouse = null; });
       cv.addEventListener('wheel', (ev) => { this.cycle(ev.deltaY > 0 ? 1 : -1); ev.preventDefault(); }, { passive: false });
       $('dead-btn').addEventListener('click', () => this.respawn());
       $('read').addEventListener('mousedown', () => this.closeRead());
