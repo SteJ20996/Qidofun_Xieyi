@@ -146,7 +146,7 @@
         f._fade = alive ? Math.min(1, (f._fade === undefined ? 0 : f._fade) + dt / 1.2) : (f._fade === undefined ? 1 : f._fade) - dt / 1.2;
         if (!alive && f._fade <= 0) { seen.delete(id); continue; }
         if (f.x + 8 < x0 || f.x - 8 > x1 + 1 || f.y + 8 < y0 || f.y - 8 > y1 + 1) continue;
-        const cov = alive ? (f._cov = world.fogCoverage(f)) : (f._cov || []);
+        const cov = alive ? (f._cov = world.fogCoverage(f, undefined, undefined, undefined, f.mul)) : (f._cov || []);   // 撐的倍數用世界每半息算好的那個
         const left = Math.min(1, Math.max(0, (f.until - world.time) / 20)) * f._fade;     // 快散時淡下去
         let mx = 0, my = 0, mw = 0;
         for (const e of cov) {
@@ -330,6 +330,17 @@
           ctx.save(); ctx.strokeStyle = cp.torn ? 'rgba(60,55,50,0.35)' : 'rgba(47,88,120,0.55)'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 5]); ctx.lineDashOffset = -now * 12;
           ctx.strokeRect(ox + mx * T + 2, oy + my * T + 2, (Mx - mx + 1) * T - 4, (My - my + 1) * T - 4); ctx.restore();
         }
+      }
+      // —— 滑鼠（v0.32）：指著的格子淡淡框一下；點過的路畫成一串小點，終點一個圈
+      if (g.mouse) {
+        const mx = Math.floor((g.mouse.x - ox) / T), my = Math.floor((g.mouse.y - oy) / T), far = U.cheb(mx, my, p.x, p.y) > 1;
+        ctx.save(); ctx.strokeStyle = far ? 'rgba(47,88,120,0.45)' : 'rgba(180,57,42,0.4)'; ctx.lineWidth = 1.2; ctx.setLineDash([3, 4]); ctx.strokeRect(ox + mx * T + 4, oy + my * T + 4, T - 8, T - 8); ctx.restore();
+      }
+      if (g.path && g.pathGoal) {
+        ctx.save(); ctx.fillStyle = 'rgba(47,88,120,0.5)';
+        for (const [x, y] of g.path) { ctx.beginPath(); ctx.arc(ox + x * T + T / 2, oy + y * T + T / 2, T * 0.07, 0, 7); ctx.fill(); }
+        const gx = ox + g.pathGoal.x * T + T / 2, gy = oy + g.pathGoal.y * T + T / 2;
+        ctx.strokeStyle = 'rgba(47,88,120,0.7)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(gx, gy, T * (0.3 + 0.04 * Math.sin(now * 5)), 0, 7); ctx.stroke(); ctx.restore();
       }
       // —— 面前的格子
       {

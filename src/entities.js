@@ -247,7 +247,7 @@
         if (e.fade !== undefined && e.fade < 1) { e.fade -= dt * 1.2; if (e.fade <= 0) this.list.splice(i, 1); continue; }   // 正在煙滅
         if (e.type === '魄') {
           // 地上的光（燈、火、旺灶）三格內、龍四格內即煙滅；玩家身上的光只逼得退（見下面的行動）
-          if (w.lightNear(e.x, e.y, GHOST_BURN) || this.dragonNear(e.x, e.y, 4)) { e.fade = 0.99; continue; }
+          if (w.lightNear(e.x, e.y, GHOST_BURN) || this.dragonNear(e.x, e.y, 4)) { e.fade = 0.99; if (g.ghostBurned) g.ghostBurned(e); continue; }   // 遊戲端：屋外的夜裡長膽氣、燈帽少兩息（v0.32）
           if (g.daylight() > 0.3) {
             if (FOREST.indexOf(w.get(e.x, e.y)) >= 0) { e.frozen = true; continue; }     // 白日藏於林中，不動
             e.fade = 0.99; continue;                                                          // 不在林裡，天亮煙滅
